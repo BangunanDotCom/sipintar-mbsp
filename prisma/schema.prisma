@@ -28,6 +28,7 @@ model User {
   recoveryCodes RecoveryCode[]
   roles UserRoleAssignment[]
   representatives CompanyRepresentative[]
+  initiatedDrafts ApplicationDraft[]
   notifications Notification[]
   @@map("users")
 }
@@ -144,6 +145,7 @@ model Company {
  informationStatus String @default("UNVERIFIED")
  representatives CompanyRepresentative[]
  invitations CompanyRepresentationInvitation[]
+ drafts ApplicationDraft[]
  documents DelegationDocument[]
  createdAt DateTime @default(now())
  @@map("companies")
@@ -264,4 +266,24 @@ model AuditLog {
  createdAt DateTime @default(now())
  @@index([createdAt])
  @@map("audit_logs")
+}
+
+model ApplicationDraft {
+ id String @id @default(uuid())
+ initiatedByUserId String
+ initiatedBy User @relation(fields:[initiatedByUserId],references:[id])
+ capacity String
+ officialApplicantUserId String?
+ companyId String?
+ company Company? @relation(fields:[companyId],references:[id])
+ initiatorSnapshot Json
+ applicantSnapshot Json
+ representativeSnapshot Json?
+ notes String @default("")
+ status String @default("DRAFT")
+ version Int @default(1)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([initiatedByUserId,updatedAt])
+ @@map("application_drafts")
 }

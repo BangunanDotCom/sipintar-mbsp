@@ -51,3 +51,18 @@ Senarai pengguna, audit, notifikasi dan perwakilan dihadkan 50/100 rekod dalam U
 - `POST /api/companies/:id/representatives` lama kini mengembalikan 409 untuk ahli sah dengan arahan menggunakan jemputan. Tiada penambahan tanpa persetujuan penerima.
 
 Mutasi/preview memerlukan sesi dan CSRF seperti endpoint sesi lain. Semakan penciptaan syarikat/menerima jemputan memerlukan pengenalan lengkap; SSM sedia ada mengembalikan 409 tanpa menghubungkan pemohon secara automatik. OpenAPI dijana semula bersama perubahan ini.
+
+## Draf PPTT Fasa 2B.1
+
+Semua endpoint berikut memerlukan pemohon aktif, e-mel disahkan, pengenalan lengkap, peranan semasa dan permission database `applications.draft`. Mutasi memerlukan Origin/CSRF. Status draf tidak boleh ditetapkan pelanggan.
+
+| Endpoint | Kontrak |
+|---|---|
+| `GET /api/application-drafts/context` | Profil individu bertopeng, pengguna yang memulakan, senarai syarikat/wakil yang sah dan `submissionEnabled:false` |
+| `GET /api/application-drafts` | 50 draf terkini milik sendiri, ditapis mengikut kebenaran syarikat semasa |
+| `POST /api/application-drafts` | `{capacity:"INDIVIDUAL",notes?}` atau `{capacity:"COMPANY",companyId,notes?}`; status 201, snapshot diambil server |
+| `GET /api/application-drafts/:id` | Buka/sambung draf sendiri; audit sambungan; 404 bagi bukan pemilik/kuasa syarikat tidak sah |
+| `PATCH /api/application-drafts/:id` | Badan seperti POST, tambah `version` integer positif; versi lapuk 409; snapshot semasa disegarkan |
+| `POST /api/application-drafts/:id/submit` | Penghantaran tidak disediakan: 409 bagi pemilik sah, 404 bagi bukan pemilik |
+
+`notes` maksimum 2,000 aksara. Badan strict menolak medan tambahan seperti owner/status/snapshot; companyId tidak dibenarkan bagi kapasiti individu. Sesi/permission/pengenalan tidak sah ditolak sebelum menyimpan. ID draf ialah UUID dalaman, bukan rujukan rasmi MBSP. Lihat PHASE2B1.md untuk pemilikan dan status perwakilan.

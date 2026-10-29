@@ -47,3 +47,7 @@ Reka bentuk emas dengan simbol penginapan/bumbung, panorama malam dan konsep bir
 ## Pemasangan fail rasmi pengguna
 
 Fail logo asal dikekalkan byte-for-byte dengan SHA-256 `29d1cee0f4fab1a36f26c742dc7486eec1498527ca8439d6c768c627237d016d`. Fail yang diterima oleh pelayar mempunyai checksum sama. Header menggunakan `object-fit: contain`, tanpa latar putih atau bingkai tambahan; alpha asal dikekalkan. Paparan disemak pada 320, 390, 600, 601, 768, 1024 dan 1440 piksel. Logo emas STAYLink serta panorama tidak berubah. Lint, typecheck, 42 ujian unit/API, build dan 4 aliran pelayar lulus. Screenshot desktop/telefon dikemas kini.
+
+## Sambungan draf Fasa 2B.1
+
+Destinasi Permohonan Baharu kini `/permohonan/baharu` dengan semakan sesi/login-return. Daftar Sekarang kekal `/daftar`. Layout, teks, warna, logo rasmi asal, logo emas STAYLink, panorama dan animasi halaman utama tidak diubah. Screenshot utama desktop/telefon diuji semula dan byte-identik dengan fail diluluskan. CSS ruang draf baharu diskop dalam `application-draft.css`, dengan radio kapasiti, maklumat profil, catatan, simpan/resume dan status penghantaran belum tersedia. [Screenshot ruang draf](PHASE2B1.md).

@@ -42,3 +42,9 @@ Nombor pengenalan dinormalisasi (trim, huruf besar, buang ruang/tanda sempang; 6
 Simpan kunci identiti stabil dan backup melalui secret manager. Putaran automatik tidak disediakan; perubahan kunci perlu nyahsulit/enkripsi semula dan indeks semula terkawal. Tanpa kunci sah pendaftaran gagal tertutup (503), bukan menyimpan plaintext. Akaun lama tidak dibackfill dengan identiti rekaan.
 
 Jemputan wakil menggunakan token hash 256 bit, tempoh 24 jam, penerima terikat dan tuntutan sekali guna secara transaksi. Browser perlu sesi pemohon, peranan sah dan CSRF untuk preview/penerimaan. Kuasa pemberi jemputan dinilai semula ketika penerimaan. Penerimaan tidak mengesahkan syarikat/dokumen dan tidak memberi kuasa meluluskan wakil lain. PDF peribadi kekal di belakang kawalan hubungan syarikat; tiada URL awam dokumen.
+
+## Draf Fasa 2B.1
+
+Endpoint draf menggunakan sesi, verified email, permission database, CSRF dan pemeriksaan pemilikan di backend. Schema strict menolak identiti/status/snapshot daripada pelanggan. Server mengambil profil individu dan syarikat/wakil daripada database; hanya pengenalan bertopeng disalin ke snapshot. Pemula kekal berasingan daripada pemohon rasmi. Audit tidak memasukkan isi catatan, password atau pengenalan penuh.
+
+Semakan hubungan semasa menolak kuasa REVOKED/tamat/belum bermula dan syarikat tidak aktif. Pemilikan draf tidak dikongsi kepada wakil lain syarikat sama atau ICT. Conditional version update dan transaksi menghalang kehilangan perubahan daripada dua tab. CHECK PostgreSQL menolak status selain DRAFT; tiada endpoint penghantaran yang berjaya atau rujukan MBSP dijana. Catatan ialah teks biasa yang dienkod React; pengguna diminta tidak memasukkan rahsia/pengenalan penuh dalam catatan.

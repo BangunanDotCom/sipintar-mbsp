@@ -8,11 +8,11 @@
     "prisma_codegen": "passed",
     "postgres_migration": "passed",
     "vitest": {
-      "passed": 53,
+      "passed": 67,
       "failed": 0
     },
     "playwright": {
-      "passed": 6,
+      "passed": 8,
       "failed": 0
     },
     "frontend_build": "passed",
@@ -565,5 +565,97 @@
     ],
     "cloudflare_deployed": false,
     "main_modified": false
+  },
+  "phase2b1": {
+    "date": "2026-10-29",
+    "branch": "staylink-mbsp-phase1",
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 67,
+        "api": 56,
+        "unit": 11,
+        "failed": 0
+      },
+      "playwright": {
+        "passed": 8,
+        "failed": 0
+      },
+      "build": "passed",
+      "prisma_codegen": "passed",
+      "development_and_test_migrations": "passed"
+    },
+    "migration": "202610290003_application_drafts",
+    "core_tables": 24,
+    "draft_status": "DRAFT only, enforced in PostgreSQL",
+    "submission_enabled": false,
+    "ownership": "Initiating applicant only, with current company authority for company drafts",
+    "snapshots": "Server-derived masked profile; immutable initiating user, separate official individual/company applicant",
+    "concurrency": "Conditional version update in transaction, stale version rejected 409",
+    "responsive_widths": [
+      320,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "horizontal_overflow": false,
+    "screenshots": {
+      "phase2b1-draft-desktop": {
+        "path": "docs/screenshots/phase2b1-draft-desktop.png",
+        "width": 1440,
+        "height": 2443,
+        "bytes": 315815,
+        "sha256": "c444eae936803c37c0a6a3ea926d7499ba9efd8ed0f1e8d8476778d7f4ae9a7f"
+      },
+      "phase2b1-draft-mobile": {
+        "path": "docs/screenshots/phase2b1-draft-mobile.png",
+        "width": 390,
+        "height": 3997,
+        "bytes": 254417,
+        "sha256": "1d9464ac258fd2065e952504cc68dfec7b88bd039abeefaea1f2759c7e43d011"
+      }
+    },
+    "home_checks": [
+      {
+        "label": "desktop",
+        "width": 1440,
+        "pixelFileUnchanged": true,
+        "sha256": "32b66385d435724e9bf2174d4e45e4266c8015332ce085e3d12def1c9fd9c9a5",
+        "applicationLinks": [
+          "/permohonan/baharu",
+          "/permohonan/baharu",
+          "/permohonan/baharu"
+        ],
+        "overflow": false,
+        "errors": []
+      },
+      {
+        "label": "mobile",
+        "width": 390,
+        "pixelFileUnchanged": true,
+        "sha256": "bc1bc7cf1bce0ca44c5e19fb9700c66672f25a2a7dae65644031247e7e4e86f5",
+        "applicationLinks": [
+          "/permohonan/baharu",
+          "/permohonan/baharu"
+        ],
+        "overflow": false,
+        "errors": []
+      }
+    ],
+    "approved_assets_and_css_unchanged": true,
+    "home_change": "Application link destinations only; home captures byte-identical",
+    "test_data": "Synthetic DATA UJIAN/example.test only",
+    "rate_limits": "Original limits retained; browser suite waits for available request budget",
+    "production_pending": [
+      "Apply additive migration and regenerate Prisma client",
+      "Retain stable IDENTITY_DATA_KEY and MFA key",
+      "Configure approved production SMTP, HTTPS and origin",
+      "Official document checks, application premises and submission are future scope"
+    ],
+    "main_modified": false,
+    "cloudflare_deployed": false,
+    "worker_modified": false
   }
 }

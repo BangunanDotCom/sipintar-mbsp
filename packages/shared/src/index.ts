@@ -14,8 +14,8 @@ export const roles = {
 } as const;
 export type RoleId = keyof typeof roles;
 export const permissions: Record<RoleId, string[]> = {
-  PEMOHON: ["profile", "companies"],
-  WAKIL_SYARIKAT: ["profile", "companies"],
+  PEMOHON: ["profile", "companies", "applications.draft"],
+  WAKIL_SYARIKAT: ["profile", "companies", "applications.draft"],
   PIC_KAWASAN: ["profile", "areas.read", "representation.verify"],
   PPSK: ["profile", "areas.read", "areas.assign", "audit.operations"],
   PERANCANG_BANDAR: ["profile"],
@@ -113,4 +113,49 @@ export function isCurrent(
 }
 export function independent(preparer: string, approver: string) {
   return preparer !== approver;
+}
+
+// Client chooses capacity only; authoritative identities always come from the session/database.
+export const applicationDraftSchema = z.discriminatedUnion("capacity", [
+  z
+    .object({
+      capacity: z.literal("INDIVIDUAL"),
+      notes: z.string().trim().max(2000).default(""),
+    })
+    .strict(),
+  z
+    .object({
+      capacity: z.literal("COMPANY"),
+      companyId: z.uuid(),
+      notes: z.string().trim().max(2000).default(""),
+    })
+    .strict(),
+]);
+export const applicationDraftUpdateSchema = z.discriminatedUnion("capacity", [
+  z
+    .object({
+      capacity: z.literal("INDIVIDUAL"),
+      notes: z.string().trim().max(2000).default(""),
+      version: z.number().int().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      capacity: z.literal("COMPANY"),
+      companyId: z.uuid(),
+      notes: z.string().trim().max(2000).default(""),
+      version: z.number().int().positive(),
+    })
+    .strict(),
+]);
+/** Closed allowlist: never redirect login to arbitrary URLs or query strings. */
+export function safeApplicantReturnPath(value: string | null): string | null {
+  if (!value) return null;
+  return value === "/permohonan/baharu" ||
+    /^\/permohonan\/draf\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+      value,
+    ) ||
+    /^\/jemputan-syarikat\?token=[a-f0-9]{64}$/.test(value)
+    ? value
+    : null;
 }

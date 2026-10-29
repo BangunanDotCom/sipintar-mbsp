@@ -49,6 +49,8 @@ function request(a: Actor, url: string, method: any = "GET", payload?: any) {
   return app.inject({
     url,
     method,
+    // Each synthetic actor has a distinct client address; rate-limit tests use explicit shared addresses.
+    remoteAddress: `fd00:${hash(a.id).slice(0, 4)}:${hash(a.id).slice(4, 8)}::1`,
     headers: {
       cookie: a.cookie,
       origin: "http://localhost:5173",
@@ -1065,5 +1067,356 @@ describe("Phase 2A email gate and missing configuration", () => {
     } finally {
       process.env.IDENTITY_DATA_KEY = previous;
     }
+  });
+});
+
+describe("Phase 2B.1 real applicant draft storage and access", () => {
+  async function company(owner: Actor) {
+    const r = await request(owner, "/api/companies", "POST", {
+      name: "DATA UJIAN Syarikat Fasa 2B",
+      registrationNumber: `UJIAN${randomBytes(8).toString("hex")}`,
+      address: "Alamat data ujian sahaja, bukan premis sebenar",
+      phone: "0000000000",
+      email: "syarikat-ujian@example.test",
+      authorityType: "PENGARAH",
+    });
+    expect(r.statusCode).toBe(201);
+    return r.json().id as string;
+  }
+  const draftBody = {
+    capacity: "INDIVIDUAL",
+    notes: "DATA UJIAN catatan draf PPTT",
+  };
+  async function draft(a: Actor, body: any = draftBody) {
+    const r = await request(a, "/api/application-drafts", "POST", body);
+    expect(r.statusCode).toBe(201);
+    return r.json();
+  }
+  it("requires a verified applicant, active permission, completed identity and CSRF", async () => {
+    expect(
+      (await app.inject("/api/application-drafts/context")).statusCode,
+    ).toBe(401);
+    expect(
+      (await request(ict, "/api/application-drafts/context")).statusCode,
+    ).toBe(403);
+    const a = await actor("PEMOHON");
+    await db.user.update({
+      where: { id: a.id },
+      data: { emailVerified: false },
+    });
+    expect(
+      (await request(a, "/api/application-drafts/context")).statusCode,
+    ).toBe(403);
+    await db.user.update({
+      where: { id: a.id },
+      data: {
+        emailVerified: true,
+        identificationHash: null,
+        identificationEncrypted: null,
+        identificationMasked: null,
+      },
+    });
+    expect(
+      (await request(a, "/api/application-drafts/context")).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          url: "/api/application-drafts",
+          method: "POST",
+          headers: {
+            cookie: applicant.cookie,
+            origin: "http://localhost:5173",
+          },
+          payload: draftBody,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const expired = await actor("PEMOHON");
+    await db.userRoleAssignment.updateMany({
+      where: { userId: expired.id },
+      data: { endsAt: new Date(Date.now() - 1000) },
+    });
+    expect(
+      (await request(expired, "/api/application-drafts/context")).statusCode,
+    ).toBe(403);
+  });
+  it("stores an individual draft in PostgreSQL with server-derived applicant and immutable initiator", async () => {
+    const a = await actor("PEMOHON"),
+      d = await draft(a);
+    expect(d.status).toBe("DRAFT");
+    expect(d.version).toBe(1);
+    expect(d.initiatedByUserId).toBe(a.id);
+    expect(d.officialApplicantUserId).toBe(a.id);
+    expect(d.companyId).toBeNull();
+    const saved = await db.applicationDraft.findUniqueOrThrow({
+      where: { id: d.id },
+    });
+    expect(saved.notes).toBe(draftBody.notes);
+    expect(saved.representativeSnapshot).toBeNull();
+    const serialized = JSON.stringify(d);
+    for (const forbidden of [
+      "identificationHash",
+      "identificationEncrypted",
+      "passwordHash",
+    ])
+      expect(serialized).not.toContain(forbidden);
+    expect(d.applicantSnapshot.identificationMasked).toMatch(/^••••/);
+    await db.user.update({
+      where: { id: a.id },
+      data: { name: "DATA UJIAN Nama Dikemas Kini" },
+    });
+    const changed = await request(
+      a,
+      `/api/application-drafts/${d.id}`,
+      "PATCH",
+      { ...draftBody, version: 1, notes: "DATA UJIAN catatan dikemas kini" },
+    );
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().applicantSnapshot.name).toBe(
+      "DATA UJIAN Nama Dikemas Kini",
+    );
+    expect(changed.json().initiatorSnapshot).toEqual(d.initiatorSnapshot);
+    expect(
+      (await request(a, `/api/application-drafts/${d.id}`)).json().notes,
+    ).toBe("DATA UJIAN catatan dikemas kini");
+    const actions = await db.auditLog.findMany({
+      where: { target: d.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(actions.map((x) => x.action)).toEqual([
+      "APPLICATION_DRAFT_CREATED",
+      "APPLICATION_DRAFT_SAVED",
+      "APPLICATION_DRAFT_RESUMED",
+    ]);
+    expect(actions.every((x) => x.actorId === a.id)).toBe(true);
+    expect(JSON.stringify(actions)).not.toContain("catatan dikemas kini");
+  });
+  it("lists only permitted companies and separates the company applicant from its initiating representative", async () => {
+    const a = await actor("PEMOHON"),
+      other = await actor("PEMOHON"),
+      first = await company(a),
+      second = await company(a),
+      unrelated = await company(other);
+    const context = (
+      await request(a, "/api/application-drafts/context")
+    ).json();
+    expect(context.companies.map((c: any) => c.id).sort()).toEqual(
+      [first, second].sort(),
+    );
+    expect(context.submissionEnabled).toBe(false);
+    const d = await draft(a, {
+      capacity: "COMPANY",
+      companyId: first,
+      notes: "DATA UJIAN draf syarikat",
+    });
+    expect(d.initiatedByUserId).toBe(a.id);
+    expect(d.officialApplicantUserId).toBeNull();
+    expect(d.companyId).toBe(first);
+    expect(d.applicantSnapshot.companyId).toBe(first);
+    expect(d.representativeSnapshot.userId).toBe(a.id);
+    expect(d.applicantSnapshot.informationStatus).toBe("UNVERIFIED");
+    expect(
+      (
+        await request(a, "/api/application-drafts", "POST", {
+          capacity: "COMPANY",
+          companyId: unrelated,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await request(a, "/api/application-drafts"))
+        .json()
+        .map((d: any) => d.id),
+    ).toContain(d.id);
+  });
+  it("isolates drafts from other users, even another authorized representative of the same company", async () => {
+    const a = await actor("PEMOHON"),
+      colleague = await actor("PEMOHON"),
+      c = await company(a);
+    await db.companyRepresentative.create({
+      data: { companyId: c, userId: colleague.id, authorityType: "PEKERJA" },
+    });
+    const d = await draft(a, { capacity: "COMPANY", companyId: c });
+    expect(
+      (await request(colleague, "/api/application-drafts")).json(),
+    ).toEqual([]);
+    expect(
+      (await request(colleague, `/api/application-drafts/${d.id}`)).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await request(colleague, `/api/application-drafts/${d.id}`, "PATCH", {
+          ...draftBody,
+          version: 1,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await request(
+          colleague,
+          `/api/application-drafts/${d.id}/submit`,
+          "POST",
+          {},
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await request(ict, `/api/application-drafts/${d.id}`)).statusCode,
+    ).toBe(403);
+  });
+  it("rejects identity/status spoofing, malformed capacity, missing company and oversized notes", async () => {
+    const a = await actor("PEMOHON");
+    for (const body of [
+      { ...draftBody, initiatedByUserId: ict.id },
+      { ...draftBody, status: "SUBMITTED" },
+      { ...draftBody, officialApplicantUserId: ict.id },
+      { ...draftBody, applicantSnapshot: { name: "forged" } },
+      { capacity: "COMPANY" },
+      { capacity: "COMPANY", companyId: "invalid" },
+      { ...draftBody, companyId: randomUUID() },
+      { capacity: "UNKNOWN" },
+      { ...draftBody, notes: "x".repeat(2001) },
+    ])
+      expect(
+        (await request(a, "/api/application-drafts", "POST", body)).statusCode,
+      ).toBe(400);
+    expect(
+      await db.applicationDraft.count({ where: { initiatedByUserId: a.id } }),
+    ).toBe(0);
+  });
+  it.each(["revoked", "expired", "future", "inactive-company"])(
+    "denies company draft creation/resume/save when authority becomes %s",
+    async (state) => {
+      const a = await actor("PEMOHON"),
+        c = await company(a),
+        d = await draft(a, { capacity: "COMPANY", companyId: c });
+      if (state === "inactive-company")
+        await db.company.update({
+          where: { id: c },
+          data: { status: "INACTIVE" },
+        });
+      else
+        await db.companyRepresentative.update({
+          where: { userId_companyId: { userId: a.id, companyId: c } },
+          data:
+            state === "revoked"
+              ? { status: "REVOKED" }
+              : state === "expired"
+                ? { endsAt: new Date(Date.now() - 1000) }
+                : { startsAt: new Date(Date.now() + 86400000) },
+        });
+      expect(
+        (await request(a, "/api/application-drafts/context")).json().companies,
+      ).toEqual([]);
+      expect((await request(a, "/api/application-drafts")).json()).toEqual([]);
+      expect(
+        (await request(a, `/api/application-drafts/${d.id}`)).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await request(a, `/api/application-drafts/${d.id}`, "PATCH", {
+            ...draftBody,
+            version: 1,
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await request(a, "/api/application-drafts", "POST", {
+            capacity: "COMPANY",
+            companyId: c,
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (await db.applicationDraft.findUniqueOrThrow({ where: { id: d.id } }))
+          .version,
+      ).toBe(1);
+    },
+  );
+  it("can switch capacity safely and rejects stale versions without overwriting saved work", async () => {
+    const a = await actor("PEMOHON"),
+      c = await company(a),
+      d = await draft(a);
+    let response = await request(
+      a,
+      `/api/application-drafts/${d.id}`,
+      "PATCH",
+      { capacity: "COMPANY", companyId: c, version: 1 },
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.json().officialApplicantUserId).toBeNull();
+    expect(response.json().representativeSnapshot.userId).toBe(a.id);
+    response = await request(a, `/api/application-drafts/${d.id}`, "PATCH", {
+      ...draftBody,
+      version: 2,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().companyId).toBeNull();
+    expect(response.json().representativeSnapshot).toBeNull();
+    expect(response.json().officialApplicantUserId).toBe(a.id);
+    expect(response.json().version).toBe(3);
+    expect(
+      (
+        await request(a, `/api/application-drafts/${d.id}`, "PATCH", {
+          ...draftBody,
+          version: 2,
+          notes: "stale",
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (await db.applicationDraft.findUniqueOrThrow({ where: { id: d.id } }))
+        .notes,
+    ).toBe(draftBody.notes);
+  });
+  it("allows only one concurrent save against the same draft version", async () => {
+    const a = await actor("PEMOHON"),
+      d = await draft(a);
+    const results = await Promise.all([
+      request(a, `/api/application-drafts/${d.id}`, "PATCH", {
+        ...draftBody,
+        version: 1,
+        notes: "DATA UJIAN A",
+      }),
+      request(a, `/api/application-drafts/${d.id}`, "PATCH", {
+        ...draftBody,
+        version: 1,
+        notes: "DATA UJIAN B",
+      }),
+    ]);
+    expect(results.map((x) => x.statusCode).sort()).toEqual([200, 409]);
+    expect(
+      (await db.applicationDraft.findUniqueOrThrow({ where: { id: d.id } }))
+        .version,
+    ).toBe(2);
+    expect(
+      await db.auditLog.count({
+        where: { target: d.id, action: "APPLICATION_DRAFT_SAVED" },
+      }),
+    ).toBe(1);
+  });
+  it("blocks official submission at API and database levels", async () => {
+    const a = await actor("PEMOHON"),
+      d = await draft(a);
+    expect(
+      (await request(a, `/api/application-drafts/${d.id}/submit`, "POST", {}))
+        .statusCode,
+    ).toBe(409);
+    await expect(
+      db.$executeRaw`UPDATE application_drafts SET status = 'SUBMITTED' WHERE id = ${d.id}`,
+    ).rejects.toThrow();
+    const saved = await db.applicationDraft.findUniqueOrThrow({
+      where: { id: d.id },
+    });
+    expect(saved.status).toBe("DRAFT");
+    expect(saved.version).toBe(1);
+    expect(
+      await db.auditLog.count({
+        where: { target: d.id, action: "APPLICATION_SUBMITTED" },
+      }),
+    ).toBe(0);
   });
 });

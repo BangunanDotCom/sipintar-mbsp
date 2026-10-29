@@ -653,6 +653,276 @@
         }
       }
     },
+    "/api/application-drafts/context": {
+      "get": {
+        "summary": "GET /api/application-drafts/context",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/application-drafts": {
+      "get": {
+        "summary": "GET /api/application-drafts",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /api/application-drafts",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "capacity": {
+                        "type": "string",
+                        "enum": [
+                          "INDIVIDUAL"
+                        ]
+                      },
+                      "notes": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "capacity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "capacity": {
+                        "type": "string",
+                        "enum": [
+                          "COMPANY"
+                        ]
+                      },
+                      "companyId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "notes": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "capacity",
+                      "companyId"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/application-drafts/{id}": {
+      "get": {
+        "summary": "GET /api/application-drafts/:id",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH /api/application-drafts/:id",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "capacity": {
+                        "type": "string",
+                        "enum": [
+                          "INDIVIDUAL"
+                        ]
+                      },
+                      "notes": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "capacity",
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "capacity": {
+                        "type": "string",
+                        "enum": [
+                          "COMPANY"
+                        ]
+                      },
+                      "companyId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "notes": {
+                        "type": "string",
+                        "maxLength": 2000
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "capacity",
+                      "companyId",
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/application-drafts/{id}/submit": {
+      "post": {
+        "summary": "POST /api/application-drafts/:id/submit",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/profile/identification": {
       "post": {
         "summary": "POST /api/profile/identification",

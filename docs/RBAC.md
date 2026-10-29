@@ -38,3 +38,9 @@ Pentadbir tidak boleh melantik peranan sendiri, menggantung akaun sendiri atau m
 Penerima mesti mempunyai akaun pemohon aktif dengan e-mel disahkan, login sebagai penerima dan menerima pautan 24 jam melalui POST ber-CSRF. Nombor pengenalan perlu lengkap sebelum menerima jemputan. Kuasa pemberi jemputan dinilai semula ketika penerimaan. Hubungan baharu sentiasa UNVERIFIED dan tidak mendapat flag pengurus. Kuasa luput, belum bermula atau REVOKED ditolak untuk akses syarikat/PDF. Pengesahan dokumen kekal kuasa pegawai yang sah; bukan kesan pengaktifan e-mel atau penerimaan jemputan.
 
 Wakil lama yang belum disahkan tidak dinaik taraf menjadi pengurus secara automatik. Kes ini memerlukan semakan manusia/pengesahan mengikut SOP MBSP; tiada endpoint awam memberi flag pengurus sendiri.
+
+## Permission draf Fasa 2B.1
+
+PEMOHON/WAKIL_SYARIKAT mendapat `applications.draft`; backend turut memerlukan akaun jenis APPLICANT, pengesahan e-mel dan pengenalan lengkap. Kebenaran ini hanya untuk draf sendiri, bukan kuasa penghantaran/kelulusan. Pencipta draf sentiasa actor sesi; tidak boleh mewakilkan pemilikan draf kepada wakil lain atau ICT.
+
+Pilihan syarikat memerlukan hubungan semasa (bukan REVOKED, sudah bermula, belum tamat) dan syarikat ACTIVE. Hubungan belum disahkan secara rasmi boleh menyediakan draf sahaja. Kebenaran asal dan syarikat baharu, jika kapasiti ditukar, dinilai semula ketika simpanan. Wakil syarikat sama yang lain tidak dapat membaca/mengubah draf pemilik asal. Draf hilang daripada senarai apabila kuasa tidak lagi sah, tanpa memadam sejarah.

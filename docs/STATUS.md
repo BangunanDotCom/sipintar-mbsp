@@ -18,7 +18,7 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 - Daftar konfigurasi teknikal/operasi berasingan dengan sejarah versi.
 - Pusat notifikasi, tanda dibaca, SMTP ujian, log penghantaran/failure dan command retry.
 - Audit aktiviti penting dan paparan terhad mengikut kuasa.
-- PostgreSQL sebenar, 23 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
+- PostgreSQL sebenar, 24 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
 - Ujian unit, API dengan database berasingan, dan Playwright pada Chromium sebenar.
 
 ## Batas Fasa 1 yang masih memerlukan kerja
@@ -36,13 +36,13 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 
 ## Fungsi Fasa 2 yang belum dibina
 
-Permohonan/premis/aras dan UUID penghantaran, rujukan rasmi MBSP, pembetulan, AI Pre-Check, bil/MBSPPay, GIS, rujukan/ulasan teknikal serentak, KP-PPTT, mesyuarat/keputusan mengikut skop, penjanaan DOCX/PDF, tandatangan, penutupan/arkib dan WhatsApp.
+Penghantaran permohonan/premis/aras dan UUID penghantaran, rujukan rasmi MBSP, pembetulan, AI Pre-Check, bil/MBSPPay, GIS, rujukan/ulasan teknikal serentak, KP-PPTT, mesyuarat/keputusan mengikut skop, penjanaan DOCX/PDF, tandatangan, penutupan/arkib dan WhatsApp.
 
 Semua menu berkaitan menunjukkan **Akan Tersedia Dalam Fasa Seterusnya**. Tiada integrasi rasmi atau kelulusan perniagaan simulasi dipersembahkan sebagai selesai.
 
 Naik taraf visual terkini dan status aset jata/panorama: lihat [UI-DESIGN.md](UI-DESIGN.md).
 
-Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Halaman utama tidak diubah dalam Fasa 2A; kedua-dua CTA pendaftaran membuka halaman akaun sebenar. Modul penghantaran permohonan kekal belum tersedia.
+Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Halaman utama tidak diubah dalam Fasa 2A; Daftar Sekarang membuka pendaftaran akaun; Permohonan Baharu kini membuka penyediaan draf Fasa 2B.1 dengan login-return. Modul penghantaran rasmi kekal belum tersedia.
 
 Logo rasmi MBSP kini dipasang daripada `apps/web/public/assets/logo mbsp-png.png` yang dimuat naik pengguna. Fail asal dan ketelusannya dikekalkan; tiada reka bentuk semula atau penjanaan logo.
 
@@ -51,3 +51,9 @@ Logo rasmi MBSP kini dipasang daripada `apps/web/public/assets/logo mbsp-png.png
 Pendaftaran dengan pengenalan unik, aktivasi e-mel, login/logout, pemulihan kata laluan, dashboard profil/status, beberapa syarikat berasingan, surat kuasa PDF dan jemputan wakil berasaskan persetujuan telah diuji menggunakan PostgreSQL, Mailpit dan browser sebenar. Halaman utama desktop/telefon sepadan byte screenshot terdahulu. Lihat [PHASE2A.md](PHASE2A.md) dan [TESTING.md](TESTING.md).
 
 Persekitaran lain memerlukan migrasi tambahan, `IDENTITY_DATA_KEY` stabil dan SMTP diluluskan. SMTP produksi/JPN/SSM tidak diuji atau disambungkan. Nombor pengenalan ialah pengisytiharan pengguna, bukan KYC. Pengesahan rasmi dokumen/surat kuasa semasa semakan awal permohonan kekal tugasan pegawai; modul penghantaran permohonan belum dibina. Akaun/profil syarikat lama memerlukan pelengkapan identiti/semakan kuasa yang sah seperti OPERATIONS.md.
+
+## Fasa 2B.1 — draf permohonan PPTT
+
+Pilihan kapasiti individu/syarikat, autofill profil sebenar, identiti pemula berasingan, simpan/sambung PostgreSQL, senarai draf dashboard, pemeriksaan pemilikan/kuasa semasa, kawalan versi serentak dan audit telah dibina. 67 unit/API serta 8 aliran pelayar lulus. [Skop dan screenshot](PHASE2B1.md).
+
+Rekod draf bukan penghantaran rasmi. Tiada butiran premis, nombor rujukan, penerimaan rasmi atau kes pegawai dicipta. Senarai `applications` pada API dashboard kekal untuk penghantaran masa depan; draf sebenar dibaca melalui endpoint `application-drafts`. Konfigurasi production, pengesahan dokumen dan UAT kekal pending.

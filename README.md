@@ -4,7 +4,7 @@
 
 **Digital Services, Practical Solutions.**
 
-Aplikasi pembangunan Fasa 1 dan modul akaun pemohon Fasa 2A untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
+Aplikasi pembangunan Fasa 1, akaun pemohon Fasa 2A dan draf PPTT Fasa 2B.1 untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
 
 Ini aplikasi React + Fastify + PostgreSQL yang boleh dijalankan, bukan laman statik. Statusnya **calon semakan pembangunan**, belum disahkan sebagai sistem produksi MBSP. Baca [skop dan batas](docs/STATUS.md) sebelum UAT.
 
@@ -125,3 +125,9 @@ Antaramuka menggunakan rujukan portal terkini yang dibekalkan pengguna, tema mal
 Pendaftaran `/daftar` memerlukan nama, nombor pengenalan unik, telefon, e-mel, kata laluan dan consent. Pengaktifan e-mel, login/logout, pemulihan kata laluan, dashboard profil, pelbagai syarikat serta jemputan wakil menggunakan API dan PostgreSQL sebenar. Halaman utama dan aset diluluskan tidak berubah.
 
 Selepas mendapatkan kod ini, jalankan `npm run db:generate`, `npm run db:migrate` dan `npm run db:test:migrate`. `IDENTITY_DATA_KEY` mesti diisi dengan kunci baharu berasingan daripada MFA (32 bait hex); simpan secara selamat dan jangan tukar setelah identiti direkodkan. Tanpa kunci sah pendaftaran ditolak 503. Konfigurasi SMTP produksi masih perlu dibuat ICT; aliran e-mel diuji melalui Mailpit tempatan sahaja. Lihat [skop, cara penggunaan dan screenshot Fasa 2A](docs/PHASE2A.md).
+
+## Permulaan permohonan PPTT Fasa 2B.1
+
+**Permohonan Baharu** membuka `/permohonan/baharu`; pengguna tanpa sesi login dikembalikan ke laluan itu selepas login. Pilih individu atau syarikat dengan hubungan perwakilan aktif. Maklumat diisi daripada profil backend; identiti pengguna yang memulakan direkodkan berasingan daripada pemohon rasmi. Simpan dan sambung draf melalui PostgreSQL serta senarai draf dashboard. Draf hanya milik akaun yang memulakannya, termasuk apabila syarikat mempunyai wakil lain.
+
+Jalankan `npm run db:generate` dan `npm run db:migrate` untuk migrasi tambahan `202610290003_application_drafts`. Jalankan `npm run db:test:migrate` pada database ujian berasingan. Migrasi turut menambah permission `applications.draft` kepada peranan pemohon; kunci identiti/MFA sedia ada dikekalkan. **Tiada penghantaran rasmi, nombor rujukan MBSP atau butiran premis dalam fasa ini.** Lihat [skop dan screenshot Fasa 2B.1](docs/PHASE2B1.md).

@@ -59,3 +59,11 @@ Kontrak `integrations.ts` ialah interface sahaja: AI, bayaran, GIS, SSO, tandata
 ## Tambahan Fasa 2A
 
 `identity.ts` melindungi nombor pengenalan menggunakan AES-256-GCM dan HMAC berasingan yang diterbitkan melalui HKDF; hanya medan bertopeng dihantar kepada browser. `company-invitations.ts` mengurus jemputan, persetujuan penerima dan semakan semula kuasa pemberi jemputan. Migrasi `202610290002_applicant_accounts` bersifat tambahan: 23 jadual teras keseluruhan. Rekod lama mengekalkan medan identiti NULL dan flag pengurus false; tiada data pengenalan atau kelulusan direka untuk rekod lama.
+
+## Draf PPTT Fasa 2B.1
+
+`application-drafts.ts` mengurus konteks, senarai, penciptaan, sambungan dan simpanan draf melalui Prisma/PostgreSQL. Jadual tambahan `application_drafts` membawa jumlah jadual teras kepada 24. Pemula/owner (`initiatedByUserId`) berasingan daripada individu rasmi (`officialApplicantUserId`) atau syarikat rasmi (`companyId`); snapshot JSON menggunakan DTO bertopeng daripada server.
+
+CHECK database mengehadkan status kepada DRAFT dan memastikan kapasiti individu/syarikat konsisten. Unique versi tidak diperlukan: conditional update pada id/pemilik/version dalam transaksi membenarkan satu simpanan sahaja bagi setiap versi. Rekod perwakilan dan syarikat dikunci FOR SHARE ketika semakan/simpanan untuk menyusun perubahan kuasa serentak. Audit create/save berada dalam transaksi simpanan sama. Tiada penghantaran, nombor rujukan atau keputusan rasmi dicipta.
+
+Migrasi `202610290003_application_drafts` turut memasukkan permission secara idempotent pada peranan pemohon sedia ada. Pemasangan database kosong masih menggunakan seed peranan seperti biasa.

@@ -1,3 +1,4 @@
+import { applicationDraftRoutes } from "./application-drafts.js";
 import argon2 from "argon2";
 import { protectIdentification } from "./identity.js";
 import { identificationSchema } from "../../../packages/shared/src/index.js";
@@ -42,6 +43,7 @@ async function ownCompany(req: any, companyId: string) {
 }
 export async function routes(app: FastifyInstance) {
   await companyInvitationRoutes(app);
+  await applicationDraftRoutes(app);
   app.post("/api/profile/identification", async (req) => {
     const s = await session(req);
     if (s.user.kind !== "APPLICANT") fail(403, "Akaun pemohon diperlukan.");

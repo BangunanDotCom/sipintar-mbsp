@@ -29,6 +29,7 @@ import {
   templateCategories,
 } from "../../../packages/shared/src/index";
 import { Notice, Loading } from "./main";
+import { DraftList } from "./ApplicationDraft";
 type Field = {
   name: string;
   label: string;
@@ -565,18 +566,40 @@ export default function Dashboard() {
                         ? ["AI Pre-Check", "KP-PPTT"]
                         : []),
                     ].map((x) => (
-                      <Link key={x} to="/modul/permohonan">
+                      <Link
+                        key={x}
+                        to={
+                          x === "Permohonan" &&
+                          actions.includes("applications.draft")
+                            ? "/permohonan/baharu"
+                            : "/modul/permohonan"
+                        }
+                      >
                         <FileText size={21} />
                         <strong>{x}</strong>
-                        <small>Akan Tersedia Dalam Fasa Seterusnya</small>
+                        <small>
+                          {x === "Permohonan" &&
+                          actions.includes("applications.draft")
+                            ? "Mulakan dan simpan draf PPTT"
+                            : "Akan Tersedia Dalam Fasa Seterusnya"}
+                        </small>
                       </Link>
                     ))}
                   </div>
                 </section>
-                <section className="panel">
-                  <h3>Rekod permohonan</h3>
-                  <Empty text="Modul permohonan belum tersedia." />
-                </section>
+                {actions.includes("applications.draft") ? (
+                  <>
+                    <Link className="button" to="/permohonan/baharu">
+                      Permohonan Baharu <Plus size={16} />
+                    </Link>
+                    <DraftList userId={me.user.id} />
+                  </>
+                ) : (
+                  <section className="panel">
+                    <h3>Rekod permohonan</h3>
+                    <Empty text="Modul penghantaran permohonan belum tersedia." />
+                  </section>
+                )}
               </>
             )}
             {tab === "profile" && (

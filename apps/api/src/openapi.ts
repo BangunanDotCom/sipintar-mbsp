@@ -20,7 +20,39 @@ const appointment = {
   startsAt: date,
   endsAt: date,
 };
+const draftInput = (update = false) => ({
+  oneOf: [
+    {
+      ...object(
+        {
+          capacity: { type: "string", const: "INDIVIDUAL" },
+          notes: { type: "string", maxLength: 2000 },
+          ...(update ? { version: { type: "integer", minimum: 1 } } : {}),
+        },
+        update ? ["capacity", "version"] : ["capacity"],
+      ),
+      additionalProperties: false,
+    },
+    {
+      ...object(
+        {
+          capacity: { type: "string", const: "COMPANY" },
+          companyId: uuid,
+          notes: { type: "string", maxLength: 2000 },
+          ...(update ? { version: { type: "integer", minimum: 1 } } : {}),
+        },
+        update
+          ? ["capacity", "companyId", "version"]
+          : ["capacity", "companyId"],
+      ),
+      additionalProperties: false,
+    },
+  ],
+});
 const bodies: Record<string, unknown> = {
+  "POST /api/application-drafts": draftInput(),
+  "PATCH /api/application-drafts/:id": draftInput(true),
+  "POST /api/application-drafts/:id/submit": object({}),
   "POST /api/auth/register": object({
     name: string,
     identificationNumber: {

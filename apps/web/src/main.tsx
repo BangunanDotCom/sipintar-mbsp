@@ -40,8 +40,12 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { api, setCsrf } from "./api";
-import { registerSchema } from "../../../packages/shared/src/index";
+import {
+  registerSchema,
+  safeApplicantReturnPath,
+} from "../../../packages/shared/src/index";
 import Dashboard from "./Dashboard";
+import ApplicationDraft from "./ApplicationDraft";
 import { CompanyInvitation } from "./CompanyInvitation";
 import "@fontsource/montserrat/latin-400.css";
 import "@fontsource/montserrat/latin-500.css";
@@ -170,7 +174,7 @@ function Header() {
             <Link to="/log-masuk" className="login-link">
               Log Masuk <ArrowUpRight size={15} />
             </Link>
-            <Link to="/daftar" className="button small">
+            <Link to="/permohonan/baharu" className="button small">
               Permohonan Baharu <ArrowRight size={15} />
             </Link>
           </nav>
@@ -184,7 +188,7 @@ const services = [
     icon: FilePlus2,
     title: "Permohonan Baharu",
     text: "Mulakan dengan akaun individu dan profil syarikat anda.",
-    to: "/daftar",
+    to: "/permohonan/baharu",
     label: "Daftar akaun",
     ready: true,
   },
@@ -257,7 +261,7 @@ function Home() {
               Pekerja Tempoh Terhad di Seberang Perai.
             </p>
             <div className="hero-actions">
-              <Link className="button green" to="/daftar">
+              <Link className="button green" to="/permohonan/baharu">
                 Permohonan Baharu <ArrowUpRight size={18} />
               </Link>
               <Link className="button outline" to="/status">
@@ -582,11 +586,7 @@ function Auth({
         client.clear();
         setCsrf(data.csrf);
         const next = params.get("next");
-        nav(
-          next && /^\/jemputan-syarikat\?token=[a-f0-9]{64}$/.test(next)
-            ? next
-            : "/dashboard",
-        );
+        nav(safeApplicantReturnPath(next) || "/dashboard");
       }
       if (mode === "recover")
         setMessage((await api("/auth/recover", "POST", b)).message);
@@ -929,6 +929,8 @@ function App() {
           <Route path="/pulih-akaun" element={<Auth mode="recover" />} />
           <Route path="/aktifkan" element={<Auth mode="activate" />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route path="/permohonan/baharu" element={<ApplicationDraft />} />
+          <Route path="/permohonan/draf/:id" element={<ApplicationDraft />} />
           <Route path="/jemputan-syarikat" element={<CompanyInvitation />} />
           {["panduan", "privasi", "bantuan", "status"].map((x) => (
             <Route key={x} path={`/${x}`} element={<Info type={x} />} />

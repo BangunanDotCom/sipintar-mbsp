@@ -55,3 +55,13 @@ Akaun pemohon lama tanpa nombor pengenalan boleh login seperti biasa. Lengkapkan
 Profil syarikat lama yang tiada pengurus dan belum disahkan memerlukan semakan pegawai berkuasa mengikut SOP. Jangan beri hak pengurus secara pukal. Pendua SSM tidak boleh digunakan untuk mengambil alih profil syarikat orang lain. UI tamat/revokasi wakil dan workflow tuntutan SSM belum tersedia.
 
 Simpan `IDENTITY_DATA_KEY` bersama prosedur backup berasingan yang terhad. Kehilangan/penukaran kunci merosakkan kebolehan menyahsulit dan mengesan pendua; putaran memerlukan migrasi re-encryption dan pengiraan semula indeks terkawal. Jangan sekadar jana semula kunci pada setiap restart.
+
+## Menyediakan draf PPTT
+
+1. Klik Permohonan Baharu. Login jika diminta; portal kembali ke halaman draf. Sahkan e-mel/lengkapkan pengenalan dalam Profil saya jika belum lengkap.
+2. Pilih individu atau wakil syarikat. Senarai syarikat hanya memaparkan profil ACTIVE dengan hubungan perwakilan semasa. Maklumat diisi daripada profil; betulkan profil melalui dashboard jika perlu.
+3. Isi catatan pilihan dan tekan Simpan Draf. Draf tidak dihantar kepada MBSP dan tidak mendapat nombor rujukan rasmi.
+4. Sambung melalui senarai draf pada dashboard/halaman permohonan. Hanya akaun asal boleh membuka/mengubahnya. Senarai menunjukkan 50 draf terkini. Versi lapuk memerlukan muat semula sebelum menyimpan; jangan anggap perubahan tab lama telah disimpan jika menerima ralat.
+5. Jika kuasa syarikat tamat/dibatalkan atau profil syarikat tidak aktif, draf disembunyikan dan buka/simpan ditolak. Rekod kekal; pemulihan kuasa memerlukan proses sah. Wakil lain tidak mendapat draf pemilik secara automatik.
+
+Kemas kini ini memerlukan codegen dan migrasi `202610290003_application_drafts` pada setiap persekitaran. Kunci identiti/MFA dan konfigurasi SMTP Fasa 2A dikekalkan. Butiran premis dan penghantaran rasmi menunggu fasa seterusnya.

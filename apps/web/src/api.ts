@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 export let csrf = "";
 export const setCsrf = (v: string) => {
   csrf = v;
@@ -13,7 +22,11 @@ export async function api(path: string, method = "GET", body?: unknown) {
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const data = await r.json();
-  if (!r.ok) throw new Error(data.message || "Perkhidmatan tidak tersedia.");
+  if (!r.ok)
+    throw new ApiError(
+      data.message || "Perkhidmatan tidak tersedia.",
+      r.status,
+    );
   return data;
 }
 export const malaysiaTime = (date: string) =>

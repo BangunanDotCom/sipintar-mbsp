@@ -11,8 +11,8 @@ Tarikh: **29 Oktober 2026**, waktu paparan pengguna Malaysia. Runtime yang digun
 | Seed peranan, permission, daerah, jabatan dan kategori | Lulus |
 | ESLint | Lulus |
 | TypeScript `tsc --noEmit` | Lulus |
-| Vitest unit dan API | **53/53 lulus** (44 API, 9 unit) |
-| Playwright aliran pelayar | **6/6 lulus** |
+| Vitest unit dan API | **67/67 lulus** (56 API, 11 unit) |
+| Playwright aliran pelayar | **8/8 lulus** |
 | Binaan frontend produksi | Lulus |
 | Bootstrap pentadbir pertama pada database baharu | Berjaya; percubaan kedua ditolak |
 | Semakan visual desktop 1440px dan telefon 390px | Dilakukan; tiada overflow mendatar pada aliran diuji |
@@ -77,3 +77,15 @@ Aliran pelayar kelima menggunakan dua browser context pemohon: daftar kedua-duan
 Semakan tambahan halaman daftar pada 320, 390, 768, 1024 dan 1440 piksel menunjukkan tiada overflow mendatar atau ralat JavaScript. Kedua-dua CTA halaman utama membuka `/daftar`; screenshot halaman utama desktop 1440 dan telefon 390 adalah byte-identik dengan screenshot diluluskan. Aset/logo/CSS halaman utama tidak berubah. Semua identiti, telefon, SSM dan dokumen ujian ialah sintetik; tiada data sebenar pengguna digunakan.
 
 Screenshot PNG sebenar: [daftar desktop](screenshots/phase2a-registration-desktop.png), [daftar telefon](screenshots/phase2a-registration-mobile.png), [dashboard desktop](screenshots/phase2a-dashboard-desktop.png), [dashboard telefon](screenshots/phase2a-dashboard-mobile.png). Penghantaran e-mel luar Mailpit, KYC/JPN/SSM, pengesahan rasmi pegawai semasa permohonan dan UAT produksi tidak termasuk keputusan lulus ini.
+
+## Keputusan semasa Fasa 2B.1
+
+Migrasi `202610290003_application_drafts` pada database pembangunan dan ujian, codegen, lint, typecheck dan build lulus. **67 unit/API (56 API + 11 unit)** dan **8 aliran Playwright** lulus. Bilangan 42/4 dan 53/6 di bahagian terdahulu ialah keputusan sejarah revisi masing-masing.
+
+Tambahan API/unit menguji sesi, verified email, permission/pelantikan, pengenalan lengkap, CSRF, kapasiti dan input palsu, profil/snapshot backend, initiator immutable, syarikat yang dibenarkan, isolasi pemilik termasuk wakil syarikat sama, kuasa tamat/REVOKED/belum bermula, syarikat tidak aktif, tukar kapasiti, audit, versi lapuk/simpanan serentak serta sekatan submit pada API dan CHECK PostgreSQL. Setiap actor API sintetik mempunyai alamat klien berasingan supaya ujian akses tidak terkena kadar terkumpul suite; ujian rate limit asal kekal menggunakan alamat bersama yang eksplisit dan had aplikasi tidak diubah.
+
+Dua aliran pelayar baharu menguji: (7) CTA → login sebenar → individu autofill → simpan PostgreSQL → reload → kemas kini → dashboard/resume → logout/deep-link/login-return; (8) syarikat/wakil autofill → simpan dengan pemula berasingan → responsive/screenshot → revokasi kuasa → penolakan akses. Akaun fixture dua aliran ini sintetik dan verified melalui database untuk tidak mengulang suite pengesahan e-mel; aliran pengesahan SMTP sebenar Fasa 2A kekal berjalan dengan Mailpit. Semua ujian terdahulu Fasa 2A masih lulus.
+
+Semakan ruang draf syarikat pada 320, 390, 768, 1024 dan 1440 piksel tiada overflow mendatar; screenshot desktop/telefon ialah PNG sebenar. Snapshot halaman utama desktop/telefon byte-identik dengan versi diluluskan, walaupun href Permohonan Baharu berubah. Tiada CSS/aset identiti asal diubah. Screenshot dan batas: [PHASE2B1.md](PHASE2B1.md).
+
+Suite pelayar menunggu baki kuota API mencukupi sebelum dua aliran draf tambahan, menggunakan header had kadar sebenar. Had 120/minit dan had pengesahan asal tidak dilonggarkan. Gunakan instance pembangunan baharu bagi setiap suite penuh untuk mengasingkan tetingkap had login 15 minit.

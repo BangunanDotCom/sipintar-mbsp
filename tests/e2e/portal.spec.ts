@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type APIRequestContext } from "@playwright/test";
 import { randomUUID, randomBytes } from "node:crypto";
 import { totp } from "../../apps/api/src/auth";
 async function activationLink(email: string) {
@@ -29,9 +29,9 @@ test("portal desktop navigation, FAQ and honest future module state", async ({
     .locator(".hero-actions")
     .getByRole("link", { name: "Permohonan Baharu" })
     .click();
-  await expect(page).toHaveURL(/\/daftar$/);
+  await expect(page).toHaveURL(/\/log-masuk\?next=%2Fpermohonan%2Fbaharu$/);
   await expect(
-    page.getByText("Pendaftaran akaun Fasa 1.", { exact: true }),
+    page.getByRole("heading", { name: "Selamat kembali." }),
   ).toBeVisible();
   await page.goto("/");
   await page
@@ -450,4 +450,243 @@ test("Phase 2A: applicant can recover access through a real test email and log i
   await expect(
     page.getByRole("heading", { name: "Profil pemohon", exact: true }),
   ).toBeVisible();
+});
+
+// The full suite intentionally keeps production rate limits. Wait for a fresh
+// request budget instead of sending the final draft flows into an expected 429.
+async function awaitDraftRequestBudget(request: APIRequestContext) {
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get("/api/health");
+        return Number(response.headers()["x-ratelimit-remaining"] || 0);
+      },
+      {
+        timeout: 90000,
+        intervals: [1000, 5000, 10000],
+        message: "Waiting for the development API request budget to reset",
+      },
+    )
+    .toBeGreaterThanOrEqual(50);
+}
+
+// Synthetic fixture avoids exhausting per-IP login limits in an eight-flow browser suite.
+// Email verification itself is exercised through Mailpit in the Phase 2A flows above.
+async function draftApplicantFixture() {
+  const { db } = await import("../../apps/api/src/core"),
+    { protectIdentification } = await import("../../apps/api/src/identity"),
+    argon2 = (await import("argon2")).default;
+  const email = `p2b1-${randomUUID()}@example.test`,
+    password = `Aa1!${randomBytes(24).toString("hex")}`;
+  const user = await db.user.create({
+    data: {
+      name: "DATA UJIAN Pemohon Draf",
+      email,
+      phone: "0000000000",
+      kind: "APPLICANT",
+      emailVerified: true,
+      consentAt: new Date(),
+      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
+      ...protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`),
+      roles: {
+        create: {
+          roleId: "PEMOHON",
+          reference: "DATA UJIAN Pelayar Fasa 2B.1",
+        },
+      },
+    },
+  });
+  return { user, email, password };
+}
+
+test("Phase 2B.1: login return, individual autofill, PostgreSQL save and dashboard resume", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  const { email, password } = await draftApplicantFixture();
+  await page.goto("/");
+  await page
+    .locator(".hero-actions")
+    .getByRole("link", { name: "Permohonan Baharu" })
+    .click();
+  await expect(page).toHaveURL(/log-masuk\?next=/);
+  await page.getByLabel("E-mel", { exact: true }).fill(email);
+  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Log Masuk", exact: true }).click();
+  await expect(page).toHaveURL(/\/permohonan\/baharu$/);
+  await page
+    .getByRole("radio", { name: "Individu atas kapasiti sendiri" })
+    .check();
+  await expect(page.locator(".draft-official")).toContainText(
+    "DATA UJIAN Pemohon Draf",
+  );
+  await expect(page.locator(".draft-official")).toContainText(email);
+  await page
+    .getByLabel("Catatan draf (pilihan)", { exact: false })
+    .fill("DATA UJIAN nota individu disimpan");
+  await page.getByRole("button", { name: "Simpan Draf", exact: true }).click();
+  await expect(page).toHaveURL(/\/permohonan\/draf\/[a-f0-9-]+$/);
+  const draftUrl = page.url(),
+    id = draftUrl.split("/").pop()!;
+  await expect(
+    page.getByRole("button", { name: "Hantar Permohonan (belum tersedia)" }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(
+    page.getByLabel("Catatan draf (pilihan)", { exact: false }),
+  ).toHaveValue("DATA UJIAN nota individu disimpan");
+  await page
+    .getByLabel("Catatan draf (pilihan)", { exact: false })
+    .fill("DATA UJIAN nota individu dikemas kini");
+  await page.getByRole("button", { name: "Simpan Draf", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Draf berjaya disimpan" }),
+  ).toBeVisible();
+  const { db } = await import("../../apps/api/src/core");
+  const stored = await db.applicationDraft.findUniqueOrThrow({ where: { id } });
+  expect(stored.notes).toBe("DATA UJIAN nota individu dikemas kini");
+  expect(stored.status).toBe("DRAFT");
+  expect(stored.version).toBe(2);
+  expect(stored.initiatedByUserId).toBe(stored.officialApplicantUserId);
+  await page
+    .getByRole("link", { name: "Kembali ke dashboard", exact: true })
+    .click();
+  await page.getByRole("link", { name: "Sambung Semula", exact: true }).click();
+  await expect(page).toHaveURL(draftUrl);
+  // A logged-out deep link must also preserve the draft return destination.
+  await page
+    .getByRole("link", { name: "Kembali ke dashboard", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Log keluar" }).click();
+  await page.goto(draftUrl);
+  await expect(page).toHaveURL(/log-masuk\?next=%2Fpermohonan%2Fdraf%2F/);
+  await page.getByLabel("E-mel", { exact: true }).fill(email);
+  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Log Masuk", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Sambung Draf PPTT" }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Catatan draf (pilihan)", { exact: false }),
+  ).toHaveValue("DATA UJIAN nota individu dikemas kini");
+  await db.$disconnect();
+});
+
+test("Phase 2B.1: company autofill, separate initiator, responsive screenshots and revoked access", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  const { user } = await draftApplicantFixture();
+  const {
+    db: fixtureDb,
+    hash,
+    token,
+  } = await import("../../apps/api/src/core");
+  await fixtureDb.user.update({
+    where: { id: user.id },
+    data: { name: "DATA UJIAN Wakil Draf" },
+  });
+  const raw = token();
+  await fixtureDb.session.create({
+    data: {
+      id: hash(raw),
+      userId: user.id,
+      csrfHash: hash(token()),
+      activeRole: "PEMOHON",
+      mfaVerified: true,
+      expiresAt: new Date(Date.now() + 3600000),
+    },
+  });
+  await page.context().addCookies([
+    {
+      name: "staylink",
+      value: raw,
+      url: "http://localhost:5173",
+      httpOnly: true,
+      sameSite: "Strict",
+    },
+  ]);
+  await page.goto("/dashboard");
+  await page
+    .getByRole("button", { name: "Syarikat & wakil", exact: true })
+    .click();
+  await addCompany(page, "DATA UJIAN Syarikat Draf PPTT");
+  await page.goto("/permohonan/baharu");
+  await page
+    .getByRole("radio", { name: "Wakil syarikat", exact: true })
+    .check();
+  const selector = page.getByLabel("Syarikat yang diwakili", { exact: true });
+  await expect(selector.locator("option")).toHaveCount(2);
+  const companyId = await selector
+    .locator("option")
+    .nth(1)
+    .getAttribute("value");
+  await selector.selectOption(companyId!);
+  await expect(page.locator(".draft-official")).toContainText(
+    "DATA UJIAN Syarikat Draf PPTT",
+  );
+  await expect(page.locator(".draft-side")).toContainText(
+    "DATA UJIAN Wakil Draf",
+  );
+  await page
+    .getByLabel("Catatan draf (pilihan)", { exact: false })
+    .fill("DATA UJIAN: draf awal, belum dihantar kepada MBSP.");
+  await page.getByRole("button", { name: "Simpan Draf", exact: true }).click();
+  await expect(page).toHaveURL(/\/permohonan\/draf\/[a-f0-9-]+$/);
+  await expect(
+    page.getByRole("heading", { name: "Sambung Draf PPTT" }),
+  ).toBeVisible();
+  const id = page.url().split("/").pop()!,
+    { db } = await import("../../apps/api/src/core");
+  const stored = await db.applicationDraft.findUniqueOrThrow({ where: { id } });
+  expect(stored.companyId).toBe(companyId);
+  expect(stored.officialApplicantUserId).toBeNull();
+  expect((stored.initiatorSnapshot as any).name).toBe("DATA UJIAN Wakil Draf");
+  expect((stored.applicantSnapshot as any).name).toBe(
+    "DATA UJIAN Syarikat Draf PPTT",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  for (const width of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: width >= 1024 ? 1000 : 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await expect(
+      page.getByRole("button", { name: "Simpan Draf", exact: true }),
+    ).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await expect(
+      page.getByAltText("Logo Majlis Bandaraya Seberang Perai"),
+    ).toBeVisible();
+    if (width === 390 || width === 1440)
+      await page.screenshot({
+        path: `docs/screenshots/phase2b1-draft-${width === 390 ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+        animations: "disabled",
+      });
+  }
+  expect(errors).toEqual([]);
+  await db.companyRepresentative.update({
+    where: {
+      userId_companyId: {
+        userId: stored.initiatedByUserId,
+        companyId: companyId!,
+      },
+    },
+    data: { status: "REVOKED" },
+  });
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText(
+    "Draf atau kebenaran syarikat tidak ditemui",
+  );
+  await expect(
+    page.getByRole("button", { name: "Simpan Draf", exact: true }),
+  ).toHaveCount(0);
+  await db.$disconnect();
 });

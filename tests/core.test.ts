@@ -6,6 +6,8 @@ import {
   permissions,
   isCurrent,
   independent,
+  applicationDraftSchema,
+  safeApplicantReturnPath,
 } from "../packages/shared/src/index";
 describe("validation and separation of duties", () => {
   it("rejects weak passwords", () =>
@@ -76,5 +78,37 @@ describe("validation and separation of duties", () => {
         authorityType: "PENGARAH",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("Phase 2B.1 client validation and safe login returns", () => {
+  it("requires a valid company when company capacity is selected", () => {
+    expect(
+      applicationDraftSchema.safeParse({ capacity: "COMPANY" }).success,
+    ).toBe(false);
+    expect(
+      applicationDraftSchema.parse({
+        capacity: "INDIVIDUAL",
+        notes: "  DATA UJIAN  ",
+      }).notes,
+    ).toBe("DATA UJIAN");
+  });
+  it("allows only known applicant return paths and blocks external or nested redirects", () => {
+    expect(safeApplicantReturnPath("/permohonan/baharu")).toBe(
+      "/permohonan/baharu",
+    );
+    const draft = "/permohonan/draf/12345678-1234-4234-8234-123456789abc";
+    expect(safeApplicantReturnPath(draft)).toBe(draft);
+    expect(
+      safeApplicantReturnPath("/jemputan-syarikat?token=" + "a".repeat(64)),
+    ).toContain("jemputan-syarikat");
+    for (const path of [
+      "https://example.test",
+      "//example.test",
+      "/permohonan/baharu?next=https://example.test",
+      "/permohonan/draf/invalid",
+      null,
+    ])
+      expect(safeApplicantReturnPath(path)).toBeNull();
   });
 });
