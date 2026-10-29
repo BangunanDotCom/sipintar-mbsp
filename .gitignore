@@ -1,0 +1,23 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+work/
+playwright-report/
+test-results/
+*.log
+
+# Local credentials, private keys, database dumps and tool state
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite*
+*.dump
+*.backup
+.npmrc
+.netrc
+.codex/
+.agents/
+.aws/

@@ -1,0 +1,28 @@
+{
+  "project": "STAYLink MBSP",
+  "date": "2026-10-29",
+  "timezone": "Asia/Kuala_Lumpur",
+  "checks": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "prisma_codegen": "passed",
+    "postgres_migration": "passed",
+    "vitest": {
+      "passed": 42,
+      "failed": 0
+    },
+    "playwright": {
+      "passed": 4,
+      "failed": 0
+    },
+    "frontend_build": "passed",
+    "bootstrap_first_admin": "passed",
+    "bootstrap_repeat": "rejected_as_expected"
+  },
+  "limits": [
+    "No MBSP production deployment",
+    "No independent penetration test",
+    "No formal UAT",
+    "Official integrations not configured"
+  ]
+}

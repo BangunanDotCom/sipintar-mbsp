@@ -1,0 +1,5 @@
+{
+  "name": "@staylink/api",
+  "private": true,
+  "type": "module"
+}

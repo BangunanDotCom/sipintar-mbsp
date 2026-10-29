@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "client"
+  output = "../node_modules/.prisma/client"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  id String @id @default(uuid())
+  name String
+  email String @unique
+  phone String
+  passwordHash String?
+  kind String @default("APPLICANT")
+  status String @default("ACTIVE")
+  emailVerified Boolean @default(false)
+  consentAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  identities AuthenticationIdentity[]
+  sessions Session[]
+  factors MfaFactor[]
+  recoveryCodes RecoveryCode[]
+  roles UserRoleAssignment[]
+  representatives CompanyRepresentative[]
+  notifications Notification[]
+  @@map("users")
+}
+model AuthenticationIdentity {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ provider String
+ tokenHash String @unique
+ expiresAt DateTime
+ consumedAt DateTime?
+ @@map("authentication_identities")
+}
+model Session {
+ id String @id
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ activeRole String?
+ mfaVerified Boolean @default(false)
+ csrfHash String
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ @@map("sessions")
+}
+model MfaFactor {
+ id String @id @default(uuid())
+ userId String @unique
+ user User @relation(fields:[userId],references:[id])
+ encryptedSecret String
+ verified Boolean @default(false)
+ lastStep BigInt @default(0)
+ @@map("mfa_factors")
+}
+model RecoveryCode {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ codeHash String @unique
+ usedAt DateTime?
+ @@map("recovery_codes")
+}
+model Role {
+ id String @id
+ label String
+ permissions Permission[]
+ assignments UserRoleAssignment[]
+ @@map("roles")
+}
+model Permission {
+ id String @id @default(uuid())
+ roleId String
+ role Role @relation(fields:[roleId],references:[id])
+ action String
+ @@unique([roleId,action])
+ @@map("permissions")
+}
+model UserRoleAssignment {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ roleId String
+ role Role @relation(fields:[roleId],references:[id])
+ departmentId String?
+ districtId String?
+ startsAt DateTime @default(now())
+ endsAt DateTime?
+ status String @default("ACTIVE")
+ authorizedBy String?
+ reference String
+ createdAt DateTime @default(now())
+ @@index([userId,roleId])
+ @@map("user_role_assignments")
+}
+model Department {
+ id String @id
+ name String
+ @@map("departments")
+}
+model District {
+ id String @id
+ name String
+ areas Area[]
+ @@map("districts")
+}
+model Area {
+ id String @id @default(uuid())
+ name String
+ districtId String
+ district District @relation(fields:[districtId],references:[id])
+ assignments AreaAssignment[]
+ @@unique([name,districtId])
+ @@map("areas")
+}
+model AreaAssignment {
+ id String @id @default(uuid())
+ areaId String
+ area Area @relation(fields:[areaId],references:[id])
+ userId String
+ startsAt DateTime @default(now())
+ endsAt DateTime?
+ reason String
+ assignedBy String
+ createdAt DateTime @default(now())
+ @@map("area_assignments")
+}
+model Company {
+ id String @id @default(uuid())
+ name String
+ registrationNumber String @unique
+ address String
+ phone String
+ email String
+ status String @default("ACTIVE")
+ informationStatus String @default("UNVERIFIED")
+ representatives CompanyRepresentative[]
+ documents DelegationDocument[]
+ createdAt DateTime @default(now())
+ @@map("companies")
+}
+model CompanyRepresentative {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ companyId String
+ company Company @relation(fields:[companyId],references:[id])
+ authorityType String
+ startsAt DateTime @default(now())
+ endsAt DateTime?
+ status String @default("UNVERIFIED")
+ verifiedBy String?
+ @@unique([userId,companyId])
+ @@map("company_representatives")
+}
+model DelegationDocument {
+ id String @id @default(uuid())
+ companyId String
+ company Company @relation(fields:[companyId],references:[id])
+ uploadedBy String
+ fileName String
+ mimeType String
+ content Bytes
+ sha256 String
+ status String @default("UNVERIFIED")
+ validUntil DateTime?
+ createdAt DateTime @default(now())
+ @@map("delegation_documents")
+}
+model Notification {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id])
+ type String
+ title String
+ message String
+ createdAt DateTime @default(now())
+ readAt DateTime?
+ @@map("notifications")
+}
+model EmailDeliveryLog {
+ id String @id @default(uuid())
+ userId String
+ recipient String
+ type String
+ encryptedPayload String
+ status String @default("PENDING")
+ attempts Int @default(0)
+ lastError String?
+ createdAt DateTime @default(now())
+ sentAt DateTime?
+ @@map("email_delivery_logs")
+}
+model TemplateDefinition {
+ id String @id @default(uuid())
+ name String
+ category String
+ versions TemplateVersion[]
+ @@map("template_definitions")
+}
+model TemplateVersion {
+ id String @id @default(uuid())
+ templateId String
+ template TemplateDefinition @relation(fields:[templateId],references:[id])
+ version Int
+ content String
+ status String @default("DRAFT")
+ createdBy String
+ activatedBy String?
+ createdAt DateTime @default(now())
+ @@unique([templateId,version])
+ @@map("template_versions")
+}
+model SystemConfiguration {
+ key String @id
+ value Json
+ updatedAt DateTime @updatedAt
+ versions ConfigurationVersion[]
+ @@map("system_configurations")
+}
+model ConfigurationVersion {
+ id String @id @default(uuid())
+ key String
+ configuration SystemConfiguration @relation(fields:[key],references:[key])
+ value Json
+ changedBy String
+ reason String
+ createdAt DateTime @default(now())
+ @@map("configuration_versions")
+}
+model AuditLog {
+ id String @id @default(uuid())
+ actorId String?
+ activeRole String?
+ action String
+ target String?
+ outcome String @default("SUCCESS")
+ metadata Json?
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+ @@map("audit_logs")
+}
