@@ -72,6 +72,185 @@
     "hover_pause": "passed",
     "reduced_motion": "static crest, decorative light disabled",
     "mobile_horizontal_overflow": false,
-    "browser_check": "passed"
+    "browser_check": "passed",
+    "status": "Inactive until an authentic official asset is supplied; neutral placeholder is static"
+  },
+  "design_finalization": {
+    "date": "2026-10-29T21:35:39+08:00",
+    "branch": "staylink-mbsp-phase1",
+    "approved_identity_preserved": true,
+    "approved_asset_sha256": {
+      "apps/web/public/assets/brand/staylink-primary.png": "3f6239415cfc8331d0b9e87608c0f8c716bf26dbfc7ff51fa9e48f084e433217",
+      "apps/web/public/assets/city/staylink-waterfront.png": "a07a62e1a0616c5104de7e8c036e88f58ae64de2e23a3e5bf07549ada1297bab"
+    },
+    "official_logo": "Reserved slot; no generated crest in current source",
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 42,
+        "failed": 0
+      },
+      "build": "passed",
+      "browser": {
+        "passed": 4,
+        "failed": 0
+      }
+    },
+    "responsive": {
+      "viewports": [
+        {
+          "width": 320,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": true,
+          "navigationFits": true,
+          "height": 4989,
+          "errors": []
+        },
+        {
+          "width": 360,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": true,
+          "navigationFits": true,
+          "height": 4786,
+          "errors": []
+        },
+        {
+          "width": 390,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": true,
+          "navigationFits": true,
+          "height": 4677,
+          "errors": []
+        },
+        {
+          "width": 600,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": true,
+          "navigationFits": true,
+          "height": 4413,
+          "errors": []
+        },
+        {
+          "width": 601,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3416,
+          "errors": []
+        },
+        {
+          "width": 768,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3578,
+          "errors": []
+        },
+        {
+          "width": 820,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3591,
+          "errors": []
+        },
+        {
+          "width": 1024,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3623,
+          "errors": []
+        },
+        {
+          "width": 1280,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3692,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3692,
+          "errors": []
+        },
+        {
+          "width": 1920,
+          "overflow": false,
+          "imagesLoaded": true,
+          "officialLogoPlaceholder": true,
+          "officialSlotAnimations": 0,
+          "reducedMotionAnimations": 0,
+          "menuButtonVisible": false,
+          "navigationFits": true,
+          "height": 3737,
+          "errors": []
+        }
+      ],
+      "normalMotionOfficialSlot": {
+        "animations": 0,
+        "hasImage": false
+      }
+    },
+    "backend_schema_or_business_rule_changes": false,
+    "screenshots": {
+      "desktop": {
+        "path": "docs/screenshots/staylink-desktop.png",
+        "width": 1440,
+        "height": 3692,
+        "bytes": 2642741
+      },
+      "mobile": {
+        "path": "docs/screenshots/staylink-mobile.png",
+        "width": 390,
+        "height": 4677,
+        "bytes": 1044402
+      }
+    }
   }
 }

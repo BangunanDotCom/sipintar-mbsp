@@ -57,3 +57,7 @@ Ini ujian pembangunan pada satu instance. Tiada pentest bebas, load test, high a
 ## Semakan selepas naik taraf visual
 
 Lint, typecheck, 42 ujian Vitest, 4 aliran Playwright dan binaan frontend lulus. Semakan tambahan lebar 320, 390, 768, 1024 dan 1440 piksel mendapati semua gambar dimuatkan, tanpa ralat JavaScript atau limpahan mendatar. Screenshot akhir: desktop 1440 × 3692 dan telefon 390 × 4677 piksel. Lihat `verification.json` dan `UI-DESIGN.md` untuk butiran revisi dan asal aset.
+
+## Pemuktamadan identiti visual yang diluluskan
+
+Lint, typecheck, 42 ujian unit/API, build dan 4 aliran pelayar lulus selepas perubahan akhir. Semakan responsive meliputi 11 lebar antara 320 dan 1920 piksel, termasuk tablet dan sempadan breakpoint 600/601. Menu telefon menyokong Escape dan fokus kembali; tiga butang utama disahkan menuju pendaftaran, halaman pembangunan status dan login. Semua imej dimuatkan, tanpa overflow/ralat JavaScript. Reduced motion menghentikan semua animasi; slot logo rasmi tanpa aset sah kekal statik. Logo emas STAYLink dan panorama disahkan tidak berubah.

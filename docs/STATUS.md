@@ -41,3 +41,5 @@ Permohonan/premis/aras dan UUID penghantaran, rujukan rasmi MBSP, pembetulan, AI
 Semua menu berkaitan menunjukkan **Akan Tersedia Dalam Fasa Seterusnya**. Tiada integrasi rasmi atau kelulusan perniagaan simulasi dipersembahkan sebagai selesai.
 
 Naik taraf visual terkini dan status aset jata/panorama: lihat [UI-DESIGN.md](UI-DESIGN.md).
+
+Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Jata generatif dikeluarkan; ruang logo rasmi MBSP menunggu fail rasmi sebenar. Tiga CTA mempunyai navigasi dan status pembangunan yang disahkan, tanpa perubahan backend atau schema.

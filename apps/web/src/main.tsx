@@ -5,6 +5,7 @@ import {
   Routes,
   Route,
   Link,
+  NavLink,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
@@ -72,6 +73,7 @@ function OfficialIdentity() {
     <div className="mbsp-identity">
       <span
         className="official-logo-slot"
+        data-official-logo={Boolean(brandAssets.mbspLogo)}
         style={
           {
             "--mbsp-crest-mask": brandAssets.mbspLogo
@@ -96,7 +98,10 @@ function OfficialIdentity() {
             <span className="mbsp-crest-light" aria-hidden="true" />
           </span>
         ) : (
-          <span className="official-logo-placeholder">MBSP</span>
+          <span className="official-logo-placeholder">
+            <strong>MBSP</strong>
+            <small>Logo rasmi</small>
+          </span>
         )}
       </span>
       <span>
@@ -112,6 +117,7 @@ function OfficialIdentity() {
 }
 function Header() {
   const [open, setOpen] = React.useState(false);
+  const menuButton = React.useRef<HTMLButtonElement>(null);
   return (
     <>
       <div className="official">
@@ -124,17 +130,25 @@ function Header() {
           </span>
         </div>
       </div>
-      <header>
+      <header
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            setOpen(false);
+            menuButton.current?.focus();
+          }
+        }}
+      >
         <div className="container header-inner">
           <div className="header-identities">
             <OfficialIdentity />
           </div>
           <button
+            ref={menuButton}
             className="icon-button mobile-menu"
             aria-expanded={open}
             aria-controls="portal-navigation"
             onClick={() => setOpen(!open)}
-            aria-label="Buka menu"
+            aria-label={open ? "Tutup menu" : "Buka menu"}
           >
             {open ? <X /> : <Menu />}
           </button>
@@ -143,9 +157,13 @@ function Header() {
             className={open ? "open" : ""}
             onClick={() => setOpen(false)}
           >
-            <Link className="nav-active" to="/">
+            <NavLink
+              className={({ isActive }) => (isActive ? "nav-active" : "")}
+              to="/"
+              end
+            >
               Utama
-            </Link>
+            </NavLink>
             <Link to="/panduan">Panduan</Link>
             <Link to="/status">Semak Status</Link>
             <Link to="/log-masuk" className="login-link">
@@ -616,6 +634,12 @@ function Auth({
             ? "Pendaftaran individu. Akaun pegawai diwujudkan oleh pentadbir sahaja."
             : "Gunakan maklumat akaun STAYLink MBSP anda."}
         </p>
+        {mode === "register" && !message && (
+          <p className="registration-phase-note">
+            <strong>Pendaftaran akaun Fasa 1.</strong> Penghantaran permohonan
+            penginapan akan tersedia dalam fasa seterusnya.
+          </p>
+        )}
         {error && <Notice error>{error}</Notice>}
         {message ? (
           <>

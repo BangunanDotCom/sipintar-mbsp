@@ -1191,8 +1191,7 @@ footer a:focus-visible {
 }
 @keyframes scene-pulse {
   50% {
-    border-color: #56cfff3b;
-    box-shadow: 0 0 25px #3dd6ff08;
+    opacity: 0.55;
   }
 }
 @media (min-width: 1600px) {
@@ -2710,8 +2709,8 @@ footer a:focus-visible {
   transform-origin: center;
   animation: mbsp-crest-turn 32s ease-in-out infinite;
 }
-.official-logo-slot::before,
-.official-logo-slot::after {
+.official-logo-slot[data-official-logo="true"]::before,
+.official-logo-slot[data-official-logo="true"]::after {
   content: "";
   position: absolute;
   inset: -4px;
@@ -2719,7 +2718,7 @@ footer a:focus-visible {
   pointer-events: none;
   z-index: -1;
 }
-.official-logo-slot::before {
+.official-logo-slot[data-official-logo="true"]::before {
   border: 1px solid #3dd6ff24;
   border-top-color: #75e3ff99;
   border-bottom-color: #f6d56b99;
@@ -2728,7 +2727,7 @@ footer a:focus-visible {
     inset 0 0 8px #3dd6ff0d;
   animation: mbsp-light-orbit 18s linear infinite;
 }
-.official-logo-slot::after {
+.official-logo-slot[data-official-logo="true"]::after {
   background: radial-gradient(ellipse, #3dd6ff1c, transparent 68%);
   animation: mbsp-light-breathe 8s ease-in-out infinite;
 }
@@ -2762,8 +2761,8 @@ footer a:focus-visible {
   animation: mbsp-crest-sheen 9s ease-in-out infinite;
 }
 .official-logo-slot:hover .mbsp-crest-motion,
-.official-logo-slot:hover::before,
-.official-logo-slot:hover::after,
+.official-logo-slot[data-official-logo="true"]:hover::before,
+.official-logo-slot[data-official-logo="true"]:hover::after,
 .official-logo-slot:hover .mbsp-crest-light::after {
   animation-play-state: paused;
 }
@@ -2820,9 +2819,51 @@ footer a:focus-visible {
     animation: none;
     transform: none;
   }
-  .official-logo-slot::before,
-  .official-logo-slot::after,
+  .official-logo-slot[data-official-logo="true"]::before,
+  .official-logo-slot[data-official-logo="true"]::after,
   .mbsp-crest-light {
     display: none;
   }
+}
+
+/* Reserved identity slot stays neutral until an authentic official logo is supplied. */
+.official-logo-slot > .official-logo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+  width: 100%;
+  padding: 8px 3px;
+  border: 1px dashed #88b0d35c;
+  border-radius: 8px;
+  background: #102e4c45;
+}
+.official-logo-placeholder strong {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #d5e4f2;
+}
+.official-logo-placeholder small {
+  font-size: 8px;
+  color: #9eb6cc;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.form-card .registration-phase-note {
+  padding: 12px 14px;
+  border-left: 2px solid #1d9eb5;
+  border-radius: 4px;
+  background: #edf6fb;
+  color: #395d78;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.form-card .registration-phase-note strong {
+  display: block;
+  font-weight: 600;
+  color: #16496b;
 }

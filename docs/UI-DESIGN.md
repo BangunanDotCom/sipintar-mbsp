@@ -6,7 +6,7 @@ Tarikh: 29 Oktober 2026. Branch: `staylink-mbsp-phase1`. Tiada deployment dilaku
 
 Papan identiti STAYLink pada awalnya menunjukkan logo bangunan/pautan biru-hijau. Pengguna kemudian membekalkan rujukan portal baharu dan mengarahkan **“gunakan ini”**: wordmark STAYLink MBSP perak/emas dengan simbol penginapan, panorama bandar waktu malam, panel kaca biru dan butang emas. Rujukan terkini ini menjadi arah pelaksanaan akhir. Biru gelap, biru elektrik, hijau dan cyan dikekalkan; emas digunakan sebagai aksen tindakan utama.
 
-- Header mempunyai jata MBSP dan nama **Majlis Bandaraya Seberang Perai**.
+- Header menyediakan **ruang neutral logo rasmi MBSP** dan nama **Majlis Bandaraya Seberang Perai**. Jata olahan generatif telah dikeluarkan; hanya fail rasmi sebenar yang dibekalkan boleh dipasang.
 - Nama penuh **Smart Temporary Accommodation Link** dan tagline **Digital Services, Practical Solutions.** dikekalkan sebagai teks sebenar yang boleh dibaca.
 - Hero sinematik menggunakan aset panorama setempat, lapisan gelap bagi kebolehbacaan, garis sambungan SVG dan panel kaca. Elemen digital ialah visual konsep, bukan metrik pemantauan sebenar.
 - Enam perkhidmatan mengekalkan laluan asal. Modul belum tersedia terus menyatakan Fasa seterusnya.
@@ -19,10 +19,10 @@ Papan identiti STAYLink pada awalnya menunjukkan logo bangunan/pautan biru-hijau
 | Fail | Asal / penggunaan |
 |---|---|
 | `apps/web/public/assets/brand/staylink-primary.png` | Olahan/ekstrak generatif daripada logo dalam rujukan portal terkini pengguna; simbol rumah/katil, STAY perak, Link emas, MBSP perak. Bukan ikon Lucide generik. |
-| `apps/web/public/assets/brand/mbsp-bandaraya.png` | Olahan aset jata yang dibekalkan pengguna. Atas arahan pengguna, teks jalur ditukar daripada “MAJLIS PERBANDARAN SEBERANG PERAI” kepada “MAJLIS BANDARAYA SEBERANG PERAI”. Ini aset review berasaskan rujukan, bukan dakwaan fail induk vektor rasmi daripada MBSP. |
+| `mbspLogo: null` dalam `apps/web/src/brand.ts` | Slot rasmi disediakan tanpa gambar jata. Aset jata generatif terdahulu dikeluarkan daripada versi semasa. Tetapkan laluan hanya selepas fail rasmi sebenar dibekalkan. |
 | `apps/web/public/assets/city/staylink-waterfront.png` | Olahan generatif panorama daripada rujukan portal pengguna. **Visual konsep**, bukan foto dokumentari atau pengesahan rupa sebenar Menara Bandaraya MBSP. Keterangan alt dan kredit visual menyatakan status konsep. |
 
-Nama terkini Bandaraya disemak terhadap [portal Sistem Perolehan Bersepadu MBSP](https://ep.mbsp.gov.my/) dan [rekod logo semasa yang merujuk MBSP](https://commons.wikimedia.org/wiki/File:Seberang_Perai_City_Council_(MBSP_-_Majlis_Bandaraya_Seberang_Perai)_Logo.png). Fail induk jata rasmi boleh menggantikan aset review dengan menukar laluan dalam `apps/web/src/brand.ts` apabila tersedia.
+Nama terkini Bandaraya disemak terhadap [portal Sistem Perolehan Bersepadu MBSP](https://ep.mbsp.gov.my/) dan [rekod logo semasa yang merujuk MBSP](https://commons.wikimedia.org/wiki/File:Seberang_Perai_City_Council_(MBSP_-_Majlis_Bandaraya_Seberang_Perai)_Logo.png). Fail induk jata rasmi boleh dipasang melalui `mbspLogo` dalam `apps/web/src/brand.ts` apabila dibekalkan; jangan menjana, menjejak semula atau menyunting sendiri jata rasmi.
 
 Foto sebenar Menara Bandaraya telah dikenal pasti pada [Wikimedia Commons — MBSP Bandar Perda](https://commons.wikimedia.org/wiki/File:MBSP_Bandar_Perda_(221003)_(cropped).jpg), oleh *angys*, lesen CC BY-SA 4.0. Muat turun dari Wikimedia dan domain aset rasmi MBSP disekat polisi rangkaian sesi ini. Foto tersebut **tidak digunakan** dan tidak didakwa tersedia. Pengguna kemudian memilih rujukan panorama konsep di atas. Keperluan foto dokumentari/asset master rasmi kekal untuk semakan ICT jika diperlukan sebelum produksi.
 
@@ -30,6 +30,16 @@ Foto sebenar Menara Bandaraya telah dikenal pasti pada [Wikimedia Commons — MB
 
 Screenshot penuh yang dikemas kini berada dalam `docs/screenshots/staylink-desktop.png` dan `docs/screenshots/staylink-mobile.png`. Pemeriksaan frontend/API, lint, typecheck, Vitest dan Playwright dijalankan selepas perubahan; keputusan akhir diringkaskan dalam `docs/verification.json`.
 
-## Animasi jata MBSP
+## Animasi dan pemuktamadan
 
-Jata pada header berputar pada paksi Y: 0° → 360° → 0° dalam satu kitaran 32 saat, dengan rehat pada kedudukan menghadap hadapan. Halo cyan/emas mengorbit perlahan dan sapuan cahaya menggunakan mask bentuk jata. Penuding di atas logo menjeda pergerakan. `prefers-reduced-motion: reduce` mematikan putaran dan lapisan cahaya bergerak; nama penuh majlis di sebelah jata kekal statik. Screenshot baharu menangkap kedudukan hadapan supaya teks jata boleh dibaca.
+Animasi jata 32 saat dan lapisan cahaya yang disediakan sebelum ini hanya diaktifkan jika aset rasmi sebenar dipasang. **Slot neutral semasa adalah statik**, tanpa putaran, jata tiruan atau halo berputar. `prefers-reduced-motion: reduce` mematikan semua animasi portal. Animasi panel digital menggunakan opacity; animasi cahaya latar menggunakan transform/opacity untuk mengurangkan kerja paint.
+
+Reka bentuk emas dengan simbol penginapan/bumbung, panorama malam dan konsep biru gelap/emas telah diluluskan. Kedua-dua fail logo STAYLink dan panorama dikekalkan byte-for-byte; tiada pertukaran kepada versi biru-hijau atau reka semula halaman utama.
+
+- Menu telefon mempunyai status buka/tutup, Escape untuk menutup dan pemulangan fokus kepada butang menu.
+- Penanda Utama hanya aktif pada halaman utama.
+- Permohonan Baharu → `/daftar`: pendaftaran akaun berfungsi, dengan makluman jelas bahawa penghantaran permohonan belum tersedia.
+- Semak Status → `/status`: maklumat pembangunan, tanpa semakan status palsu.
+- Log Masuk Pegawai → `/log-masuk`: aliran login dan MFA sedia ada.
+- Semakan manual Chromium meliputi 320, 360, 390, 600, 601, 768, 820, 1024, 1280, 1440 dan 1920 piksel: tiada overflow mendatar, menu muat, semua imej dimuatkan, tiada ralat JavaScript dan semua animasi dimatikan dalam reduced motion.
+- Lint, typecheck, 42 ujian unit/API, build dan 4 aliran Playwright lulus selepas pemuktamadan. Aliran pelayar turut menyemak tiga butang utama dan kawalan menu papan kekunci.

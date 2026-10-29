@@ -118,4 +118,4 @@ Dokumentasi lanjut: [Seni bina dan database](docs/ARCHITECTURE.md), [RBAC](docs/
 
 ## Reka bentuk premium
 
-Antaramuka menggunakan rujukan portal terkini yang dibekalkan pengguna, tema malam biru/cyan/hijau dengan aksen emas dan jata bertulis **Majlis Bandaraya Seberang Perai**. Rujuk [asal aset, had foto konsep dan semakan visual](docs/UI-DESIGN.md).
+Antaramuka menggunakan rujukan portal terkini yang dibekalkan pengguna, tema malam biru/cyan/hijau dengan aksen emas, nama **Majlis Bandaraya Seberang Perai** dan ruang logo rasmi yang menunggu aset sah. Rujuk [asal aset, had foto konsep dan semakan visual](docs/UI-DESIGN.md).

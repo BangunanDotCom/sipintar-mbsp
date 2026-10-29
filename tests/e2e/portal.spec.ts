@@ -25,6 +25,24 @@ test("portal desktop navigation, FAQ and honest future module state", async ({
       name: "Perkhidmatan pintar. Urusan lebih terhubung.",
     }),
   ).toBeVisible();
+  await page
+    .locator(".hero-actions")
+    .getByRole("link", { name: "Permohonan Baharu" })
+    .click();
+  await expect(page).toHaveURL(/\/daftar$/);
+  await expect(
+    page.getByText("Pendaftaran akaun Fasa 1.", { exact: true }),
+  ).toBeVisible();
+  await page.goto("/");
+  await page
+    .locator(".hero-actions")
+    .getByRole("link", { name: "Log Masuk Pegawai" })
+    .click();
+  await expect(page).toHaveURL(/\/log-masuk$/);
+  await expect(
+    page.getByRole("heading", { name: "Selamat kembali." }),
+  ).toBeVisible();
+  await page.goto("/");
   await page.getByText("Siapakah yang boleh mendaftar akaun?").click();
   await expect(
     page.getByText("Individu yang ingin mewakili syarikat boleh"),
@@ -41,6 +59,16 @@ test("portal desktop navigation, FAQ and honest future module state", async ({
 test("mobile menu, responsive layouts and readable forms", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByRole("button", { name: "Buka menu" }).click();
+  await expect(
+    page.getByRole("button", { name: "Tutup menu" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Buka menu" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Buka menu" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   await page.getByRole("button", { name: "Buka menu" }).click();
   await page
     .getByRole("link", { name: "Log Masuk", exact: false })
