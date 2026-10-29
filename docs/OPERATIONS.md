@@ -2,13 +2,13 @@
 
 ## Pendaftaran individu dan syarikat
 
-1. Daftar individu menggunakan satu e-mel unik. Semak peti masuk dan sahkan e-mel.
+1. Daftar individu menggunakan nama, nombor pengenalan unik (MyKad/pasport), telefon, satu e-mel unik dan kata laluan. Semak peti masuk dan sahkan e-mel.
 2. Log masuk, pilih peranan Pemohon dan buka **Syarikat & wakil**.
 3. Masukkan nama, SSM, alamat, e-mel, telefon dan jenis kuasa. Tarikh tamat pilihan mesti pada masa hadapan.
 4. Status akaun syarikat **ACTIVE** tidak sama dengan maklumat atau perwakilan disahkan.
 5. Muat naik surat kuasa PDF maksimum 2 MiB. Backend memeriksa nama, saiz dan tandatangan PDF. Akses muat turun memerlukan hubungan perwakilan sah.
 6. Jika SSM sudah wujud, hentikan pendaftaran pendua. Hubungi bantuan melalui saluran rasmi MBSP untuk semakan pemilikan/perwakilan. Tiada aliran tuntutan SSM kendiri dalam versi ini.
-7. Wakil yang telah disahkan boleh menambah pemegang akaun pemohon lain yang e-melnya sudah disahkan. Wakil baharu bermula **UNVERIFIED**.
+7. Pengurus profil (pencipta profil baharu) atau wakil VERIFIED boleh menjemput pemegang akaun pemohon lain yang e-melnya sudah disahkan. Penerima membuka pautan e-mel, login sebagai diri sendiri, menyemak nama/SSM dan menerima dalam 24 jam. Hubungan hanya wujud selepas penerimaan dan bermula **UNVERIFIED** tanpa kuasa mengurus jemputan.
 
 Tarikh sah dokumen disokong API; borang muat naik asas belum menyediakan medan tarikh sah. Paparan status perwakilan membezakan `UNVERIFIED`, `VERIFIED`, `DOCUMENT_UPDATE_REQUIRED`. Pengesahan e-mel bukan pengesahan dokumen rasmi.
 
@@ -47,3 +47,11 @@ Satu worker menuntut rekod secara atomik sebelum menghantar. Jika proses mati se
 ## Backup dan masa
 
 Backup PostgreSQL merangkumi metadata dan PDF. Simpan kunci AES berasingan melalui secret manager yang diluluskan serta prosedur backup terhad. Uji restore sebelum produksi. Paparan UI menggunakan waktu Malaysia; database dan audit disimpan UTC. Kunci AES yang hilang menyebabkan faktor MFA dan outbox tertangguh tidak dapat dinyahsulitkan.
+
+## Akaun lama dan pengenalan
+
+Akaun pemohon lama tanpa nombor pengenalan boleh login seperti biasa. Lengkapkan nombor itu sekali di **Profil saya** menggunakan pengesahan kata laluan semasa sebelum mencipta syarikat baharu/menerima jemputan. Profil memaparkan empat aksara akhir sahaja. Pembetulan nombor yang telah direkodkan memerlukan SOP bantuan manusia; tiada fungsi tukar kendiri atau dakwaan pengesahan JPN.
+
+Profil syarikat lama yang tiada pengurus dan belum disahkan memerlukan semakan pegawai berkuasa mengikut SOP. Jangan beri hak pengurus secara pukal. Pendua SSM tidak boleh digunakan untuk mengambil alih profil syarikat orang lain. UI tamat/revokasi wakil dan workflow tuntutan SSM belum tersedia.
+
+Simpan `IDENTITY_DATA_KEY` bersama prosedur backup berasingan yang terhad. Kehilangan/penukaran kunci merosakkan kebolehan menyahsulit dan mengesan pendua; putaran memerlukan migrasi re-encryption dan pengiraan semula indeks terkawal. Jangan sekadar jana semula kunci pada setiap restart.

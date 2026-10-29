@@ -11,6 +11,7 @@ describe("validation and separation of duties", () => {
   it("rejects weak passwords", () =>
     expect(
       registerSchema.safeParse({
+        identificationNumber: "UJIAN000001",
         name: "Ujian Sah",
         email: "test@example.test",
         phone: "0123456789",
@@ -21,6 +22,7 @@ describe("validation and separation of duties", () => {
   it("requires consent", () =>
     expect(
       registerSchema.safeParse({
+        identificationNumber: "UJIAN000001",
         name: "Ujian Sah",
         email: "test@example.test",
         phone: "0123456789",

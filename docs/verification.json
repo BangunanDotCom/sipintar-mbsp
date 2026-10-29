@@ -8,11 +8,11 @@
     "prisma_codegen": "passed",
     "postgres_migration": "passed",
     "vitest": {
-      "passed": 42,
+      "passed": 53,
       "failed": 0
     },
     "playwright": {
-      "passed": 4,
+      "passed": 6,
       "failed": 0
     },
     "frontend_build": "passed",
@@ -449,5 +449,121 @@
         "bytes": 1050046
       }
     }
+  },
+  "phase2a": {
+    "date": "2026-10-29",
+    "branch": "staylink-mbsp-phase1",
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 53,
+        "api": 44,
+        "unit": 9,
+        "failed": 0
+      },
+      "playwright": {
+        "passed": 6,
+        "failed": 0
+      },
+      "build": "passed",
+      "prisma_codegen": "passed",
+      "development_and_test_migrations": "passed"
+    },
+    "migration": "202610290002_applicant_accounts",
+    "browser_checks": [
+      {
+        "page": "registration",
+        "width": 320,
+        "overflow": false,
+        "errors": [],
+        "identificationField": true
+      },
+      {
+        "page": "home",
+        "width": 390,
+        "pixelFileUnchanged": true,
+        "sha256": "bc1bc7cf1bce0ca44c5e19fb9700c66672f25a2a7dae65644031247e7e4e86f5"
+      },
+      {
+        "page": "registration",
+        "width": 390,
+        "overflow": false,
+        "errors": [],
+        "identificationField": true
+      },
+      {
+        "page": "registration",
+        "width": 768,
+        "overflow": false,
+        "errors": [],
+        "identificationField": true
+      },
+      {
+        "page": "registration",
+        "width": 1024,
+        "overflow": false,
+        "errors": [],
+        "identificationField": true
+      },
+      {
+        "page": "home",
+        "width": 1440,
+        "pixelFileUnchanged": true,
+        "sha256": "32b66385d435724e9bf2174d4e45e4266c8015332ce085e3d12def1c9fd9c9a5"
+      },
+      {
+        "page": "registration",
+        "width": 1440,
+        "overflow": false,
+        "errors": [],
+        "identificationField": true
+      }
+    ],
+    "home_assets_css_unchanged": true,
+    "home_screenshots_byte_identical": true,
+    "screenshots": {
+      "phase2a-dashboard-desktop": {
+        "path": "docs/screenshots/phase2a-dashboard-desktop.png",
+        "width": 1440,
+        "height": 1916,
+        "bytes": 316479,
+        "sha256": "80e022bd3b2c97401905d4f13fb1f6b77f010481ae43fa4ced0b7f78cdbbfcad"
+      },
+      "phase2a-dashboard-mobile": {
+        "path": "docs/screenshots/phase2a-dashboard-mobile.png",
+        "width": 390,
+        "height": 2868,
+        "bytes": 219918,
+        "sha256": "b9a17cddf98b0fc685175a6f38b55b5e14188129199d9f8a6eab39ad549de37e"
+      },
+      "phase2a-registration-desktop": {
+        "path": "docs/screenshots/phase2a-registration-desktop.png",
+        "width": 1440,
+        "height": 1660,
+        "bytes": 221913,
+        "sha256": "4b365a9a2161df71ea1dc5b06e07eb27185d8ebc149ecbf0c07732c6266e8f1c"
+      },
+      "phase2a-registration-mobile": {
+        "path": "docs/screenshots/phase2a-registration-mobile.png",
+        "width": 390,
+        "height": 1770,
+        "bytes": 124980,
+        "sha256": "0dec95c73d0ef54566224adc6164a614c8f5b50c09f98d2da6f63de2d162793a"
+      }
+    },
+    "configuration_required_elsewhere": [
+      "Stable independent IDENTITY_DATA_KEY (32-byte hex)",
+      "Apply additive migration and regenerate Prisma client",
+      "Approved production SMTP/TLS/origin configuration; local Mailpit only tested"
+    ],
+    "limits": [
+      "Self-declared identification; no JPN/SSM/KYC integration",
+      "Official company/document verification remains manual MBSP work",
+      "Application submission module not built",
+      "Legacy identity completion and legacy manager authority require controlled process"
+    ],
+    "cloudflare_deployed": false,
+    "main_modified": false
   }
 }

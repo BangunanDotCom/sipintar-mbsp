@@ -12,6 +12,9 @@ model User {
   name String
   email String @unique
   phone String
+  identificationHash String? @unique
+  identificationEncrypted String?
+  identificationMasked String?
   passwordHash String?
   kind String @default("APPLICANT")
   status String @default("ACTIVE")
@@ -140,6 +143,7 @@ model Company {
  status String @default("ACTIVE")
  informationStatus String @default("UNVERIFIED")
  representatives CompanyRepresentative[]
+ invitations CompanyRepresentationInvitation[]
  documents DelegationDocument[]
  createdAt DateTime @default(now())
  @@map("companies")
@@ -155,8 +159,24 @@ model CompanyRepresentative {
  endsAt DateTime?
  status String @default("UNVERIFIED")
  verifiedBy String?
+ canManageRepresentatives Boolean @default(false)
  @@unique([userId,companyId])
  @@map("company_representatives")
+}
+model CompanyRepresentationInvitation {
+ id String @id @default(uuid())
+ companyId String
+ company Company @relation(fields:[companyId],references:[id])
+ recipientId String
+ invitedBy String
+ authorityType String
+ authorityEndsAt DateTime?
+ tokenHash String @unique
+ expiresAt DateTime
+ acceptedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([recipientId])
+ @@map("company_representation_invitations")
 }
 model DelegationDocument {
  id String @id @default(uuid())

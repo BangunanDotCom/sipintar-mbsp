@@ -4,7 +4,7 @@
 
 **Digital Services, Practical Solutions.**
 
-Aplikasi pembangunan Fasa 1 untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
+Aplikasi pembangunan Fasa 1 dan modul akaun pemohon Fasa 2A untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
 
 Ini aplikasi React + Fastify + PostgreSQL yang boleh dijalankan, bukan laman statik. Statusnya **calon semakan pembangunan**, belum disahkan sebagai sistem produksi MBSP. Baca [skop dan batas](docs/STATUS.md) sebelum UAT.
 
@@ -22,7 +22,7 @@ npm ci
 cp .env.example .env
 ```
 
-Kemas kini `DATABASE_URL`, `TEST_DATABASE_URL` dan `MFA_ENCRYPTION_KEY` dalam `.env`. Jana kunci 32 bait menggunakan `openssl rand -hex 32` atau penjana kriptografi ICT. Jangan commit `.env`.
+Kemas kini `DATABASE_URL`, `TEST_DATABASE_URL`, `MFA_ENCRYPTION_KEY` dan `IDENTITY_DATA_KEY` dalam `.env`. Gunakan dua kunci berasingan dan kekalkan nilainya merentas restart/kemas kini. Jana setiap kunci 32 bait menggunakan `openssl rand -hex 32` atau penjana kriptografi ICT. Jangan commit `.env`.
 
 Pilihan Docker Compose (tetapkan kata laluan anda sendiri; gunakan nilai sama dalam kedua-dua URL database):
 
@@ -119,3 +119,9 @@ Dokumentasi lanjut: [Seni bina dan database](docs/ARCHITECTURE.md), [RBAC](docs/
 ## Reka bentuk premium
 
 Antaramuka menggunakan rujukan portal terkini yang dibekalkan pengguna, tema malam biru/cyan/hijau dengan aksen emas, nama **Majlis Bandaraya Seberang Perai** dan logo rasmi MBSP daripada fail asal yang dimuat naik pengguna. Rujuk [asal aset, had foto konsep dan semakan visual](docs/UI-DESIGN.md).
+
+## Akaun pemohon Fasa 2A
+
+Pendaftaran `/daftar` memerlukan nama, nombor pengenalan unik, telefon, e-mel, kata laluan dan consent. Pengaktifan e-mel, login/logout, pemulihan kata laluan, dashboard profil, pelbagai syarikat serta jemputan wakil menggunakan API dan PostgreSQL sebenar. Halaman utama dan aset diluluskan tidak berubah.
+
+Selepas mendapatkan kod ini, jalankan `npm run db:generate`, `npm run db:migrate` dan `npm run db:test:migrate`. `IDENTITY_DATA_KEY` mesti diisi dengan kunci baharu berasingan daripada MFA (32 bait hex); simpan secara selamat dan jangan tukar setelah identiti direkodkan. Tanpa kunci sah pendaftaran ditolak 503. Konfigurasi SMTP produksi masih perlu dibuat ICT; aliran e-mel diuji melalui Mailpit tempatan sahaja. Lihat [skop, cara penggunaan dan screenshot Fasa 2A](docs/PHASE2A.md).

@@ -22,7 +22,7 @@ flowchart LR
 
 | Kumpulan | Jadual | Fungsi |
 |---|---|---|
-| Identiti | users | Individu unik melalui e-mel dinormalisasi, jenis akaun, pengesahan dan consent |
+| Identiti | users | Individu unik melalui e-mel dan HMAC pengenalan dinormalisasi; pengenalan tersulit/bertopeng, jenis akaun, pengesahan dan consent |
 | Token | authentication_identities | Token hash, tujuan, luput dan penggunaan sekali sahaja; ruang provider untuk evolusi SSO |
 | Sesi | sessions | Hash token, hash CSRF, peranan aktif, status MFA, luput 8 jam |
 | MFA | mfa_factors, recovery_codes | Rahsia TOTP AES-GCM, step terakhir untuk antipengulangan; hash kod pemulihan |
@@ -30,6 +30,7 @@ flowchart LR
 | Organisasi | departments, districts, areas | Empat jabatan asas; SPU, SPT, SPS; master kawasan |
 | Penugasan | area_assignments | Sejarah PIC, sebab, pemberi tugas dan tarikh; unik bagi penugasan tanpa tarikh tamat |
 | Syarikat | companies, company_representatives | SSM unik dinormalisasi; banyak wakil bagi banyak syarikat |
+| Jemputan syarikat | company_representation_invitations | Token hash 24 jam, penerima/pemberi kuasa, penerimaan sekali guna; FK ke users dan companies |
 | Dokumen | delegation_documents | PDF peribadi dalam BYTEA, fingerprint SHA-256, status dan tempoh sah; ID kekal untuk pautan masa depan |
 | Komunikasi | notifications, email_delivery_logs | Notifikasi portal, masa dibaca, outbox disulitkan, status dan percubaan SMTP |
 | Templat | template_definitions, template_versions | Semua kategori, versi immutable, DRAFT/ACTIVE/ARCHIVED |
@@ -40,7 +41,7 @@ Hubungan FK utama berada dalam SQL migrasi dan Prisma. Medan identiti pelaku aud
 
 ## Integriti dan transaksi
 
-- PostgreSQL unique constraint menghalang e-mel, SSM dan nombor versi bertindih.
+- PostgreSQL unique constraint menghalang e-mel, HMAC nombor pengenalan, SSM dan nombor versi bertindih. Penerimaan jemputan menuntut token dan mencipta perwakilan dalam transaksi yang sama.
 - Aktivasi token dan penebusan recovery code menggunakan conditional update dalam transaksi.
 - `SELECT ... FOR UPDATE` pada kawasan menyusun penugasan semula serentak; index separa menghalang dua PIC semasa.
 - Versi templat dikunci per definisi semasa penomboran dan pengaktifan.
@@ -54,3 +55,7 @@ CSS biasa dengan design tokens terpusat dipilih berbanding Tailwind untuk mengur
 Fail PDF disimpan dalam PostgreSQL untuk prototaip dalaman yang boleh dipulihkan bersama backup. Object storage, antivirus/quarantine, lifecycle dan saiz dokumen produksi perlu disemak ICT. Tiada dokumen dilayan sebagai HTML sebaris.
 
 Kontrak `integrations.ts` ialah interface sahaja: AI, bayaran, GIS, SSO, tandatangan dan WhatsApp tidak mempunyai sambungan aktif atau respons simulasi yang dipersembahkan sebagai keputusan sebenar.
+
+## Tambahan Fasa 2A
+
+`identity.ts` melindungi nombor pengenalan menggunakan AES-256-GCM dan HMAC berasingan yang diterbitkan melalui HKDF; hanya medan bertopeng dihantar kepada browser. `company-invitations.ts` mengurus jemputan, persetujuan penerima dan semakan semula kuasa pemberi jemputan. Migrasi `202610290002_applicant_accounts` bersifat tambahan: 23 jadual teras keseluruhan. Rekod lama mengekalkan medan identiti NULL dan flag pengurus false; tiada data pengenalan atau kelulusan direka untuk rekod lama.

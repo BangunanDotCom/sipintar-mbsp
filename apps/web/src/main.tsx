@@ -42,6 +42,7 @@ import {
 import { api, setCsrf } from "./api";
 import { registerSchema } from "../../../packages/shared/src/index";
 import Dashboard from "./Dashboard";
+import { CompanyInvitation } from "./CompanyInvitation";
 import "@fontsource/montserrat/latin-400.css";
 import "@fontsource/montserrat/latin-500.css";
 import "@fontsource/montserrat/latin-600.css";
@@ -578,8 +579,14 @@ function Auth({
       }
       if (mode === "login") {
         const data = await api("/auth/login", "POST", b);
+        client.clear();
         setCsrf(data.csrf);
-        nav("/dashboard");
+        const next = params.get("next");
+        nav(
+          next && /^\/jemputan-syarikat\?token=[a-f0-9]{64}$/.test(next)
+            ? next
+            : "/dashboard",
+        );
       }
       if (mode === "recover")
         setMessage((await api("/auth/recover", "POST", b)).message);
@@ -659,6 +666,23 @@ function Auth({
                   required
                   maxLength={120}
                 />
+              </label>
+            )}
+            {mode === "register" && (
+              <label>
+                Nombor pengenalan (MyKad / pasport)
+                <input
+                  {...register("identificationNumber", { required: true })}
+                  aria-label="Nombor pengenalan (MyKad / pasport)"
+                  aria-describedby="identification-help"
+                  autoComplete="off"
+                  required
+                  maxLength={30}
+                />
+                <small id="identification-help">
+                  Satu nombor pengenalan untuk satu akaun. Dipaparkan secara
+                  bertopeng dalam profil.
+                </small>
               </label>
             )}
             {mode !== "activate" && (
@@ -835,9 +859,10 @@ function Info({ type }: { type: string }) {
           </p>
           <h3>Tujuan pemprosesan</h3>
           <p>
-            Nama, e-mel, telefon, maklumat syarikat dan surat kuasa digunakan
-            untuk mengurus identiti serta perwakilan. Aktiviti keselamatan
-            direkodkan untuk audit.
+            Nama, nombor pengenalan, e-mel, telefon, maklumat syarikat dan surat
+            kuasa digunakan untuk mengurus identiti serta perwakilan. Aktiviti
+            keselamatan direkodkan untuk audit. Nombor pengenalan disimpan
+            secara tersulit dan hanya dipaparkan secara bertopeng dalam profil.
           </p>
           <h3>Kawalan akses</h3>
           <p>
@@ -904,6 +929,7 @@ function App() {
           <Route path="/pulih-akaun" element={<Auth mode="recover" />} />
           <Route path="/aktifkan" element={<Auth mode="activate" />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route path="/jemputan-syarikat" element={<CompanyInvitation />} />
           {["panduan", "privasi", "bantuan", "status"].map((x) => (
             <Route key={x} path={`/${x}`} element={<Info type={x} />} />
           ))}

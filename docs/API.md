@@ -38,3 +38,16 @@ Tiada endpoint yang menghasilkan nombor rujukan MBSP, keputusan AI, keputusan JK
 `{ "message": "Mesej dalam Bahasa Melayu" }`. Status: 400 validasi, 401 sesi/login, 403 kuasa/CSRF/MFA, 404 rekod tidak dapat dicapai, 409 pendua, 429 rate limit, 500 kegagalan dalaman. Rekod silang pengguna tidak mendedahkan kandungan syarikat/dokumen.
 
 Senarai pengguna, audit, notifikasi dan perwakilan dihadkan 50/100 rekod dalam UI asas; pagination lengkap ialah penambahbaikan sebelum skala produksi. Contoh peranan dan skop sah berada dalam matriks RBAC.
+
+## Akaun pemohon Fasa 2A
+
+- `POST /api/auth/register`: `{name, identificationNumber, phone, email, password, consent:true}`; pengenalan diwajibkan, e-mel dan HMAC pengenalan unik. Token aktivasi hanya melalui e-mel. Kunci identiti tiada/tidak sah: 503.
+- `POST /api/profile/identification`: `{identificationNumber,currentPassword}`; pemohon sedia ada yang belum mempunyai pengenalan, sekali sahaja. Respons nombor bertopeng; duplicate: 409.
+- `GET /api/auth/me`, `PATCH /api/profile`: hanya `identificationMasked`; tiada nombor penuh, ciphertext atau HMAC dalam DTO pengguna.
+- `GET /api/companies/:id/representatives`: ahli syarikat sah sahaja; nama, status, jenis kuasa dan tarikh.
+- `POST /api/companies/:id/invitations`: `{email,authorityType,endsAt?}`; pengurus profil atau wakil VERIFIED; penerima ialah pemohon aktif/e-mel disahkan. E-mel pautan 24 jam; respons tidak mendedahkan token.
+- `POST /api/company-invitations/preview`: `{token}`; penerima yang login sahaja. Nama/SSM/jenis kuasa untuk persetujuan.
+- `POST /api/company-invitations/accept`: `{token}`; penerima yang login, pengenalan lengkap, token sah. Tuntutan token + perwakilan UNVERIFIED secara transaksi; tiada kuasa pengurus diberikan.
+- `POST /api/companies/:id/representatives` lama kini mengembalikan 409 untuk ahli sah dengan arahan menggunakan jemputan. Tiada penambahan tanpa persetujuan penerima.
+
+Mutasi/preview memerlukan sesi dan CSRF seperti endpoint sesi lain. Semakan penciptaan syarikat/menerima jemputan memerlukan pengenalan lengkap; SSM sedia ada mengembalikan 409 tanpa menghubungkan pemohon secara automatik. OpenAPI dijana semula bersama perubahan ini.

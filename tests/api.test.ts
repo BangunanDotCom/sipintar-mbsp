@@ -1,3 +1,5 @@
+import { protectIdentification } from "../apps/api/src/identity";
+import argon2 from "argon2";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { buildApp } from "../apps/api/src/app";
 import { db, hash, token, decrypt, encrypt } from "../apps/api/src/core";
@@ -17,6 +19,9 @@ async function actor(
 ): Promise<Actor> {
   const user = await db.user.create({
     data: {
+      ...(role === "PEMOHON"
+        ? protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`)
+        : {}),
       name: `DATA UJIAN ${role}`,
       email: `${prefix.slice(-8)}-${role.slice(0, 10).toLowerCase()}-${randomUUID().slice(0, 8)}@example.test`,
       phone: "0123456789",
@@ -112,6 +117,7 @@ describe("authentication, real PostgreSQL and test SMTP", () => {
       url: "/api/auth/register",
       method: "POST",
       payload: {
+        identificationNumber: `UJIAN${randomBytes(6).toString("hex")}`,
         name: "DATA UJIAN Pemohon",
         email,
         phone: "0123456789",
@@ -143,6 +149,7 @@ describe("authentication, real PostgreSQL and test SMTP", () => {
       url: "/api/auth/register",
       method: "POST",
       payload: {
+        identificationNumber: `UJIAN${randomBytes(6).toString("hex")}`,
         name: "DATA UJIAN Awam",
         email,
         phone: "0123456789",
@@ -700,5 +707,363 @@ describe("authentication rate limiting", () => {
         payload: { code: "000000" },
       });
     expect(response!.statusCode).toBe(429);
+  });
+});
+
+describe("Phase 2A applicant identity and company representation", () => {
+  const registration = (
+    identificationNumber: string,
+    email = `p2a-${randomUUID()}@example.test`,
+  ) =>
+    app.inject({
+      url: "/api/auth/register",
+      method: "POST",
+      remoteAddress: `10.40.${Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 200) + 1}`,
+      payload: {
+        name: "DATA UJIAN Akaun Fasa 2A",
+        identificationNumber,
+        email,
+        phone: "0123456789",
+        password,
+        consent: true,
+      },
+    });
+  const companyBody = () => ({
+    name: "DATA UJIAN Syarikat Fasa 2A",
+    registrationNumber: `UJIAN${randomBytes(8).toString("hex")}`,
+    address: "Alamat data ujian sahaja, bukan premis sebenar",
+    phone: "0000000000",
+    email: "syarikat-ujian@example.test",
+    authorityType: "PENGARAH",
+  });
+  async function company(owner: Actor) {
+    const r = await request(owner, "/api/companies", "POST", companyBody());
+    expect(r.statusCode).toBe(201);
+    return r.json().id as string;
+  }
+  async function invitation(owner: Actor, companyId: string, recipient: Actor) {
+    const u = await db.user.findUniqueOrThrow({ where: { id: recipient.id } });
+    const r = await request(
+      owner,
+      `/api/companies/${companyId}/invitations`,
+      "POST",
+      { email: u.email, authorityType: "PEKERJA" },
+    );
+    expect(r.statusCode).toBe(200);
+    expect(r.body).not.toContain("token");
+    const raw = await emailToken(u.email, "COMPANY_INVITATION");
+    return { id: r.json().id, token: raw };
+  }
+  it("requires identification, encrypts it and blocks normalized duplicates across emails", async () => {
+    const raw = `UJIAN${randomBytes(6).toString("hex")}`,
+      email = `p2a-${randomUUID()}@example.test`;
+    const r = await registration(raw, email);
+    expect(r.statusCode).toBe(201);
+    const u = await db.user.findUniqueOrThrow({ where: { email } });
+    expect(u.identificationEncrypted).not.toContain(raw);
+    expect(u.identificationHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(u.identificationMasked).toBe("••••" + raw.slice(-4).toUpperCase());
+    const duplicate = await registration(
+      raw.toLowerCase().slice(0, 5) + "-" + raw.slice(5),
+    );
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.body).not.toContain(raw);
+    expect((await registration("???")).statusCode).toBe(400);
+  });
+  it("enforces identification uniqueness under concurrent registrations", async () => {
+    const raw = `UJIAN${randomBytes(6).toString("hex")}`;
+    const responses = await Promise.all([registration(raw), registration(raw)]);
+    expect(responses.map((r) => r.statusCode).sort()).toEqual([201, 409]);
+  });
+  it("does not expose full identification, ciphertext or lookup hash in account and admin responses", async () => {
+    const a = await actor("PEMOHON");
+    const user = await db.user.findUniqueOrThrow({ where: { id: a.id } });
+    const me = await request(a, "/api/auth/me");
+    expect(me.json().user.identificationMasked).toBe(user.identificationMasked);
+    expect(me.body).not.toContain(user.identificationEncrypted!);
+    expect(me.body).not.toContain(user.identificationHash!);
+    const users = await request(ict, "/api/admin/users");
+    expect(users.body).not.toContain("identificationEncrypted");
+    expect(users.body).not.toContain("identificationHash");
+  });
+  it("lets a verified legacy applicant attach identification once with password confirmation", async () => {
+    const a = await actor("PEMOHON");
+    await db.user.update({
+      where: { id: a.id },
+      data: {
+        identificationHash: null,
+        identificationEncrypted: null,
+        identificationMasked: null,
+        passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
+      },
+    });
+    const b = {
+      identificationNumber: `UJIAN${randomBytes(6).toString("hex")}`,
+      currentPassword: password,
+    };
+    expect(
+      (await request(a, "/api/companies", "POST", companyBody())).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await request(a, "/api/profile/identification", "POST", {
+          ...b,
+          currentPassword: "wrong",
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (await request(a, "/api/profile/identification", "POST", b)).statusCode,
+    ).toBe(200);
+    expect(
+      (await request(a, "/api/profile/identification", "POST", b)).statusCode,
+    ).toBe(409);
+    expect(
+      (await request(a, "/api/companies", "POST", companyBody())).statusCode,
+    ).toBe(201);
+  });
+  it("supports multiple distinct company profiles under one applicant account without official verification", async () => {
+    const owner = await actor("PEMOHON");
+    await company(owner);
+    await company(owner);
+    const list = await request(owner, "/api/companies");
+    expect(list.json()).toHaveLength(2);
+    expect(
+      list
+        .json()
+        .every(
+          (r: any) =>
+            r.status === "UNVERIFIED" &&
+            r.company.informationStatus === "UNVERIFIED" &&
+            r.company.status === "ACTIVE",
+        ),
+    ).toBe(true);
+    expect((await request(owner, "/api/representations")).statusCode).toBe(403);
+  });
+  it("requires recipient consent and rejects wrong-account, replay and cross-company access", async () => {
+    const owner = await actor("PEMOHON"),
+      recipient = await actor("PEMOHON"),
+      other = await actor("PEMOHON");
+    const c = await company(owner),
+      invite = await invitation(owner, c, recipient);
+    expect(
+      await db.companyRepresentative.count({ where: { companyId: c } }),
+    ).toBe(1);
+    expect(
+      (
+        await request(other, "/api/company-invitations/preview", "POST", {
+          token: invite.token,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await request(other, "/api/company-invitations/accept", "POST", {
+          token: invite.token,
+        })
+      ).statusCode,
+    ).toBe(400);
+    const preview = await request(
+      recipient,
+      "/api/company-invitations/preview",
+      "POST",
+      { token: invite.token },
+    );
+    expect(preview.json().companyName).toBe("DATA UJIAN Syarikat Fasa 2A");
+    const accepted = await request(
+      recipient,
+      "/api/company-invitations/accept",
+      "POST",
+      { token: invite.token },
+    );
+    expect(accepted.statusCode).toBe(200);
+    expect(
+      (
+        await request(recipient, "/api/company-invitations/accept", "POST", {
+          token: invite.token,
+        })
+      ).statusCode,
+    ).toBe(400);
+    const r = await db.companyRepresentative.findUniqueOrThrow({
+      where: { userId_companyId: { userId: recipient.id, companyId: c } },
+    });
+    expect(r.status).toBe("UNVERIFIED");
+    expect(r.canManageRepresentatives).toBe(false);
+    expect(
+      (await request(recipient, `/api/companies/${c}/representatives`)).json(),
+    ).toHaveLength(2);
+    expect(
+      (await request(other, `/api/companies/${c}/representatives`)).statusCode,
+    ).toBe(404);
+    const target = await db.user.findUniqueOrThrow({ where: { id: other.id } });
+    expect(
+      (
+        await request(recipient, `/api/companies/${c}/invitations`, "POST", {
+          email: target.email,
+          authorityType: "PEKERJA",
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+  it("rejects expired invitations and an inviter whose authority was revoked", async () => {
+    const owner = await actor("PEMOHON"),
+      recipient = await actor("PEMOHON");
+    const c = await company(owner),
+      expired = await invitation(owner, c, recipient);
+    await db.companyRepresentationInvitation.update({
+      where: { id: expired.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    expect(
+      (
+        await request(recipient, "/api/company-invitations/accept", "POST", {
+          token: expired.token,
+        })
+      ).statusCode,
+    ).toBe(400);
+    const next = await invitation(owner, c, recipient);
+    await db.companyRepresentative.update({
+      where: { userId_companyId: { userId: owner.id, companyId: c } },
+      data: { status: "REVOKED" },
+    });
+    expect((await request(owner, "/api/companies")).json()).toHaveLength(0);
+    expect(
+      (await request(owner, "/api/dashboard")).json().companies,
+    ).toHaveLength(0);
+    expect(
+      (
+        await request(recipient, "/api/company-invitations/accept", "POST", {
+          token: next.token,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await request(owner, `/api/companies/${c}`, "PATCH", {
+          name: "Data ujian tidak dibenarkan",
+          address: "Alamat data ujian sahaja",
+          phone: "0000000000",
+          email: "ujian@example.test",
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+  it("accepts a concurrent invitation only once", async () => {
+    const owner = await actor("PEMOHON"),
+      recipient = await actor("PEMOHON");
+    const c = await company(owner),
+      invite = await invitation(owner, c, recipient);
+    const responses = await Promise.all([
+      request(recipient, "/api/company-invitations/accept", "POST", {
+        token: invite.token,
+      }),
+      request(recipient, "/api/company-invitations/accept", "POST", {
+        token: invite.token,
+      }),
+    ]);
+    expect(responses.map((r) => r.statusCode).sort()).toEqual([200, 400]);
+    expect(
+      await db.companyRepresentative.count({
+        where: { userId: recipient.id, companyId: c },
+      }),
+    ).toBe(1);
+  });
+  it("stores delegation PDFs privately with pending verification for all valid representatives", async () => {
+    const owner = await actor("PEMOHON"),
+      recipient = await actor("PEMOHON");
+    const c = await company(owner),
+      invite = await invitation(owner, c, recipient);
+    await request(recipient, "/api/company-invitations/accept", "POST", {
+      token: invite.token,
+    });
+    const doc = await request(owner, `/api/companies/${c}/documents`, "POST", {
+      fileName: "surat-kuasa-data-ujian.pdf",
+      content: Buffer.from("%PDF-1.4\nDATA UJIAN\n%%EOF").toString("base64"),
+    });
+    expect(doc.statusCode).toBe(200);
+    expect(doc.json().status).toBe("UNVERIFIED");
+    expect(
+      (await request(recipient, `/api/documents/${doc.json().id}`)).statusCode,
+    ).toBe(200);
+    await db.companyRepresentative.update({
+      where: { userId_companyId: { userId: recipient.id, companyId: c } },
+      data: { endsAt: new Date(Date.now() - 1000) },
+    });
+    expect(
+      (await request(recipient, `/api/documents/${doc.json().id}`)).statusCode,
+    ).toBe(404);
+    expect((await request(recipient, "/api/companies")).json()).toHaveLength(0);
+    expect(
+      (await request(recipient, "/api/dashboard")).json().companies,
+    ).toHaveLength(0);
+    await db.companyRepresentative.update({
+      where: { userId_companyId: { userId: recipient.id, companyId: c } },
+      data: { endsAt: null, startsAt: new Date(Date.now() + 86400000) },
+    });
+    expect((await request(recipient, "/api/companies")).json()).toHaveLength(0);
+    expect(
+      (await request(recipient, "/api/dashboard")).json().companies,
+    ).toHaveLength(0);
+  });
+});
+
+describe("Phase 2A email gate and missing configuration", () => {
+  it("does not grant company access before email verification", async () => {
+    const email = `pending-${randomUUID()}@example.test`;
+    const response = await app.inject({
+      url: "/api/auth/register",
+      remoteAddress: "10.41.1.1",
+      method: "POST",
+      payload: {
+        name: "DATA UJIAN Pengesahan Tertangguh",
+        email,
+        phone: "0000000000",
+        identificationNumber: `UJIAN${randomBytes(6).toString("hex")}`,
+        password,
+        consent: true,
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    const login = await app.inject({
+      url: "/api/auth/login",
+      remoteAddress: "10.41.1.1",
+      method: "POST",
+      payload: { email, password },
+    });
+    expect(login.statusCode).toBe(200);
+    const a = {
+      id: "pending",
+      cookie: String(login.headers["set-cookie"]).split(";")[0],
+      csrf: login.json().csrf,
+    };
+    expect((await request(a, "/api/companies")).statusCode).toBe(403);
+    const u = await db.user.findUniqueOrThrow({ where: { email } });
+    const logs = await db.auditLog.findMany({ where: { actorId: u.id } });
+    expect(JSON.stringify(logs)).not.toContain("identificationHash");
+    expect(login.body).not.toContain(u.identificationEncrypted!);
+  });
+  it("fails registration safely when the independent identity key is not configured", async () => {
+    const previous = process.env.IDENTITY_DATA_KEY;
+    const email = `no-config-${randomUUID()}@example.test`;
+    delete process.env.IDENTITY_DATA_KEY;
+    try {
+      const response = await app.inject({
+        url: "/api/auth/register",
+        remoteAddress: "10.41.1.2",
+        method: "POST",
+        payload: {
+          name: "DATA UJIAN Konfigurasi",
+          email,
+          phone: "0000000000",
+          identificationNumber: `UJIAN${randomBytes(6).toString("hex")}`,
+          password,
+          consent: true,
+        },
+      });
+      expect(response.statusCode).toBe(503);
+      expect(await db.user.count({ where: { email } })).toBe(0);
+    } finally {
+      process.env.IDENTITY_DATA_KEY = previous;
+    }
   });
 });

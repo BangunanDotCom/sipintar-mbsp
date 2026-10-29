@@ -23,6 +23,13 @@ const appointment = {
 const bodies: Record<string, unknown> = {
   "POST /api/auth/register": object({
     name: string,
+    identificationNumber: {
+      type: "string",
+      minLength: 6,
+      maxLength: 30,
+      description:
+        "MyKad/pasport; dinormalisasi. Hanya nombor bertopeng dipulangkan.",
+    },
     email,
     phone: string,
     password,
@@ -81,6 +88,20 @@ const bodies: Record<string, unknown> = {
     address: string,
     phone: string,
     email,
+  }),
+  "POST /api/profile/identification": object({
+    identificationNumber: string,
+    currentPassword: string,
+  }),
+  "POST /api/companies/:id/invitations": object(
+    { email, authorityType: string, endsAt: date },
+    ["email", "authorityType"],
+  ),
+  "POST /api/company-invitations/preview": object({
+    token: { type: "string", minLength: 64, maxLength: 64 },
+  }),
+  "POST /api/company-invitations/accept": object({
+    token: { type: "string", minLength: 64, maxLength: 64 },
   }),
   "POST /api/companies/:id/representatives": object(
     { email, authorityType: string, endsAt: date },

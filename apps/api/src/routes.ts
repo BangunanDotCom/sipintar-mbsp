@@ -1,3 +1,10 @@
+import argon2 from "argon2";
+import { protectIdentification } from "./identity.js";
+import { identificationSchema } from "../../../packages/shared/src/index.js";
+import {
+  companyInvitationRoutes,
+  validRepresentative,
+} from "./company-invitations.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, audit, notify, safeUser } from "./core.js";
@@ -29,15 +36,40 @@ async function ownCompany(req: any, companyId: string) {
   const representative = await db.companyRepresentative.findUnique({
     where: { userId_companyId: { userId: s.userId, companyId } },
   });
-  if (
-    !representative ||
-    representative.startsAt > new Date() ||
-    (representative.endsAt && representative.endsAt <= new Date())
-  )
+  if (!representative || !validRepresentative(representative))
     fail(404, "Rekod tidak ditemui.");
   return s;
 }
 export async function routes(app: FastifyInstance) {
+  await companyInvitationRoutes(app);
+  app.post("/api/profile/identification", async (req) => {
+    const s = await session(req);
+    if (s.user.kind !== "APPLICANT") fail(403, "Akaun pemohon diperlukan.");
+    const b = z
+      .object({
+        identificationNumber: identificationSchema,
+        currentPassword: z.string().max(128),
+      })
+      .parse(req.body);
+    if (s.user.identificationHash)
+      fail(
+        409,
+        "Nombor pengenalan telah ditetapkan. Hubungi pentadbir untuk pembetulan.",
+      );
+    if (
+      !s.user.passwordHash ||
+      !(await argon2.verify(s.user.passwordHash, b.currentPassword))
+    )
+      fail(400, "Kata laluan semasa tidak sah.");
+    const data = protectIdentification(b.identificationNumber);
+    const claimed = await db.user.updateMany({
+      where: { id: s.userId, identificationHash: null },
+      data,
+    });
+    if (!claimed.count) fail(409, "Nombor pengenalan telah ditetapkan.");
+    await audit(s.userId, s.activeRole, "IDENTIFICATION_ADDED", s.userId);
+    return { identificationMasked: data.identificationMasked };
+  });
   app.get("/api/public/districts", () =>
     db.district.findMany({ orderBy: { id: "asc" } }),
   );
@@ -64,7 +96,12 @@ export async function routes(app: FastifyInstance) {
   app.get("/api/companies", async (req) => {
     const s = await authorize(req, "companies");
     return db.companyRepresentative.findMany({
-      where: { userId: s.userId },
+      where: {
+        userId: s.userId,
+        status: { not: "REVOKED" },
+        startsAt: { lte: new Date() },
+        OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+      },
       include: {
         company: {
           include: {
@@ -83,6 +120,8 @@ export async function routes(app: FastifyInstance) {
   });
   app.post("/api/companies", async (req, reply) => {
     const s = await authorize(req, "companies");
+    if (!s.user.identificationHash)
+      fail(409, "Lengkapkan nombor pengenalan dalam Profil saya dahulu.");
     const b = companySchema.parse(req.body);
     if (b.endsAt && new Date(b.endsAt) <= new Date())
       fail(400, "Tarikh tamat mesti pada masa hadapan.");
@@ -96,6 +135,7 @@ export async function routes(app: FastifyInstance) {
             create: {
               userId: s.userId,
               authorityType,
+              canManageRepresentatives: true,
               endsAt: endsAt ? new Date(endsAt) : null,
             },
           },
@@ -127,46 +167,12 @@ export async function routes(app: FastifyInstance) {
     return result;
   });
   app.post("/api/companies/:id/representatives", async (req) => {
-    const companyId = id(req),
-      s = await ownCompany(req, companyId);
-    const b = z
-      .object({
-        email: z.email().toLowerCase(),
-        authorityType: z.enum(["PENGARAH", "PEKERJA", "WAKIL_DIBERI_KUASA"]),
-        endsAt: z.iso.datetime().optional(),
-      })
-      .parse(req.body);
-    const owner = await db.companyRepresentative.findUniqueOrThrow({
-      where: { userId_companyId: { userId: s.userId, companyId } },
-    });
-    if (owner.status !== "VERIFIED")
-      fail(403, "Hanya wakil yang disahkan boleh menambah wakil.");
-    const u = await db.user.findUnique({ where: { email: b.email } });
-    if (
-      !u ||
-      !u.emailVerified ||
-      u.kind !== "APPLICANT" ||
-      u.status !== "ACTIVE"
-    )
-      fail(400, "Wakil perlu mempunyai akaun pemohon yang disahkan.");
-    if (b.endsAt && new Date(b.endsAt) <= new Date())
-      fail(400, "Tarikh tamat tidak sah.");
-    const r = await db.companyRepresentative.create({
-      data: {
-        userId: u.id,
-        companyId,
-        authorityType: b.authorityType,
-        endsAt: b.endsAt ? new Date(b.endsAt) : null,
-      },
-    });
-    await audit(s.userId, s.activeRole, "REPRESENTATIVE_ADDED", r.id);
-    await notify(
-      u.id,
-      "COMPANY",
-      "Perwakilan syarikat ditambah",
-      "Perwakilan anda menunggu pengesahan dokumen.",
+    const companyId = id(req);
+    await ownCompany(req, companyId);
+    fail(
+      409,
+      "Gunakan jemputan wakil syarikat; penerima perlu menerima melalui akaun sendiri.",
     );
-    return { id: r.id };
   });
   app.post("/api/companies/:id/documents", async (req) => {
     const companyId = id(req),
@@ -182,6 +188,8 @@ export async function routes(app: FastifyInstance) {
         validUntil: z.iso.datetime().optional(),
       })
       .parse(req.body);
+    if (b.validUntil && new Date(b.validUntil) <= new Date())
+      fail(400, "Tarikh sah dokumen mesti pada masa hadapan.");
     const content = Buffer.from(b.content, "base64");
     if (
       content.length > 2 * 1024 * 1024 ||

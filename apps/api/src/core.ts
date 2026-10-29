@@ -158,4 +158,5 @@ export const safeUser = (u: any) => ({
   kind: u.kind,
   status: u.status,
   emailVerified: u.emailVerified,
+  identificationMasked: u.identificationMasked || null,
 });

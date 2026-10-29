@@ -25,10 +25,16 @@ Sumber permission: `packages/shared/src/index.ts`, diseed ke `permissions`. Tiad
 - PIC sasaran mesti aktif, mempunyai pelantikan PIC yang sedang berkuat kuasa dan meliputi daerah kawasan.
 - Resolver tanpa kawasan atau dengan data tidak mencukupi memulangkan `PERLU PENENTUAN PPSK`, bukan agihan rawak.
 - Dokumen syarikat Fasa 1 belum dipautkan kepada lokasi permohonan. Oleh itu, PIC berskop satu daerah tidak boleh menyenaraikan/mengesahkan dokumen syarikat global. Hanya PIC dengan pelantikan seluruh daerah boleh menggunakan fungsi awal ini. ICT, PPSK dan Operasi tidak diberi akses pengesahan dokumen.
-- Wakil syarikat belum disahkan tidak boleh menambah wakil lain. Sistem tidak menghubungkan pemohon kepada SSM sedia ada secara automatik.
+- Pencipta profil syarikat baharu mendapat `canManageRepresentatives` untuk mengurus jemputan profil sahaja. Wakil VERIFIED juga boleh menjemput; wakil biasa belum disahkan tidak boleh menjemput. Ini tidak memberi pengesahan rasmi MBSP. Sistem tidak menghubungkan pemohon kepada SSM sedia ada secara automatik.
 
 ## Pemisahan tugas
 
 Pengesah perwakilan tidak boleh sama dengan pemohon. Fungsi `independent(preparer, approver)` disediakan untuk menolak identiti sama walaupun konteks peranannya berbeza. Pengesahan dokumen rasmi yang memerlukan penyedia/pengesah bebas belum mempunyai aliran dokumen dalam Fasa 1 dan wajib menggunakan semakan ini dalam Fasa 2.
 
 Pentadbir tidak boleh melantik peranan sendiri, menggantung akaun sendiri atau menetapkan semula MFA sendiri. Reset MFA memerlukan pentadbir lain dengan sebab/rujukan pengesahan identiti, membatalkan semua sesi dan menghasilkan notifikasi keselamatan.
+
+## Persetujuan wakil Fasa 2A
+
+Penerima mesti mempunyai akaun pemohon aktif dengan e-mel disahkan, login sebagai penerima dan menerima pautan 24 jam melalui POST ber-CSRF. Nombor pengenalan perlu lengkap sebelum menerima jemputan. Kuasa pemberi jemputan dinilai semula ketika penerimaan. Hubungan baharu sentiasa UNVERIFIED dan tidak mendapat flag pengurus. Kuasa luput, belum bermula atau REVOKED ditolak untuk akses syarikat/PDF. Pengesahan dokumen kekal kuasa pegawai yang sah; bukan kesan pengaktifan e-mel atau penerimaan jemputan.
+
+Wakil lama yang belum disahkan tidak dinaik taraf menjadi pengurus secara automatik. Kes ini memerlukan semakan manusia/pengesahan mengikut SOP MBSP; tiada endpoint awam memberi flag pengurus sendiri.

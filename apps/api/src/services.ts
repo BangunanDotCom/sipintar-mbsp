@@ -101,7 +101,12 @@ export async function dashboard(s: any) {
   const companies =
     role === "PEMOHON" || role === "WAKIL_SYARIKAT"
       ? await db.companyRepresentative.findMany({
-          where: { userId: s.userId },
+          where: {
+            userId: s.userId,
+            status: { not: "REVOKED" },
+            startsAt: { lte: new Date() },
+            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          },
           include: {
             company: {
               include: {

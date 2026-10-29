@@ -465,6 +465,68 @@ export default function Dashboard() {
                     <small>Berdasarkan rekod akaun anda</small>
                   </div>
                 </div>
+                {me.user.kind === "APPLICANT" && (
+                  <div className="two-columns">
+                    <section className="panel">
+                      <h3>Profil pemohon</h3>
+                      <p>
+                        <strong>{me.user.name}</strong>
+                        <br />
+                        {me.user.email}
+                        <br />
+                        {me.user.phone}
+                      </p>
+                      <p>
+                        Nombor pengenalan:{" "}
+                        {me.user.identificationMasked || "Belum dilengkapkan"}
+                      </p>
+                      <span className="badge">
+                        E-mel{" "}
+                        {me.user.emailVerified ? "disahkan" : "belum disahkan"}
+                      </span>
+                      <p className="muted">
+                        Pengesahan e-mel tidak menggantikan pengesahan dokumen
+                        MBSP.
+                      </p>
+                      <button
+                        className="button secondary small"
+                        onClick={() => setTab("profile")}
+                      >
+                        Urus profil
+                      </button>
+                    </section>
+                    <section className="panel">
+                      <h3>Syarikat diwakili</h3>
+                      {dash.data?.companies.length ? (
+                        dash.data.companies.map((r: any) => (
+                          <div className="company-record" key={r.id}>
+                            <strong>{r.company.name}</strong>
+                            <p>
+                              SSM: {r.company.registrationNumber}
+                              <br />
+                              Profil{" "}
+                              {r.company.status === "ACTIVE"
+                                ? "aktif"
+                                : r.company.status}{" "}
+                              · Perwakilan{" "}
+                              {r.status === "VERIFIED"
+                                ? "disahkan"
+                                : "menunggu semakan MBSP"}
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <p>Belum ada profil syarikat.</p>
+                      )}
+                      <button
+                        className="button secondary small"
+                        onClick={() => setTab("companies")}
+                      >
+                        Urus syarikat
+                      </button>
+                    </section>
+                  </div>
+                )}
                 {me.activeRole === "PIC_KAWASAN" && (
                   <section className="panel">
                     <h3>Kawasan seliaan</h3>
@@ -521,6 +583,41 @@ export default function Dashboard() {
               <div className="two-columns">
                 <section className="panel">
                   <h3>Maklumat peribadi</h3>
+                  {me.user.kind === "APPLICANT" && (
+                    <>
+                      <p>
+                        Nombor pengenalan:{" "}
+                        <strong>
+                          {me.user.identificationMasked || "Belum dilengkapkan"}
+                        </strong>
+                      </p>
+                      {!me.user.identificationMasked && (
+                        <details>
+                          <summary>
+                            Lengkapkan nombor pengenalan akaun sedia ada
+                          </summary>
+                          <Form
+                            fields={[
+                              {
+                                name: "identificationNumber",
+                                label: "Nombor pengenalan (MyKad / pasport)",
+                              },
+                              {
+                                name: "currentPassword",
+                                label: "Kata laluan semasa",
+                                type: "password",
+                              },
+                            ]}
+                            onSubmit={async (b) => {
+                              await api("/profile/identification", "POST", b);
+                              reload();
+                            }}
+                          />
+                        </details>
+                      )}
+                    </>
+                  )}
+
                   <Form
                     key={me.user.name + me.user.phone}
                     fields={[
@@ -673,6 +770,30 @@ function ResourceState({
   if (query.isError) return <Notice error>{query.error.message}</Notice>;
   return <>{children(query.data)}</>;
 }
+function CompanyRepresentatives({ companyId }: { companyId: string }) {
+  const q = useResource(`/companies/${companyId}/representatives`);
+  return (
+    <details>
+      <summary>Senarai wakil syarikat</summary>
+      <ResourceState query={q}>
+        {(data) =>
+          data.map((r: any) => (
+            <p key={r.id}>
+              <strong>{r.user.name}</strong> · {r.authorityType}
+              <br />
+              <small>
+                {r.status === "VERIFIED"
+                  ? "Perwakilan disahkan"
+                  : "Perwakilan menunggu semakan MBSP"}
+                {r.endsAt ? ` · Tamat: ${malaysiaTime(r.endsAt)}` : ""}
+              </small>
+            </p>
+          ))
+        }
+      </ResourceState>
+    </details>
+  );
+}
 function Companies() {
   const q = useResource("/companies"),
     refresh = useRefresh(),
@@ -681,6 +802,11 @@ function Companies() {
     <>
       <section className="panel">
         <h3>Syarikat yang diwakili</h3>
+        <p>
+          Profil aktif selepas pengesahan akaun. Pengesahan rasmi maklumat
+          syarikat dan surat kuasa dibuat oleh pegawai MBSP semasa semakan awal
+          permohonan.
+        </p>
         {error && <Notice error>{error}</Notice>}
         <ResourceState query={q}>
           {(data) =>
@@ -783,9 +909,15 @@ function Companies() {
                       </p>
                     ))}
                   </details>
-                  {r.status === "VERIFIED" && (
+                  <CompanyRepresentatives companyId={r.companyId} />
+                  {(r.canManageRepresentatives || r.status === "VERIFIED") && (
                     <details>
-                      <summary>Tambah wakil syarikat</summary>
+                      <summary>Jemput wakil syarikat</summary>
+                      <p>
+                        Penerima mesti mempunyai akaun pemohon yang telah
+                        disahkan. Jemputan memerlukan penerimaan pemegang akaun
+                        tersebut.
+                      </p>
                       <Form
                         fields={[
                           {
@@ -797,7 +929,7 @@ function Companies() {
                         ]}
                         onSubmit={async (b) => {
                           await api(
-                            `/companies/${r.companyId}/representatives`,
+                            `/companies/${r.companyId}/invitations`,
                             "POST",
                             b,
                           );

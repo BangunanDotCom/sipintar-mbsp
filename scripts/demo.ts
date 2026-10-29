@@ -1,3 +1,4 @@
+import { protectIdentification } from "../apps/api/src/identity.js";
 import { db, production, audit } from "../apps/api/src/core.js";
 import { seed } from "../prisma/seed.js";
 import { roles, passwordSchema } from "../packages/shared/src/index.js";
@@ -14,6 +15,9 @@ for (const roleId of Object.keys(roles)) {
   const user = await db.user.upsert({
     where: { email },
     create: {
+      ...(["PEMOHON", "WAKIL_SYARIKAT"].includes(roleId)
+        ? protectIdentification("UJIAN" + roleId.replaceAll("_", ""))
+        : {}),
       name: `DATA UJIAN ${roles[roleId as keyof typeof roles]}`,
       email,
       phone: "0000000000",
@@ -44,7 +48,11 @@ for (const roleId of Object.keys(roles)) {
         phone: "0000000000",
         email: "syarikat@example.test",
         representatives: {
-          create: { userId: user.id, authorityType: "PENGARAH" },
+          create: {
+            userId: user.id,
+            authorityType: "PENGARAH",
+            canManageRepresentatives: true,
+          },
         },
       },
       update: {},

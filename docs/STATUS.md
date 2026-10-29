@@ -5,10 +5,10 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 ## Fungsi yang mempunyai backend dan database
 
 - Portal Bahasa Melayu, reka bentuk responsif, logo STAYLink berdasarkan rujukan pengguna dan identiti warna terpusat.
-- Pendaftaran individu, consent, e-mel unik, pengesahan e-mel dan pemulihan kata laluan melalui pautan sekali guna.
+- Pendaftaran individu, nombor pengenalan unik tersulit/bertopeng, consent, e-mel unik, pengesahan e-mel dan pemulihan kata laluan melalui pautan sekali guna.
 - Login, sesi HTTP-only, CSRF, had kadar, perubahan profil/kata laluan serta pembatalan sesi.
 - Satu individu mewakili banyak syarikat; banyak wakil bagi satu syarikat; SSM unik dinormalisasi.
-- Profil syarikat, status maklumat/perwakilan berasingan, PDF surat kuasa peribadi dan penambahan wakil oleh wakil yang disahkan.
+- Profil syarikat, status maklumat/perwakilan berasingan, PDF surat kuasa peribadi dan jemputan wakil dengan persetujuan penerima, oleh pengurus profil atau wakil yang disahkan (lihat RBAC).
 - Jemputan pegawai oleh ICT sahaja, pengaktifan, pelbagai pelantikan dengan skop/tarikh, penggantungan, pembatalan pelantikan dan pemulihan MFA.
 - TOTP sebenar, QR, recovery codes sekali guna, penolakan kod berulang dan penguatkuasaan MFA pegawai dalam backend.
 - Sebelas peranan, role switcher, semakan pelantikan aktif dan permission database pada setiap tindakan berkuasa.
@@ -18,7 +18,7 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 - Daftar konfigurasi teknikal/operasi berasingan dengan sejarah versi.
 - Pusat notifikasi, tanda dibaca, SMTP ujian, log penghantaran/failure dan command retry.
 - Audit aktiviti penting dan paparan terhad mengikut kuasa.
-- PostgreSQL sebenar, 22 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
+- PostgreSQL sebenar, 23 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
 - Ujian unit, API dengan database berasingan, dan Playwright pada Chromium sebenar.
 
 ## Batas Fasa 1 yang masih memerlukan kerja
@@ -42,6 +42,12 @@ Semua menu berkaitan menunjukkan **Akan Tersedia Dalam Fasa Seterusnya**. Tiada 
 
 Naik taraf visual terkini dan status aset jata/panorama: lihat [UI-DESIGN.md](UI-DESIGN.md).
 
-Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Jata generatif dikeluarkan; ruang logo rasmi MBSP menunggu fail rasmi sebenar. Tiga CTA mempunyai navigasi dan status pembangunan yang disahkan, tanpa perubahan backend atau schema.
+Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Halaman utama tidak diubah dalam Fasa 2A; kedua-dua CTA pendaftaran membuka halaman akaun sebenar. Modul penghantaran permohonan kekal belum tersedia.
 
 Logo rasmi MBSP kini dipasang daripada `apps/web/public/assets/logo mbsp-png.png` yang dimuat naik pengguna. Fail asal dan ketelusannya dikekalkan; tiada reka bentuk semula atau penjanaan logo.
+
+## Fasa 2A — modul akaun pemohon
+
+Pendaftaran dengan pengenalan unik, aktivasi e-mel, login/logout, pemulihan kata laluan, dashboard profil/status, beberapa syarikat berasingan, surat kuasa PDF dan jemputan wakil berasaskan persetujuan telah diuji menggunakan PostgreSQL, Mailpit dan browser sebenar. Halaman utama desktop/telefon sepadan byte screenshot terdahulu. Lihat [PHASE2A.md](PHASE2A.md) dan [TESTING.md](TESTING.md).
+
+Persekitaran lain memerlukan migrasi tambahan, `IDENTITY_DATA_KEY` stabil dan SMTP diluluskan. SMTP produksi/JPN/SSM tidak diuji atau disambungkan. Nombor pengenalan ialah pengisytiharan pengguna, bukan KYC. Pengesahan rasmi dokumen/surat kuasa semasa semakan awal permohonan kekal tugasan pegawai; modul penghantaran permohonan belum dibina. Akaun/profil syarikat lama memerlukan pelengkapan identiti/semakan kuasa yang sah seperti OPERATIONS.md.

@@ -34,3 +34,11 @@ Ini asas keselamatan aplikasi, bukan keputusan penetration test atau pensijilan.
 ## Pelaporan
 
 Jangan masukkan token, kata laluan, kod MFA, recovery codes atau dokumen peribadi dalam audit/isu. Log request automatik dimatikan supaya query pautan aktivasi tidak direkod. Proksi dan pelayan frontend juga perlu menapis query token daripada access logs. Kegagalan dalaman API memberikan mesej umum, bukan stack trace.
+
+## Pengenalan dan jemputan Fasa 2A
+
+Nombor pengenalan dinormalisasi (trim, huruf besar, buang ruang/tanda sempang; 6–20 alfanumerik). AES-256-GCM menggunakan IV rawak dan `IDENTITY_DATA_KEY` 32 bait bebas daripada kunci MFA. HMAC-SHA256 dengan kunci lookup HKDF berasingan menyokong unique constraint tanpa indeks nombor pengenalan plaintext. API hanya memulangkan empat aksara akhir bertopeng; audit tidak menyimpan input pengenalan, kata laluan atau token asal. Pemilikan nombor ini ialah pengisytiharan pengguna, bukan pengesahan JPN/SSM atau KYC rasmi.
+
+Simpan kunci identiti stabil dan backup melalui secret manager. Putaran automatik tidak disediakan; perubahan kunci perlu nyahsulit/enkripsi semula dan indeks semula terkawal. Tanpa kunci sah pendaftaran gagal tertutup (503), bukan menyimpan plaintext. Akaun lama tidak dibackfill dengan identiti rekaan.
+
+Jemputan wakil menggunakan token hash 256 bit, tempoh 24 jam, penerima terikat dan tuntutan sekali guna secara transaksi. Browser perlu sesi pemohon, peranan sah dan CSRF untuk preview/penerimaan. Kuasa pemberi jemputan dinilai semula ketika penerimaan. Penerimaan tidak mengesahkan syarikat/dokumen dan tidak memberi kuasa meluluskan wakil lain. PDF peribadi kekal di belakang kawalan hubungan syarikat; tiada URL awam dokumen.

@@ -49,10 +49,25 @@ export const passwordSchema = z
   .regex(/[0-9]/, "Perlu nombor.")
   .regex(/[^a-zA-Z0-9]/, "Perlu simbol.");
 export const emailSchema = z
-  .email()
-  .max(254)
-  .transform((x) => x.trim().toLowerCase());
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email().max(254));
+export const identificationSchema = z
+  .string()
+  .trim()
+  .max(30)
+  .transform((v) => v.toUpperCase().replace(/[ -]/g, ""))
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^[A-Z0-9]{6,20}$/,
+        "Masukkan nombor MyKad atau pasport yang sah (6–20 huruf/nombor).",
+      ),
+  );
 export const registerSchema = z.object({
+  identificationNumber: identificationSchema,
   name: z.string().trim().min(3).max(120),
   email: emailSchema,
   phone: z.string().regex(/^\+?[0-9 -]{8,20}$/),

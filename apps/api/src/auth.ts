@@ -1,3 +1,4 @@
+import { protectIdentification } from "./identity.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import argon2 from "argon2";
@@ -111,6 +112,7 @@ export async function authRoutes(app: FastifyInstance) {
     try {
       user = await db.user.create({
         data: {
+          ...protectIdentification(b.identificationNumber),
           name: b.name,
           email: b.email,
           phone: b.phone,

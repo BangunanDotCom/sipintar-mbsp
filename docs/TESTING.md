@@ -11,8 +11,8 @@ Tarikh: **29 Oktober 2026**, waktu paparan pengguna Malaysia. Runtime yang digun
 | Seed peranan, permission, daerah, jabatan dan kategori | Lulus |
 | ESLint | Lulus |
 | TypeScript `tsc --noEmit` | Lulus |
-| Vitest unit dan API | **42/42 lulus** |
-| Playwright aliran pelayar | **4/4 lulus** |
+| Vitest unit dan API | **53/53 lulus** (44 API, 9 unit) |
+| Playwright aliran pelayar | **6/6 lulus** |
 | Binaan frontend produksi | Lulus |
 | Bootstrap pentadbir pertama pada database baharu | Berjaya; percubaan kedua ditolak |
 | Semakan visual desktop 1440px dan telefon 390px | Dilakukan; tiada overflow mendatar pada aliran diuji |
@@ -65,3 +65,15 @@ Lint, typecheck, 42 ujian unit/API, build dan 4 aliran pelayar lulus selepas per
 ## Pemasangan logo rasmi MBSP
 
 Selepas pemasangan fail asal pengguna, lint, typecheck, 42 ujian unit/API, build dan 4 ujian pelayar lulus. Semakan 7 lebar skrin (320–1440 piksel) mengesahkan imej lengkap, object-fit contain, tanpa placeholder/overflow/ralat JavaScript. Byte imej yang dihantar kepada browser sepadan fail asal. Reduced motion dan jeda penuding disahkan; screenshot baharu menunjukkan logo menghadap hadapan.
+
+## Keputusan Fasa 2A semasa
+
+Migrasi tambahan telah diterapkan pada PostgreSQL pembangunan dan database ujian, codegen, lint, typecheck dan build lulus. **53 ujian unit/API (44 API + 9 unit)** dan **6 aliran Playwright** lulus. Catatan 42/4 di bahagian revisi visual terdahulu ialah keputusan sejarah sebelum modul ini.
+
+Tambahan API menguji normalisasi/pendua pengenalan termasuk pendaftaran serentak, enkripsi dan respons bertopeng, kunci identiti tiada (503 tanpa akaun baharu), pelengkapan pengenalan akaun lama sekali dengan kata laluan, beberapa syarikat, SSM unik, jemputan/persetujuan satu guna termasuk penerimaan serentak, penerima salah, token luput, pemberi kuasa REVOKED, isolasi syarikat/PDF, serta penolakan wakil luput dan e-mel belum disahkan. Senarai syarikat/dashboard juga menapis perwakilan REVOKED, tamat atau belum bermula; diuji bersama sekatan PDF/tindakan.
+
+Aliran pelayar kelima menggunakan dua browser context pemohon: daftar kedua-duanya, sahkan e-mel melalui Mailpit, cipta dua syarikat, muat naik PDF sintetik, jemput wakil, lihat butiran sebelum bersetuju, terima melalui akaun penerima dan muat turun dokumen syarikat berkuasa. Screenshot dashboard desktop/telefon diambil daripada akaun pemohon sintetik ini. Aliran keenam menguji terlupa kata laluan melalui e-mel sebenar Mailpit, penolakan kata laluan lama dan login menggunakan kata laluan baharu. Empat aliran asal termasuk MFA pegawai kekal lulus.
+
+Semakan tambahan halaman daftar pada 320, 390, 768, 1024 dan 1440 piksel menunjukkan tiada overflow mendatar atau ralat JavaScript. Kedua-dua CTA halaman utama membuka `/daftar`; screenshot halaman utama desktop 1440 dan telefon 390 adalah byte-identik dengan screenshot diluluskan. Aset/logo/CSS halaman utama tidak berubah. Semua identiti, telefon, SSM dan dokumen ujian ialah sintetik; tiada data sebenar pengguna digunakan.
+
+Screenshot PNG sebenar: [daftar desktop](screenshots/phase2a-registration-desktop.png), [daftar telefon](screenshots/phase2a-registration-mobile.png), [dashboard desktop](screenshots/phase2a-dashboard-desktop.png), [dashboard telefon](screenshots/phase2a-dashboard-mobile.png). Penghantaran e-mel luar Mailpit, KYC/JPN/SSM, pengesahan rasmi pegawai semasa permohonan dan UAT produksi tidak termasuk keputusan lulus ini.
