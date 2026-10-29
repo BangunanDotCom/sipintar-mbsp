@@ -72,6 +72,13 @@ function OfficialIdentity() {
     <div className="mbsp-identity">
       <span
         className="official-logo-slot"
+        style={
+          {
+            "--mbsp-crest-mask": brandAssets.mbspLogo
+              ? `url("${brandAssets.mbspLogo}")`
+              : "none",
+          } as React.CSSProperties
+        }
         aria-label={
           brandAssets.mbspLogo
             ? "Logo MBSP dibekalkan"
@@ -79,14 +86,17 @@ function OfficialIdentity() {
         }
       >
         {brandAssets.mbspLogo ? (
-          <img
-            src={brandAssets.mbspLogo}
-            alt="Logo MBSP yang dibekalkan"
-            width="70"
-            height="76"
-          />
+          <span className="mbsp-crest-motion">
+            <img
+              src={brandAssets.mbspLogo}
+              alt="Logo Majlis Bandaraya Seberang Perai"
+              width="70"
+              height="76"
+            />
+            <span className="mbsp-crest-light" aria-hidden="true" />
+          </span>
         ) : (
-          <span>MBSP</span>
+          <span className="official-logo-placeholder">MBSP</span>
         )}
       </span>
       <span>

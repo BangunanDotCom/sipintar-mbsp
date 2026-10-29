@@ -29,3 +29,7 @@ Foto sebenar Menara Bandaraya telah dikenal pasti pada [Wikimedia Commons — MB
 ## Semakan
 
 Screenshot penuh yang dikemas kini berada dalam `docs/screenshots/staylink-desktop.png` dan `docs/screenshots/staylink-mobile.png`. Pemeriksaan frontend/API, lint, typecheck, Vitest dan Playwright dijalankan selepas perubahan; keputusan akhir diringkaskan dalam `docs/verification.json`.
+
+## Animasi jata MBSP
+
+Jata pada header berputar pada paksi Y: 0° → 360° → 0° dalam satu kitaran 32 saat, dengan rehat pada kedudukan menghadap hadapan. Halo cyan/emas mengorbit perlahan dan sapuan cahaya menggunakan mask bentuk jata. Penuding di atas logo menjeda pergerakan. `prefers-reduced-motion: reduce` mematikan putaran dan lapisan cahaya bergerak; nama penuh majlis di sebelah jata kekal statik. Screenshot baharu menangkap kedudukan hadapan supaya teks jata boleh dibaca.

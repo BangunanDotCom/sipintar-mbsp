@@ -60,5 +60,18 @@
         "bytes": 1051805
       }
     }
+  },
+  "crest_animation": {
+    "cycle_seconds": 32,
+    "axis": "Y",
+    "angles": [
+      0,
+      360,
+      0
+    ],
+    "hover_pause": "passed",
+    "reduced_motion": "static crest, decorative light disabled",
+    "mobile_horizontal_overflow": false,
+    "browser_check": "passed"
   }
 }
