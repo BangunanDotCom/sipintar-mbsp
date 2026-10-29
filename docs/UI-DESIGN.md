@@ -6,7 +6,7 @@ Tarikh: 29 Oktober 2026. Branch: `staylink-mbsp-phase1`. Tiada deployment dilaku
 
 Papan identiti STAYLink pada awalnya menunjukkan logo bangunan/pautan biru-hijau. Pengguna kemudian membekalkan rujukan portal baharu dan mengarahkan **“gunakan ini”**: wordmark STAYLink MBSP perak/emas dengan simbol penginapan, panorama bandar waktu malam, panel kaca biru dan butang emas. Rujukan terkini ini menjadi arah pelaksanaan akhir. Biru gelap, biru elektrik, hijau dan cyan dikekalkan; emas digunakan sebagai aksen tindakan utama.
 
-- Header menyediakan **ruang neutral logo rasmi MBSP** dan nama **Majlis Bandaraya Seberang Perai**. Jata olahan generatif telah dikeluarkan; hanya fail rasmi sebenar yang dibekalkan boleh dipasang.
+- Header menggunakan **fail asal logo rasmi MBSP yang dimuat naik pengguna**, di sebelah nama **Majlis Bandaraya Seberang Perai**. Tiada jata dijana atau direka semula.
 - Nama penuh **Smart Temporary Accommodation Link** dan tagline **Digital Services, Practical Solutions.** dikekalkan sebagai teks sebenar yang boleh dibaca.
 - Hero sinematik menggunakan aset panorama setempat, lapisan gelap bagi kebolehbacaan, garis sambungan SVG dan panel kaca. Elemen digital ialah visual konsep, bukan metrik pemantauan sebenar.
 - Enam perkhidmatan mengekalkan laluan asal. Modul belum tersedia terus menyatakan Fasa seterusnya.
@@ -19,7 +19,7 @@ Papan identiti STAYLink pada awalnya menunjukkan logo bangunan/pautan biru-hijau
 | Fail | Asal / penggunaan |
 |---|---|
 | `apps/web/public/assets/brand/staylink-primary.png` | Olahan/ekstrak generatif daripada logo dalam rujukan portal terkini pengguna; simbol rumah/katil, STAY perak, Link emas, MBSP perak. Bukan ikon Lucide generik. |
-| `mbspLogo: null` dalam `apps/web/src/brand.ts` | Slot rasmi disediakan tanpa gambar jata. Aset jata generatif terdahulu dikeluarkan daripada versi semasa. Tetapkan laluan hanya selepas fail rasmi sebenar dibekalkan. |
+| `apps/web/public/assets/logo mbsp-png.png` | Fail asal PNG RGBA 2572 × 2540 yang dimuat naik pengguna dalam commit `0ca1f44`. Digunakan terus melalui `/assets/logo%20mbsp-png.png`, tanpa suntingan, pemotongan, penjanaan semula atau perubahan ketelusan. |
 | `apps/web/public/assets/city/staylink-waterfront.png` | Olahan generatif panorama daripada rujukan portal pengguna. **Visual konsep**, bukan foto dokumentari atau pengesahan rupa sebenar Menara Bandaraya MBSP. Keterangan alt dan kredit visual menyatakan status konsep. |
 
 Nama terkini Bandaraya disemak terhadap [portal Sistem Perolehan Bersepadu MBSP](https://ep.mbsp.gov.my/) dan [rekod logo semasa yang merujuk MBSP](https://commons.wikimedia.org/wiki/File:Seberang_Perai_City_Council_(MBSP_-_Majlis_Bandaraya_Seberang_Perai)_Logo.png). Fail induk jata rasmi boleh dipasang melalui `mbspLogo` dalam `apps/web/src/brand.ts` apabila dibekalkan; jangan menjana, menjejak semula atau menyunting sendiri jata rasmi.
@@ -32,7 +32,7 @@ Screenshot penuh yang dikemas kini berada dalam `docs/screenshots/staylink-deskt
 
 ## Animasi dan pemuktamadan
 
-Animasi jata 32 saat dan lapisan cahaya yang disediakan sebelum ini hanya diaktifkan jika aset rasmi sebenar dipasang. **Slot neutral semasa adalah statik**, tanpa putaran, jata tiruan atau halo berputar. `prefers-reduced-motion: reduce` mematikan semua animasi portal. Animasi panel digital menggunakan opacity; animasi cahaya latar menggunakan transform/opacity untuk mengurangkan kerja paint.
+Animasi jata 32 saat dan lapisan cahaya sedia ada digunakan untuk aset rasmi yang kini telah dipasang. Logo rasmi asal kini tersedia; animasi sedia ada diaktifkan semula dengan sokongan reduced motion. `prefers-reduced-motion: reduce` mematikan semua animasi portal. Animasi panel digital menggunakan opacity; animasi cahaya latar menggunakan transform/opacity untuk mengurangkan kerja paint.
 
 Reka bentuk emas dengan simbol penginapan/bumbung, panorama malam dan konsep biru gelap/emas telah diluluskan. Kedua-dua fail logo STAYLink dan panorama dikekalkan byte-for-byte; tiada pertukaran kepada versi biru-hijau atau reka semula halaman utama.
 
@@ -43,3 +43,7 @@ Reka bentuk emas dengan simbol penginapan/bumbung, panorama malam dan konsep bir
 - Log Masuk Pegawai → `/log-masuk`: aliran login dan MFA sedia ada.
 - Semakan manual Chromium meliputi 320, 360, 390, 600, 601, 768, 820, 1024, 1280, 1440 dan 1920 piksel: tiada overflow mendatar, menu muat, semua imej dimuatkan, tiada ralat JavaScript dan semua animasi dimatikan dalam reduced motion.
 - Lint, typecheck, 42 ujian unit/API, build dan 4 aliran Playwright lulus selepas pemuktamadan. Aliran pelayar turut menyemak tiga butang utama dan kawalan menu papan kekunci.
+
+## Pemasangan fail rasmi pengguna
+
+Fail logo asal dikekalkan byte-for-byte dengan SHA-256 `29d1cee0f4fab1a36f26c742dc7486eec1498527ca8439d6c768c627237d016d`. Fail yang diterima oleh pelayar mempunyai checksum sama. Header menggunakan `object-fit: contain`, tanpa latar putih atau bingkai tambahan; alpha asal dikekalkan. Paparan disemak pada 320, 390, 600, 601, 768, 1024 dan 1440 piksel. Logo emas STAYLink serta panorama tidak berubah. Lint, typecheck, 42 ujian unit/API, build dan 4 aliran pelayar lulus. Screenshot desktop/telefon dikemas kini.

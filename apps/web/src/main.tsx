@@ -83,7 +83,7 @@ function OfficialIdentity() {
         }
         aria-label={
           brandAssets.mbspLogo
-            ? "Logo MBSP dibekalkan"
+            ? "Logo rasmi Majlis Bandaraya Seberang Perai"
             : "Ruang logo rasmi MBSP"
         }
       >
@@ -92,8 +92,8 @@ function OfficialIdentity() {
             <img
               src={brandAssets.mbspLogo}
               alt="Logo Majlis Bandaraya Seberang Perai"
-              width="70"
-              height="76"
+              width="2572"
+              height="2540"
             />
             <span className="mbsp-crest-light" aria-hidden="true" />
           </span>

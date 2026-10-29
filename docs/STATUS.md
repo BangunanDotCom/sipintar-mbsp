@@ -43,3 +43,5 @@ Semua menu berkaitan menunjukkan **Akan Tersedia Dalam Fasa Seterusnya**. Tiada 
 Naik taraf visual terkini dan status aset jata/panorama: lihat [UI-DESIGN.md](UI-DESIGN.md).
 
 Pemuktamadan visual: identiti emas/bumbung dan panorama malam yang diluluskan dikekalkan. Jata generatif dikeluarkan; ruang logo rasmi MBSP menunggu fail rasmi sebenar. Tiga CTA mempunyai navigasi dan status pembangunan yang disahkan, tanpa perubahan backend atau schema.
+
+Logo rasmi MBSP kini dipasang daripada `apps/web/public/assets/logo mbsp-png.png` yang dimuat naik pengguna. Fail asal dan ketelusannya dikekalkan; tiada reka bentuk semula atau penjanaan logo.

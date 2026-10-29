@@ -73,7 +73,7 @@
     "reduced_motion": "static crest, decorative light disabled",
     "mobile_horizontal_overflow": false,
     "browser_check": "passed",
-    "status": "Inactive until an authentic official asset is supplied; neutral placeholder is static"
+    "status": "Active on the authentic supplied original file; disabled for reduced motion"
   },
   "design_finalization": {
     "date": "2026-10-29T21:35:39+08:00",
@@ -250,6 +250,203 @@
         "width": 390,
         "height": 4677,
         "bytes": 1044402
+      }
+    }
+  },
+  "official_logo_installation": {
+    "date": "2026-10-29T22:07:14+08:00",
+    "branch": "staylink-mbsp-phase1",
+    "source_upload_commit": "0ca1f4405d8bf55da7a9b2c18707ac212c8f7c25",
+    "original_file_unchanged": true,
+    "approved_staylink_and_backdrop_unchanged": true,
+    "backend_or_schema_changes": false,
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 42,
+        "failed": 0
+      },
+      "build": "passed",
+      "playwright": {
+        "passed": 4,
+        "failed": 0
+      }
+    },
+    "browser_verification": {
+      "file": "apps/web/public/assets/logo mbsp-png.png",
+      "sha256": "29d1cee0f4fab1a36f26c742dc7486eec1498527ca8439d6c768c627237d016d",
+      "viewports": [
+        {
+          "width": 320,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 52,
+          "boxHeight": 61,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 390,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 61,
+          "boxHeight": 67,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 600,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 61,
+          "boxHeight": 67,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 601,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 54,
+          "boxHeight": 62,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 768,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 61,
+          "boxHeight": 66.625,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 1024,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 61,
+          "boxHeight": 66.625,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "naturalWidth": 2572,
+          "naturalHeight": 2540,
+          "boxWidth": 74,
+          "boxHeight": 79.46875,
+          "objectFit": "contain",
+          "cornerRGBA": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "slotBackground": "rgba(0, 0, 0, 0)",
+          "slotOverflow": "visible",
+          "placeholderCount": 0,
+          "reducedAnimations": 0,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "servedFileMatchesOriginal": true,
+          "errors": []
+        }
+      ],
+      "normalMotion": "32s",
+      "hoverPause": "paused"
+    },
+    "screenshots": {
+      "desktop": {
+        "path": "docs/screenshots/staylink-desktop.png",
+        "width": 1440,
+        "height": 3692,
+        "bytes": 2650230
+      },
+      "mobile": {
+        "path": "docs/screenshots/staylink-mobile.png",
+        "width": 390,
+        "height": 4677,
+        "bytes": 1050046
       }
     }
   }

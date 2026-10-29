@@ -61,3 +61,7 @@ Lint, typecheck, 42 ujian Vitest, 4 aliran Playwright dan binaan frontend lulus.
 ## Pemuktamadan identiti visual yang diluluskan
 
 Lint, typecheck, 42 ujian unit/API, build dan 4 aliran pelayar lulus selepas perubahan akhir. Semakan responsive meliputi 11 lebar antara 320 dan 1920 piksel, termasuk tablet dan sempadan breakpoint 600/601. Menu telefon menyokong Escape dan fokus kembali; tiga butang utama disahkan menuju pendaftaran, halaman pembangunan status dan login. Semua imej dimuatkan, tanpa overflow/ralat JavaScript. Reduced motion menghentikan semua animasi; slot logo rasmi tanpa aset sah kekal statik. Logo emas STAYLink dan panorama disahkan tidak berubah.
+
+## Pemasangan logo rasmi MBSP
+
+Selepas pemasangan fail asal pengguna, lint, typecheck, 42 ujian unit/API, build dan 4 ujian pelayar lulus. Semakan 7 lebar skrin (320–1440 piksel) mengesahkan imej lengkap, object-fit contain, tanpa placeholder/overflow/ralat JavaScript. Byte imej yang dihantar kepada browser sepadan fail asal. Reduced motion dan jeda penuding disahkan; screenshot baharu menunjukkan logo menghadap hadapan.
