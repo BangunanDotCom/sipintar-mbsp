@@ -18,7 +18,6 @@ import {
   ArrowUpRight,
   ArrowRight,
   Building2,
-  Link2,
   ShieldCheck,
   MapPin,
   FilePlus2,
@@ -42,24 +41,63 @@ import {
 import { api, setCsrf } from "./api";
 import { registerSchema } from "../../../packages/shared/src/index";
 import Dashboard from "./Dashboard";
+import "@fontsource/montserrat/latin-400.css";
+import "@fontsource/montserrat/latin-500.css";
+import "@fontsource/montserrat/latin-600.css";
+import "@fontsource/montserrat/latin-700.css";
+import "@fontsource/montserrat/latin-800.css";
+import { brandAssets } from "./brand";
+import { CityScene, VisualCredit } from "./CityScene";
 import "./styles.css";
+import "./premium.css";
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 export function Logo() {
   return (
     <Link className="brand" to="/" aria-label="STAYLink MBSP, halaman utama">
-      <span className="brand-icon">
-        <Building2 size={28} />
-        <Link2 className="link-mark" size={18} />
+      <img
+        className="brand-lockup"
+        src={brandAssets.staylinkLogo}
+        alt="STAYLink MBSP"
+        width="610"
+        height="122"
+      />
+      <em className="brand-subtitle">Smart Temporary Accommodation Link</em>
+    </Link>
+  );
+}
+function OfficialIdentity() {
+  return (
+    <div className="mbsp-identity">
+      <span
+        className="official-logo-slot"
+        aria-label={
+          brandAssets.mbspLogo
+            ? "Logo MBSP dibekalkan"
+            : "Ruang logo rasmi MBSP"
+        }
+      >
+        {brandAssets.mbspLogo ? (
+          <img
+            src={brandAssets.mbspLogo}
+            alt="Logo MBSP yang dibekalkan"
+            width="70"
+            height="76"
+          />
+        ) : (
+          <span>MBSP</span>
+        )}
       </span>
       <span>
         <strong>
-          STAY<span>Link</span> <small>MBSP</small>
+          MAJLIS BANDARAYA
+          <br />
+          SEBERANG PERAI
         </strong>
-        <em>Smart Temporary Accommodation Link</em>
+        <small>Jabatan Bangunan · Perkhidmatan Digital</small>
       </span>
-    </Link>
+    </div>
   );
 }
 function Header() {
@@ -78,15 +116,23 @@ function Header() {
       </div>
       <header>
         <div className="container header-inner">
-          <Logo />
+          <div className="header-identities">
+            <OfficialIdentity />
+          </div>
           <button
             className="icon-button mobile-menu"
+            aria-expanded={open}
+            aria-controls="portal-navigation"
             onClick={() => setOpen(!open)}
             aria-label="Buka menu"
           >
             {open ? <X /> : <Menu />}
           </button>
-          <nav className={open ? "open" : ""} onClick={() => setOpen(false)}>
+          <nav
+            id="portal-navigation"
+            className={open ? "open" : ""}
+            onClick={() => setOpen(false)}
+          >
             <Link className="nav-active" to="/">
               Utama
             </Link>
@@ -102,138 +148,6 @@ function Header() {
         </div>
       </header>
     </>
-  );
-}
-function City() {
-  return (
-    <div className="city-wrap" aria-hidden="true">
-      <svg className="city" viewBox="0 0 650 500" fill="none">
-        <defs>
-          <linearGradient id="tower" x1="0" y1="0" x2="1" y2="1">
-            <stop stopColor="#225ca0" />
-            <stop offset="1" stopColor="#0d2446" />
-          </linearGradient>
-          <linearGradient id="side">
-            <stop stopColor="#0a1e3c" />
-            <stop offset="1" stopColor="#143f70" />
-          </linearGradient>
-          <linearGradient id="ground">
-            <stop stopColor="#183e68" stopOpacity=".6" />
-            <stop offset="1" stopColor="#0a2044" stopOpacity=".2" />
-          </linearGradient>
-          <pattern
-            id="windows"
-            width="17"
-            height="23"
-            patternUnits="userSpaceOnUse"
-          >
-            <rect
-              x="5"
-              y="4"
-              width="5"
-              height="11"
-              rx="1"
-              fill="#54d1fa"
-              opacity=".55"
-            />
-          </pattern>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="4" />
-          </filter>
-        </defs>
-        <ellipse
-          cx="325"
-          cy="420"
-          rx="280"
-          ry="66"
-          fill="#13598d"
-          opacity=".12"
-        />
-        <g stroke="#2683c3" opacity=".2">
-          <path d="M20 400L320 240L630 410L330 550Z" fill="url(#ground)" />
-          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-            <path
-              key={i}
-              d={`M${25 + i * 42} ${400 + i * 22}L${325 + i * 42} ${240 + i * 22} M${25 + i * 45} ${400 - i * 24}L${335 + i * 45} ${570 - i * 24}`}
-            />
-          ))}
-        </g>
-        <g>
-          <path
-            d="M118 374V219L188 179L254 217V375L188 415Z"
-            fill="url(#tower)"
-            stroke="#3785bd"
-          />
-          <path d="M188 179V415L254 375V217Z" fill="url(#side)" />
-          <path d="M128 227L180 197V392L128 363Z" fill="url(#windows)" />
-          <path d="M118 219L188 259L254 217M188 259V415" stroke="#3677ac" />
-        </g>
-        <g>
-          <path
-            d="M258 384V120L340 73L421 119V383L340 430Z"
-            fill="url(#tower)"
-            stroke="#52b0db"
-          />
-          <path d="M340 73V430L421 383V119Z" fill="url(#side)" />
-          <path d="M268 128L331 91V406L268 371Z" fill="url(#windows)" />
-          <path
-            d="M352 143L408 111V371L352 403Z"
-            fill="url(#windows)"
-            opacity=".5"
-          />
-          <path
-            d="M258 120L340 167L421 119M340 167V430M284 105V87L338 57L393 87V104"
-            stroke="#5cc5ee"
-          />
-          <path d="M338 57V25" stroke="#5cc5ee" />
-          <circle cx="338" cy="25" r="4" fill="#00c896" />
-          <path
-            d="M258 172L340 219L421 171M258 286L340 333L421 285"
-            stroke="#3dd6ff"
-            opacity=".6"
-          />
-        </g>
-        <g>
-          <path
-            d="M442 395V242L497 211L554 242V395L497 427Z"
-            fill="url(#tower)"
-            stroke="#357bab"
-          />
-          <path d="M497 211V427L554 395V242Z" fill="url(#side)" />
-          <path d="M452 252L489 231V408L452 387Z" fill="url(#windows)" />
-          <path d="M442 242L497 274L554 242" stroke="#3c87b3" />
-        </g>
-        <g stroke="#00c896" strokeWidth="2">
-          <path d="M72 391L72 339L105 320M400 435L457 466L590 390V323" />
-          <path d="M223 441L264 465L321 434" />
-          <circle cx="72" cy="339" r="4" fill="#00c896" />
-          <circle cx="590" cy="323" r="4" fill="#00c896" />
-          <circle cx="264" cy="465" r="4" fill="#00c896" />
-        </g>
-        <g stroke="#3dd6ff" opacity=".45" strokeDasharray="4 7">
-          <path d="M188 163V107L290 48M432 168L487 137L585 193V265" />
-        </g>
-        <g fill="#3dd6ff">
-          <circle cx="188" cy="107" r="3" />
-          <circle cx="487" cy="137" r="3" />
-        </g>
-      </svg>
-      <div className="city-label city-label-top">
-        <span className="signal" />
-        <div>
-          SEBERANG PERAI<small>Ekosistem bandar pintar</small>
-        </div>
-      </div>
-      <div className="city-label city-label-bottom">
-        <ShieldCheck size={23} />
-        <div>
-          Akses selamat<small>Identiti digital terlindung</small>
-        </div>
-      </div>
-      <div className="city-coordinates">
-        SPU <span>•</span> SPT <span>•</span> SPS <i /> CONNECTED COMMUNITIES
-      </div>
-    </div>
   );
 }
 const services = [
@@ -282,19 +196,33 @@ function Home() {
   return (
     <>
       <section className="hero">
-        <div className="hero-grid" />
+        <img
+          className="hero-building"
+          src={brandAssets.cityBackdrop}
+          alt="Visual konsep bandar pintar dan pesisir air berdasarkan rujukan STAYLink MBSP"
+          width="1280"
+          height="960"
+          fetchPriority="high"
+        />
+        <div className="hero-atmosphere" aria-hidden="true" />
+        <div className="hero-orb" aria-hidden="true" />
+        <div className="hero-grid" aria-hidden="true" />
         <div className="container hero-inner">
           <div className="hero-copy">
             <div className="eyebrow">
               <span /> PORTAL DIGITAL PENGINAPAN PEKERJA
             </div>
+            <div className="hero-brand-name">
+              <Logo />
+            </div>
             <h1>
-              Perkhidmatan pintar.
-              <br />
+              Perkhidmatan pintar. <br />
               Urusan lebih <span>terhubung.</span>
             </h1>
-            <div className="hero-name">STAYLink MBSP</div>
-            <p className="hero-fullname">Smart Temporary Accommodation Link</p>
+
+            <p className="hero-fullname">
+              Digital Services, Practical Solutions.
+            </p>
             <p className="hero-desc">
               Platform Digital Pintar bagi Pengurusan Permohonan Penginapan
               Pekerja Tempoh Terhad di Seberang Perai.
@@ -306,6 +234,10 @@ function Home() {
               <Link className="button outline" to="/status">
                 <Search size={17} /> Semak Status
               </Link>
+              <Link className="button officer-action" to="/log-masuk">
+                <UserRound size={17} /> Log Masuk Pegawai{" "}
+                <ArrowRight size={15} />
+              </Link>
             </div>
             <div className="hero-trust">
               <ShieldCheck size={15} />
@@ -316,12 +248,18 @@ function Home() {
               <span>Mesra pengguna</span>
             </div>
           </div>
-          <City />
+          <CityScene />
         </div>
         <div className="hero-bottom container">
-          <span>Digital Services, Practical Solutions.</span>
+          <span className="hero-tagline">
+            <span className="tagline-rule" />
+            Digital Services, Practical Solutions.
+          </span>
           <span>
-            01 <i /> SMART CITY. CONNECTED SERVICES.
+            <span className="hero-portal-status">
+              <span className="dot" /> FASA 01
+            </span>{" "}
+            <i /> SMART CITY. CONNECTED SERVICES.
           </span>
         </div>
       </section>
@@ -353,6 +291,7 @@ function Home() {
                 <span className={`service-icon c${i}`}>
                   <s.icon size={24} />
                 </span>
+                <span className="service-index">0{i + 1}</span>
                 <ArrowUpRight size={20} />
               </div>
               <h3>{s.title}</h3>
@@ -541,6 +480,9 @@ function Footer() {
             Belum diluluskan untuk kegunaan rasmi.
           </p>
         </div>
+      </div>
+      <div className="container">
+        <VisualCredit />
       </div>
       <div className="container footer-bottom">
         <span>

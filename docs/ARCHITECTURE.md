@@ -49,7 +49,7 @@ Hubungan FK utama berada dalam SQL migrasi dan Prisma. Medan identiti pelaku aud
 
 ## Keputusan reka bentuk
 
-CSS biasa dengan design tokens terpusat dipilih berbanding Tailwind untuk mengurangkan lapisan konfigurasi. React Hook Form dan TanStack Query mengurus borang/cache. Graf Recharts tidak dipasang kerana tiada metrik operasi sebenar dalam Fasa 1. Fon sistem berlesen platform digunakan; tiada aset fon atau logo rasmi MBSP yang diandaikan tersedia.
+CSS biasa dengan design tokens terpusat dipilih berbanding Tailwind untuk mengurangkan lapisan konfigurasi. React Hook Form dan TanStack Query mengurus borang/cache. Graf Recharts tidak dipasang kerana tiada metrik operasi sebenar dalam Fasa 1. Montserrat kini dibekalkan secara tempatan melalui @fontsource (OFL); asal aset pengguna dan status olahan logo/panorama diterangkan dalam UI-DESIGN.md.
 
 Fail PDF disimpan dalam PostgreSQL untuk prototaip dalaman yang boleh dipulihkan bersama backup. Object storage, antivirus/quarantine, lifecycle dan saiz dokumen produksi perlu disemak ICT. Tiada dokumen dilayan sebagai HTML sebaris.
 

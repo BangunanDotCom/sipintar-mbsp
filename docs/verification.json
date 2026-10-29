@@ -24,5 +24,41 @@
     "No independent penetration test",
     "No formal UAT",
     "Official integrations not configured"
-  ]
+  ],
+  "design_revision": {
+    "date": "2026-10-29T19:04:30+08:00",
+    "branch": "staylink-mbsp-phase1",
+    "reference": "Latest user-supplied blue/gold smart-city portal mockup",
+    "crest_text": "MAJLIS BANDARAYA SEBERANG PERAI",
+    "assets": "Locally stored adaptations of user references; panorama is concept artwork",
+    "lint": "passed",
+    "typecheck": "passed",
+    "vitest_passed": 42,
+    "playwright_passed": 4,
+    "frontend_build": "passed",
+    "responsive_widths": [
+      320,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "horizontal_overflow": false,
+    "all_page_images_loaded": true,
+    "backend_or_schema_changes": false,
+    "screenshots": {
+      "desktop": {
+        "path": "docs/screenshots/staylink-desktop.png",
+        "width": 1440,
+        "height": 3692,
+        "bytes": 2653390
+      },
+      "mobile": {
+        "path": "docs/screenshots/staylink-mobile.png",
+        "width": 390,
+        "height": 4677,
+        "bytes": 1051805
+      }
+    }
+  }
 }

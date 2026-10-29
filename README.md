@@ -115,3 +115,7 @@ Prisma 6.19 dipin bersama adapter PostgreSQL dan JavaScript engine. Rangkaian pe
 `db:migrate` menggunakan runner SQL bertandatangan SHA-256 dan advisory lock PostgreSQL, dengan jadual `_staylink_migrations`. **Jangan campur dengan `prisma migrate deploy` pada database sama.** SQL disemak dan dijejak dalam repositori. Perubahan schema selepas ini memerlukan fail migrasi baharu; tiada `db push` atau pemadaman jadual automatik.
 
 Dokumentasi lanjut: [Seni bina dan database](docs/ARCHITECTURE.md), [RBAC](docs/RBAC.md), [Operasi](docs/OPERATIONS.md), [Keselamatan](docs/SECURITY.md), [API](docs/API.md), [Deployment ICT](docs/DEPLOYMENT.md), [Fasa 2](docs/PHASE2.md).
+
+## Reka bentuk premium
+
+Antaramuka menggunakan rujukan portal terkini yang dibekalkan pengguna, tema malam biru/cyan/hijau dengan aksen emas dan jata bertulis **Majlis Bandaraya Seberang Perai**. Rujuk [asal aset, had foto konsep dan semakan visual](docs/UI-DESIGN.md).

@@ -53,3 +53,7 @@ Playwright menggunakan instance pembangunan aktif pada localhost:5173 dengan API
 ## Batas keputusan
 
 Ini ujian pembangunan pada satu instance. Tiada pentest bebas, load test, high availability, ujian restore produksi, integrasi rasmi MBSP atau UAT pengguna sebenar dilakukan. Peringatan deprecation Fastify dan anotasi build dependency tidak menggagalkan pemeriksaan; ia perlu dipantau semasa naik taraf. Ujian ini tidak membuktikan semua keperluan penerimaan Fasa 1 sudah dipenuhi; lihat STATUS.md.
+
+## Semakan selepas naik taraf visual
+
+Lint, typecheck, 42 ujian Vitest, 4 aliran Playwright dan binaan frontend lulus. Semakan tambahan lebar 320, 390, 768, 1024 dan 1440 piksel mendapati semua gambar dimuatkan, tanpa ralat JavaScript atau limpahan mendatar. Screenshot akhir: desktop 1440 × 3692 dan telefon 390 × 4677 piksel. Lihat `verification.json` dan `UI-DESIGN.md` untuk butiran revisi dan asal aset.

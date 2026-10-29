@@ -4,7 +4,7 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 
 ## Fungsi yang mempunyai backend dan database
 
-- Portal Bahasa Melayu, reka bentuk responsif, logo STAYLink asal dan identiti warna terpusat.
+- Portal Bahasa Melayu, reka bentuk responsif, logo STAYLink berdasarkan rujukan pengguna dan identiti warna terpusat.
 - Pendaftaran individu, consent, e-mel unik, pengesahan e-mel dan pemulihan kata laluan melalui pautan sekali guna.
 - Login, sesi HTTP-only, CSRF, had kadar, perubahan profil/kata laluan serta pembatalan sesi.
 - Satu individu mewakili banyak syarikat; banyak wakil bagi satu syarikat; SSM unik dinormalisasi.
@@ -39,3 +39,5 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 Permohonan/premis/aras dan UUID penghantaran, rujukan rasmi MBSP, pembetulan, AI Pre-Check, bil/MBSPPay, GIS, rujukan/ulasan teknikal serentak, KP-PPTT, mesyuarat/keputusan mengikut skop, penjanaan DOCX/PDF, tandatangan, penutupan/arkib dan WhatsApp.
 
 Semua menu berkaitan menunjukkan **Akan Tersedia Dalam Fasa Seterusnya**. Tiada integrasi rasmi atau kelulusan perniagaan simulasi dipersembahkan sebagai selesai.
+
+Naik taraf visual terkini dan status aset jata/panorama: lihat [UI-DESIGN.md](UI-DESIGN.md).
