@@ -45,3 +45,7 @@ Reka bentuk/logo/CSS asal halaman utama dikekalkan. Hanya destinasi pautan Permo
 Keputusan ini ialah pengujian pembangunan; konfigurasi production, UAT dan pengesahan rasmi dokumen tidak dianggap selesai.
 
 Suite pelayar menunggu baki kuota API mencukupi sebelum dua aliran draf tambahan, menggunakan header had kadar sebenar. Had 120/minit dan had pengesahan asal tidak dilonggarkan. Gunakan instance pembangunan baharu bagi setiap suite penuh untuk mengasingkan tetingkap had login 15 minit.
+
+## Sambungan selepas revisi ini
+
+Maklumat premis agregat kini dibina dalam [Fasa 2B.2](PHASE2B2.md). Seterusnya pada bahagian pemohon menyimpan dan membuka premis; catatan premis belum tersedia di atas menerangkan keadaan sejarah Fasa 2B.1. Penghantaran rasmi kekal belum tersedia.

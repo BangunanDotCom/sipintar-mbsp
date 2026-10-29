@@ -1,5 +1,11 @@
 import React from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useLocation,
+} from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -121,7 +127,7 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
         </Link>
       </div>
       <Notice>
-        Fasa 2B.1 — Penyediaan draf sahaja. Penghantaran rasmi, nombor rujukan
+        Fasa 2B.2 — Penyediaan draf sahaja. Penghantaran rasmi, nombor rujukan
         MBSP dan semakan permohonan belum dibuka.
       </Notice>
       <div className="draft-layout">
@@ -129,6 +135,10 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
           className="panel draft-form"
           onSubmit={async (e) => {
             e.preventDefault();
+            const next =
+              (e.nativeEvent as SubmitEvent).submitter?.getAttribute(
+                "value",
+              ) === "premises";
             setError("");
             setMessage("");
             const result = applicationDraftSchema.safeParse({
@@ -155,7 +165,8 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               setSavedAt(saved.updatedAt);
               setMessage("Draf berjaya disimpan. Belum dihantar kepada MBSP.");
               await qc.invalidateQueries({ queryKey: ["application-drafts"] });
-              if (!draft)
+              if (next) nav(`/permohonan/draf/${saved.id}/premis`);
+              else if (!draft)
                 nav(`/permohonan/draf/${saved.id}`, { replace: true });
             } catch (err: any) {
               if (err instanceof ApiError && err.status === 401)
@@ -300,6 +311,14 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
             </button>
             <button
               className="button secondary"
+              name="step"
+              value="premises"
+              disabled={busy || !applicant}
+            >
+              Seterusnya <ArrowRight size={16} />
+            </button>
+            <button
+              className="button secondary"
               type="button"
               disabled
               title="Penghantaran rasmi belum tersedia"
@@ -343,8 +362,8 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               boleh kembali ke halaman ini melalui senarai draf.
             </p>
             <p>
-              Butiran premis dan penghantaran rasmi akan dibuka dalam fasa
-              seterusnya.
+              Gunakan Seterusnya untuk mengisi maklumat premis. Penghantaran
+              rasmi belum tersedia.
             </p>
           </section>
         </aside>
@@ -353,7 +372,11 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
     </>
   );
 }
-export default function ApplicationDraft() {
+export function ApplicantDraftWorkspace({
+  children,
+}: {
+  children: (data: { context: any; draft: any }) => React.ReactNode;
+}) {
   const { id } = useParams(),
     qc = useQueryClient();
   const meQuery = useQuery({
@@ -389,7 +412,7 @@ export default function ApplicationDraft() {
     retry: false,
     staleTime: 0,
   });
-  const destination = id ? `/permohonan/draf/${id}` : "/permohonan/baharu";
+  const destination = useLocation().pathname;
   const failed = [meQuery.error, context.error, draft.error].find(
     (e) => e instanceof ApiError && e.status === 401,
   );
@@ -432,11 +455,17 @@ export default function ApplicationDraft() {
   if (!context.data || (id && !draft.data)) return <Loading />;
   return (
     <main className="container draft-page">
-      <DraftEditor
-        key={id || "new"}
-        context={context.data}
-        draft={id ? draft.data : undefined}
-      />
+      {children({ context: context.data, draft: id ? draft.data : undefined })}
     </main>
+  );
+}
+
+export default function ApplicationDraft() {
+  return (
+    <ApplicantDraftWorkspace>
+      {({ context, draft }) => (
+        <DraftEditor key={draft?.id || "new"} context={context} draft={draft} />
+      )}
+    </ApplicantDraftWorkspace>
   );
 }

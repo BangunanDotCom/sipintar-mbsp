@@ -46,6 +46,7 @@ import {
 } from "../../../packages/shared/src/index";
 import Dashboard from "./Dashboard";
 import ApplicationDraft from "./ApplicationDraft";
+const Premises = React.lazy(() => import("./Premises"));
 import { CompanyInvitation } from "./CompanyInvitation";
 import "@fontsource/montserrat/latin-400.css";
 import "@fontsource/montserrat/latin-500.css";
@@ -859,10 +860,11 @@ function Info({ type }: { type: string }) {
           </p>
           <h3>Tujuan pemprosesan</h3>
           <p>
-            Nama, nombor pengenalan, e-mel, telefon, maklumat syarikat dan surat
-            kuasa digunakan untuk mengurus identiti serta perwakilan. Aktiviti
-            keselamatan direkodkan untuk audit. Nombor pengenalan disimpan
-            secara tersulit dan hanya dipaparkan secara bertopeng dalam profil.
+            Nama, nombor pengenalan, e-mel, telefon, maklumat syarikat, alamat
+            premis, koordinat pin dan surat kuasa digunakan untuk mengurus
+            identiti serta perwakilan. Aktiviti keselamatan direkodkan untuk
+            audit. Nombor pengenalan disimpan secara tersulit dan hanya
+            dipaparkan secara bertopeng dalam profil.
           </p>
           <h3>Kawalan akses</h3>
           <p>
@@ -931,6 +933,22 @@ function App() {
           <Route path="/dashboard/*" element={<Dashboard />} />
           <Route path="/permohonan/baharu" element={<ApplicationDraft />} />
           <Route path="/permohonan/draf/:id" element={<ApplicationDraft />} />
+          <Route
+            path="/permohonan/draf/:id/premis"
+            element={
+              <React.Suspense fallback={<Loading />}>
+                <Premises />
+              </React.Suspense>
+            }
+          />
+          <Route
+            path="/permohonan/draf/:id/semakan"
+            element={
+              <React.Suspense fallback={<Loading />}>
+                <Premises review />
+              </React.Suspense>
+            }
+          />
           <Route path="/jemputan-syarikat" element={<CompanyInvitation />} />
           {["panduan", "privasi", "bantuan", "status"].map((x) => (
             <Route key={x} path={`/${x}`} element={<Info type={x} />} />

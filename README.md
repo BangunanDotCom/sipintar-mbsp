@@ -4,7 +4,7 @@
 
 **Digital Services, Practical Solutions.**
 
-Aplikasi pembangunan Fasa 1, akaun pemohon Fasa 2A dan draf PPTT Fasa 2B.1 untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
+Aplikasi pembangunan Fasa 1, akaun pemohon Fasa 2A dan draf dan maklumat premis PPTT Fasa 2B.1–2B.2 untuk Jabatan Bangunan, Majlis Bandaraya Seberang Perai. Identiti paparan sentiasa **STAYLink MBSP**. Nama direktori checkout lama `sipintar-mbsp` tidak mengubah nama aplikasi.
 
 Ini aplikasi React + Fastify + PostgreSQL yang boleh dijalankan, bukan laman statik. Statusnya **calon semakan pembangunan**, belum disahkan sebagai sistem produksi MBSP. Baca [skop dan batas](docs/STATUS.md) sebelum UAT.
 
@@ -131,3 +131,11 @@ Selepas mendapatkan kod ini, jalankan `npm run db:generate`, `npm run db:migrate
 **Permohonan Baharu** membuka `/permohonan/baharu`; pengguna tanpa sesi login dikembalikan ke laluan itu selepas login. Pilih individu atau syarikat dengan hubungan perwakilan aktif. Maklumat diisi daripada profil backend; identiti pengguna yang memulakan direkodkan berasingan daripada pemohon rasmi. Simpan dan sambung draf melalui PostgreSQL serta senarai draf dashboard. Draf hanya milik akaun yang memulakannya, termasuk apabila syarikat mempunyai wakil lain.
 
 Jalankan `npm run db:generate` dan `npm run db:migrate` untuk migrasi tambahan `202610290003_application_drafts`. Jalankan `npm run db:test:migrate` pada database ujian berasingan. Migrasi turut menambah permission `applications.draft` kepada peranan pemohon; kunci identiti/MFA sedia ada dikekalkan. **Tiada penghantaran rasmi, nombor rujukan MBSP atau butiran premis dalam fasa ini.** Lihat [skop dan screenshot Fasa 2B.1](docs/PHASE2B1.md).
+
+## Maklumat premis Fasa 2B.2
+
+Selepas memilih pemohon, tekan **Seterusnya** untuk membuka Maklumat Premis. Alamat/poskod/lot/mukim/daerah, pin koordinat dan jumlah agregat bangunan disimpan pada draf yang sama. Simpan Draf menerima medan belum lengkap; Seterusnya memerlukan maklumat asas lengkap dan membuka **Semakan Draf**, tanpa penghantaran rasmi. Sebelumnya menyimpan perubahan sah sebelum kembali.
+
+Jalankan `npm run db:generate` dan `npm run db:migrate` untuk migrasi `202610290004_premises`; migrasi database ujian menggunakan `npm run db:test:migrate`. Tiada rahsia baharu atau putaran kunci sedia ada diperlukan.
+
+Peta interaktif Leaflet menggunakan jubin OpenStreetMap. **Akses jubin disekat oleh rangkaian Codex semasa (HTTP CONNECT 403)**: screenshot memaparkan grid dan amaran sebenar, bukan peta jalan simulasi. Klik/seret pin, pan/zoom dan koordinat masih tersedia; lokasi perlu disemak pada peta asas yang boleh dicapai. Penggunaan lain memerlukan akses browser/CSP kepada `https://tile.openstreetmap.org` atau integrasi penyedia diluluskan ICT. Pin tidak mengesahkan sempadan daerah. [Skop, ujian dan screenshot Fasa 2B.2](docs/PHASE2B2.md).

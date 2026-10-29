@@ -923,6 +923,227 @@
         }
       }
     },
+    "/api/application-drafts/{id}/premises": {
+      "get": {
+        "summary": "GET /api/application-drafts/:id/premises",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT /api/application-drafts/:id/premises",
+        "tags": [
+          "Services"
+        ],
+        "description": "Memerlukan sesi sah. Pegawai memerlukan MFA. Mutasi memerlukan Origin sepadan APP_ORIGIN dan header X-CSRF-Token. RBAC dan skop pelantikan disemak dalam backend.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "SAVE",
+                      "CONTINUE"
+                    ],
+                    "default": "SAVE"
+                  },
+                  "premises": {
+                    "type": "object",
+                    "properties": {
+                      "address": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000,
+                        "nullable": true
+                      },
+                      "postcode": {
+                        "type": "string",
+                        "pattern": "^[0-9]{5}$",
+                        "nullable": true
+                      },
+                      "lotNumber": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120,
+                        "nullable": true
+                      },
+                      "locality": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "nullable": true
+                      },
+                      "districtId": {
+                        "type": "string",
+                        "enum": [
+                          "SPU",
+                          "SPT",
+                          "SPS",
+                          null
+                        ],
+                        "nullable": true
+                      },
+                      "latitude": {
+                        "type": "number",
+                        "minimum": -85,
+                        "maximum": 85,
+                        "nullable": true
+                      },
+                      "longitude": {
+                        "type": "number",
+                        "minimum": -180,
+                        "maximum": 180,
+                        "nullable": true
+                      },
+                      "buildingType": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 160,
+                        "nullable": true
+                      },
+                      "currentUse": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "nullable": true
+                      },
+                      "involvedFloors": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647,
+                        "nullable": true
+                      },
+                      "accommodationUnits": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647,
+                        "nullable": true
+                      },
+                      "totalRooms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647,
+                        "nullable": true
+                      },
+                      "floorAreaSqm": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 1000000000,
+                        "multipleOf": 0.01,
+                        "nullable": true
+                      },
+                      "proposedWorkers": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647,
+                        "nullable": true
+                      },
+                      "certificateType": {
+                        "type": "string",
+                        "enum": [
+                          "CCC",
+                          "CFO",
+                          "OC",
+                          "NOT_APPLICABLE",
+                          "UNKNOWN",
+                          null
+                        ],
+                        "nullable": true
+                      },
+                      "certificateNumber": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120,
+                        "nullable": true
+                      },
+                      "certificateDate": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "address",
+                      "postcode",
+                      "lotNumber",
+                      "locality",
+                      "districtId",
+                      "latitude",
+                      "longitude",
+                      "buildingType",
+                      "currentUse",
+                      "involvedFloors",
+                      "accommodationUnits",
+                      "totalRooms",
+                      "floorAreaSqm",
+                      "proposedWorkers",
+                      "certificateType",
+                      "certificateNumber",
+                      "certificateDate"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "version",
+                  "premises"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/profile/identification": {
       "post": {
         "summary": "POST /api/profile/identification",

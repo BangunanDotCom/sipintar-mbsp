@@ -11,8 +11,8 @@ Tarikh: **29 Oktober 2026**, waktu paparan pengguna Malaysia. Runtime yang digun
 | Seed peranan, permission, daerah, jabatan dan kategori | Lulus |
 | ESLint | Lulus |
 | TypeScript `tsc --noEmit` | Lulus |
-| Vitest unit dan API | **67/67 lulus** (56 API, 11 unit) |
-| Playwright aliran pelayar | **8/8 lulus** |
+| Vitest unit dan API | **83/83 lulus** (67 API, 16 unit) |
+| Playwright aliran pelayar | **10/10 lulus** |
 | Binaan frontend produksi | Lulus |
 | Bootstrap pentadbir pertama pada database baharu | Berjaya; percubaan kedua ditolak |
 | Semakan visual desktop 1440px dan telefon 390px | Dilakukan; tiada overflow mendatar pada aliran diuji |
@@ -89,3 +89,13 @@ Dua aliran pelayar baharu menguji: (7) CTA → login sebenar → individu autofi
 Semakan ruang draf syarikat pada 320, 390, 768, 1024 dan 1440 piksel tiada overflow mendatar; screenshot desktop/telefon ialah PNG sebenar. Snapshot halaman utama desktop/telefon byte-identik dengan versi diluluskan, walaupun href Permohonan Baharu berubah. Tiada CSS/aset identiti asal diubah. Screenshot dan batas: [PHASE2B1.md](PHASE2B1.md).
 
 Suite pelayar menunggu baki kuota API mencukupi sebelum dua aliran draf tambahan, menggunakan header had kadar sebenar. Had 120/minit dan had pengesahan asal tidak dilonggarkan. Gunakan instance pembangunan baharu bagi setiap suite penuh untuk mengasingkan tetingkap had login 15 minit.
+
+## Keputusan semasa Fasa 2B.2
+
+Codegen, migrasi PostgreSQL pembangunan/ujian `202610290004_premises`, lint, typecheck, build, **83 unit/API (67 API + 16 unit)** dan **10 aliran Playwright** lulus. Bilangan dalam catatan revisi terdahulu ialah sejarah.
+
+API/database tambahan menguji: bahagian kosong tanpa rekod palsu, draf separa, semua agregat/sijil/pin lengkap, daerah manual tanpa verifikasi geografi, input tak sah/medan GIS palsu, sesi/CSRF/ownership termasuk rakan wakil syarikat sama, kuasa tamat/REVOKED/belum bermula/syarikat tidak aktif, konflik versi antara bahagian/simpanan serentak, FK/unik dan CHECK PostgreSQL. Unit menguji kelengkapan berbanding draf, koordinat berpasangan, bilangan/keluasan/sijil dan allowlist login-return.
+
+Dua aliran pelayar tambahan menguji navigasi pemohon → premis, gagal CONTINUE tidak lengkap, simpan separa/reload, klik/memindah/seret pin, koordinat automatik, input agregat, CCC, semakan draf termasuk reload, navigasi Sebelumnya dan autosave, pan/pin papan kekunci serta logout/login-return ke premis. Ujian berasaskan data sintetik DATA UJIAN. 320, 390, 768, 1024 dan 1440 piksel disemak tanpa overflow. Suite menunggu kuota API sebenar; had kadar tidak dilonggarkan.
+
+**Peta asas PENDING:** akses ke tile.openstreetmap.org disekat HTTP CONNECT 403. Screenshot menggunakan portal/keadaan rangkaian sebenar tanpa mock jubin; grid/pin/amaran dipaparkan. Kejayaan ujian pin tidak membuktikan jubin peta asas atau GIS rasmi boleh dicapai. [Screenshot dan batas](PHASE2B2.md).

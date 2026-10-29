@@ -51,3 +51,7 @@ Fail logo asal dikekalkan byte-for-byte dengan SHA-256 `29d1cee0f4fab1a36f26c742
 ## Sambungan draf Fasa 2B.1
 
 Destinasi Permohonan Baharu kini `/permohonan/baharu` dengan semakan sesi/login-return. Daftar Sekarang kekal `/daftar`. Layout, teks, warna, logo rasmi asal, logo emas STAYLink, panorama dan animasi halaman utama tidak diubah. Screenshot utama desktop/telefon diuji semula dan byte-identik dengan fail diluluskan. CSS ruang draf baharu diskop dalam `application-draft.css`, dengan radio kapasiti, maklumat profil, catatan, simpan/resume dan status penghantaran belum tersedia. [Screenshot ruang draf](PHASE2B1.md).
+
+## Ruang premis Fasa 2B.2
+
+Halaman utama, logo asal, latar, warna dan animasi tidak diubah. Borang premis menggunakan komponen kad/form korporat, susun atur dua kolum desktop dan satu kolum telefon. CSS baharu diskop pada ruang premis; Leaflet/CSS peta dimuatkan apabila diperlukan. Pin berwarna biru/emas adalah penanda lokasi, bukan logo rasmi baharu. Screenshot memaparkan keadaan rangkaian sebenar (peta asas OSM disekat, grid/amaran kelihatan). Lihat PHASE2B2.md.

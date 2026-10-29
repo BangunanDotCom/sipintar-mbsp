@@ -269,6 +269,7 @@ model AuditLog {
 }
 
 model ApplicationDraft {
+ premises ApplicationPremises?
  id String @id @default(uuid())
  initiatedByUserId String
  initiatedBy User @relation(fields:[initiatedByUserId],references:[id])
@@ -286,4 +287,32 @@ model ApplicationDraft {
  updatedAt DateTime @updatedAt
  @@index([initiatedByUserId,updatedAt])
  @@map("application_drafts")
+}
+
+model ApplicationPremises {
+ id String @id @default(uuid())
+ draftId String @unique
+ draft ApplicationDraft @relation(fields:[draftId],references:[id])
+ address String?
+ postcode String?
+ lotNumber String?
+ locality String?
+ districtId String?
+ latitude Float?
+ longitude Float?
+ locationSource String?
+ boundaryStatus String @default("UNVERIFIED")
+ buildingType String?
+ currentUse String?
+ involvedFloors Int?
+ accommodationUnits Int?
+ totalRooms Int?
+ floorAreaSqm Decimal? @db.Decimal(12,2)
+ proposedWorkers Int?
+ certificateType String?
+ certificateNumber String?
+ certificateDate DateTime? @db.Date
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@map("application_premises")
 }

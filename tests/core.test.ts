@@ -1,3 +1,8 @@
+import {
+  premisesFieldsSchema,
+  completePremisesSchema,
+  emptyPremises,
+} from "../packages/shared/src/premises";
 import { randomBytes } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import {
@@ -110,5 +115,58 @@ describe("Phase 2B.1 client validation and safe login returns", () => {
       null,
     ])
       expect(safeApplicantReturnPath(path)).toBeNull();
+  });
+});
+
+describe("Phase 2B.2 premises validation", () => {
+  it("allows incomplete drafts but requires complete fields to continue", () => {
+    expect(premisesFieldsSchema.safeParse(emptyPremises).success).toBe(true);
+    expect(completePremisesSchema.safeParse(emptyPremises).success).toBe(false);
+  });
+  it("requires paired pin coordinates without guessing a district", () => {
+    expect(
+      premisesFieldsSchema.safeParse({ ...emptyPremises, latitude: 5.4 })
+        .success,
+    ).toBe(false);
+    const p = premisesFieldsSchema.parse({
+      ...emptyPremises,
+      latitude: 5.4,
+      longitude: 100.4,
+    });
+    expect(p.districtId).toBeNull();
+  });
+  it("validates positive aggregate counts and area precision", () => {
+    for (const changed of [
+      { totalRooms: 0 },
+      { involvedFloors: 1.5 },
+      { floorAreaSqm: -1 },
+      { floorAreaSqm: 1.234 },
+    ])
+      expect(
+        premisesFieldsSchema.safeParse({ ...emptyPremises, ...changed })
+          .success,
+      ).toBe(false);
+  });
+  it("requires a certificate type for certificate details", () => {
+    expect(
+      premisesFieldsSchema.safeParse({
+        ...emptyPremises,
+        certificateNumber: "DATA UJIAN",
+      }).success,
+    ).toBe(false);
+    expect(
+      premisesFieldsSchema.safeParse({
+        ...emptyPremises,
+        certificateType: "UNKNOWN",
+      }).success,
+    ).toBe(true);
+  });
+  it("preserves only valid premises/review login return paths", () => {
+    const base = "/permohonan/draf/12345678-1234-4234-8234-123456789abc";
+    expect(safeApplicantReturnPath(base + "/premis")).toBe(base + "/premis");
+    expect(safeApplicantReturnPath(base + "/semakan")).toBe(base + "/semakan");
+    expect(
+      safeApplicantReturnPath(base + "/premis?next=//example.test"),
+    ).toBeNull();
   });
 });

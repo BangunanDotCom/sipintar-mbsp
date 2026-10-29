@@ -67,3 +67,11 @@ Kontrak `integrations.ts` ialah interface sahaja: AI, bayaran, GIS, SSO, tandata
 CHECK database mengehadkan status kepada DRAFT dan memastikan kapasiti individu/syarikat konsisten. Unique versi tidak diperlukan: conditional update pada id/pemilik/version dalam transaksi membenarkan satu simpanan sahaja bagi setiap versi. Rekod perwakilan dan syarikat dikunci FOR SHARE ketika semakan/simpanan untuk menyusun perubahan kuasa serentak. Audit create/save berada dalam transaksi simpanan sama. Tiada penghantaran, nombor rujukan atau keputusan rasmi dicipta.
 
 Migrasi `202610290003_application_drafts` turut memasukkan permission secara idempotent pada peranan pemohon sedia ada. Pemasangan database kosong masih menggunakan seed peranan seperti biasa.
+
+## Premis Fasa 2B.2
+
+Jadual `application_premises` ialah hubungan pilihan 1:1 kepada `application_drafts` (25 jadual teras keseluruhan). Rekod agregat lokasi/bangunan/sijil disimpan sebenar, tanpa model bilik individu. FK unik draf dan daerah serta CHECK koordinat, bilangan, sijil/status GIS dikuatkuasakan SQL.
+
+`premises.ts` berkongsi auth/authority helper Fasa 2B.1; conditional parent-version update, upsert premis dan audit berada dalam transaksi sama. Snapshot pemula/pemohon tidak diubah oleh endpoint premis. Validator berasingan `packages/shared/src/premises.ts` menyokong SAVE separa dan CONTINUE lengkap. Komponen premis/Leaflet dimuatkan secara dinamik supaya peta tidak dimuatkan pada halaman utama.
+
+Sumber peta asas OSM ialah pihak ketiga, bukan data GIS MBSP. Kegagalan jubin tidak menghasilkan geografi rekaan; paparan memberi amaran dan membezakan grid/pin koordinat daripada peta asas. Tiada backend proxy ke URL peta bebas atau reverse geocoder dibina.

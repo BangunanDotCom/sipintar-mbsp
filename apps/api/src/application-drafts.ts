@@ -25,7 +25,7 @@ function individual(user: UserProfile) {
     identificationMasked: user.identificationMasked,
   };
 }
-async function applicant(req: FastifyRequest) {
+export async function applicant(req: FastifyRequest) {
   const s = await authorize(req, "applications.draft");
   if (s.user.kind !== "APPLICANT")
     fail(403, "Permohonan baharu hanya untuk akaun pemohon.");
@@ -47,7 +47,7 @@ async function allowedCompanies(userId: string) {
     orderBy: { company: { name: "asc" } },
   });
 }
-async function companyAuthority(
+export async function companyAuthority(
   tx: Prisma.TransactionClient,
   userId: string,
   companyId: string,
@@ -259,7 +259,7 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
       fail(404, "Draf tidak ditemui.");
     fail(
       409,
-      "Penghantaran rasmi belum dibuka dalam Fasa 2B.1. Draf sahaja boleh disimpan.",
+      "Penghantaran rasmi belum dibuka dalam fasa ini. Draf sahaja boleh disimpan.",
     );
   });
 }

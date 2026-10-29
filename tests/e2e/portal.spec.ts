@@ -690,3 +690,218 @@ test("Phase 2B.1: company autofill, separate initiator, responsive screenshots a
   ).toHaveCount(0);
   await db.$disconnect();
 });
+
+async function premisesSession(page: any) {
+  const { user, email, password } = await draftApplicantFixture();
+  const { db, hash, token } = await import("../../apps/api/src/core"),
+    raw = token();
+  await db.session.create({
+    data: {
+      id: hash(raw),
+      userId: user.id,
+      csrfHash: hash(token()),
+      activeRole: "PEMOHON",
+      mfaVerified: true,
+      expiresAt: new Date(Date.now() + 3600000),
+    },
+  });
+  await page.context().addCookies([
+    {
+      name: "staylink",
+      value: raw,
+      url: "http://localhost:5173",
+      httpOnly: true,
+      sameSite: "Strict",
+    },
+  ]);
+  await page.goto("/permohonan/baharu");
+  await page
+    .getByRole("radio", { name: "Individu atas kapasiti sendiri" })
+    .check();
+  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Maklumat Premis Penginapan Pekerja Tempoh Terhad",
+      exact: true,
+    }),
+  ).toBeVisible();
+  return { user, email, password, id: page.url().split("/").at(-2)! };
+}
+test("Phase 2B.2: partial/full premises save, actual map pin, review and responsive screenshots", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { id } = await premisesSession(page),
+    { db } = await import("../../apps/api/src/core");
+  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Semak medan");
+  expect(await db.applicationPremises.count({ where: { draftId: id } })).toBe(
+    0,
+  );
+  await page
+    .getByLabel("Alamat penuh premis", { exact: true })
+    .fill("DATA UJIAN Alamat Premis Penginapan sahaja");
+  await page.getByRole("button", { name: "Simpan Draf", exact: true }).click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Maklumat premis berjaya disimpan" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByLabel("Alamat penuh premis", { exact: true }),
+  ).toHaveValue("DATA UJIAN Alamat Premis Penginapan sahaja");
+  await page.getByLabel("Poskod", { exact: true }).fill("13000");
+  await page
+    .getByLabel("Nombor lot / PT", { exact: true })
+    .fill("PT DATA UJIAN 01");
+  await page
+    .getByLabel("Mukim atau bandar", { exact: true })
+    .fill("Mukim DATA UJIAN");
+  await page
+    .getByLabel("Daerah (diisytiharkan pemohon)", { exact: true })
+    .selectOption("SPT");
+  await page.locator(".premises-map").click({ position: { x: 200, y: 150 } });
+  await expect(page.getByLabel("Latitude", { exact: true })).not.toHaveValue(
+    "",
+  );
+  const firstLongitude = await page
+    .getByLabel("Longitude", { exact: true })
+    .inputValue();
+  await page.locator(".premises-map").click({ position: { x: 250, y: 180 } });
+  await expect(page.getByLabel("Longitude", { exact: true })).not.toHaveValue(
+    firstLongitude,
+  );
+  const clickedLatitude = await page
+    .getByLabel("Latitude", { exact: true })
+    .inputValue();
+  await page
+    .locator(".leaflet-marker-icon")
+    .dragTo(page.locator(".premises-map"), {
+      targetPosition: { x: 300, y: 220 },
+    });
+  await expect(page.getByLabel("Latitude", { exact: true })).not.toHaveValue(
+    clickedLatitude,
+  );
+  const latitude = Number(
+      await page.getByLabel("Latitude", { exact: true }).inputValue(),
+    ),
+    longitude = Number(
+      await page.getByLabel("Longitude", { exact: true }).inputValue(),
+    );
+  await expect(
+    page.getByLabel("Daerah (diisytiharkan pemohon)", { exact: true }),
+  ).toHaveValue("SPT");
+  for (const [label, value] of [
+    ["Jenis bangunan", "Bangunan DATA UJIAN"],
+    ["Kegunaan bangunan sedia ada", "Kegunaan DATA UJIAN"],
+    ["Bilangan tingkat terlibat", "2"],
+    ["Bilangan unit penginapan", "4"],
+    ["Bilangan bilik keseluruhan", "12"],
+    ["Jumlah keluasan lantai terlibat (m²)", "250.75"],
+    ["Jumlah pekerja yang dicadangkan", "36"],
+  ])
+    await page.getByLabel(label, { exact: true }).fill(value);
+  await page.getByLabel("Jenis sijil", { exact: true }).selectOption("CCC");
+  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(
+    page.getByLabel("Nombor rujukan sijil", { exact: true }),
+  ).toHaveAttribute("aria-invalid", "true");
+  await page
+    .getByLabel("Nombor rujukan sijil", { exact: true })
+    .fill("DATA-UJIAN-CCC-01");
+  await page
+    .getByLabel("Tarikh sijil (jika diketahui)", { exact: true })
+    .fill("2025-01-01");
+  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(page).toHaveURL(/\/semakan$/);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Semakan Draf PPTT", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Hantar Permohonan (belum tersedia)",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  const stored = await db.applicationPremises.findUniqueOrThrow({
+    where: { draftId: id },
+  });
+  expect(stored.latitude).toBe(latitude);
+  expect(stored.longitude).toBe(longitude);
+  expect(stored.totalRooms).toBe(12);
+  expect(Number(stored.floorAreaSqm)).toBe(250.75);
+  expect(stored.boundaryStatus).toBe("UNVERIFIED");
+  expect(
+    (await db.applicationDraft.findUniqueOrThrow({ where: { id } })).status,
+  ).toBe("DRAFT");
+  await page.getByRole("link", { name: "Sebelumnya", exact: true }).click();
+  await expect(
+    page.getByLabel("Bilangan bilik keseluruhan", { exact: true }),
+  ).toHaveValue("12");
+  for (const width of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: width >= 1024 ? 1000 : 844 });
+    await page.evaluate(() => document.fonts.ready);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    if (width === 390 || width === 1440) {
+      // Capture the real portal and actual network state, with no simulated map tiles.
+      await expect(
+        page.getByText("Memuatkan peta asas OpenStreetMap…", { exact: true }),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: `docs/screenshots/phase2b2-premises-${width === 390 ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  }
+  expect(errors).toEqual([]);
+  await db.$disconnect();
+});
+test("Phase 2B.2: keyboard pin, previous autosave, resume and premises login return", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { id, email, password } = await premisesSession(page);
+  await page.locator(".premises-map").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".map-center")).not.toContainText("100.420000");
+  await page
+    .getByRole("button", { name: "Letak Pin di Tengah Peta", exact: true })
+    .click();
+  await expect(page.getByLabel("Longitude", { exact: true })).not.toHaveValue(
+    "",
+  );
+  await expect(page.locator(".leaflet-marker-icon")).toBeVisible();
+  await page
+    .getByLabel("Alamat penuh premis", { exact: true })
+    .fill("DATA UJIAN catatan alamat separa");
+  await page.getByRole("button", { name: "Sebelumnya", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/permohonan/draf/${id}$`));
+  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(
+    page.getByLabel("Alamat penuh premis", { exact: true }),
+  ).toHaveValue("DATA UJIAN catatan alamat separa");
+  const url = page.url();
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "Log keluar", exact: true }).click();
+  await page.goto(url);
+  await expect(page).toHaveURL(/log-masuk\?next=.*%2Fpremis$/);
+  await page.getByLabel("E-mel", { exact: true }).fill(email);
+  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Log Masuk", exact: true }).click();
+  await expect(
+    page.getByLabel("Alamat penuh premis", { exact: true }),
+  ).toHaveValue("DATA UJIAN catatan alamat separa");
+});

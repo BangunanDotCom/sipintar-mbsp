@@ -1,0 +1,188 @@
+/* Only the premises workspace. Brand, homepage and existing animation rules are preserved. */
+.premises-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 28px;
+  font-size: 0.82rem;
+  line-height: 1.8;
+}
+.premises-steps [aria-current="step"] {
+  color: #0b2d6b;
+  font-weight: 700;
+  border-bottom: 2px solid #bc942f;
+}
+.premises-form {
+  margin-top: 24px;
+}
+.premises-fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.premises-form h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 20px;
+  font-size: 1.2rem;
+  line-height: 1.7;
+}
+.premises-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 24px;
+}
+.premises-fields label {
+  margin: 0;
+  min-width: 0;
+}
+.premises-fields input,
+.premises-fields select,
+.premises-fields textarea {
+  min-width: 0;
+}
+.premises-wide {
+  grid-column: 1/-1;
+}
+.premises-field-error {
+  color: #a22934;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.premises-form [aria-invalid="true"] {
+  border-color: #b33542;
+}
+.premises-form > [tabindex="-1"]:focus {
+  outline: 2px solid #b33542;
+  outline-offset: 4px;
+}
+.premises-help {
+  color: #526b87;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+.premises-map-section {
+  margin-top: 28px;
+  border-top: 1px solid #dbe7f1;
+  padding-top: 24px;
+}
+.premises-map-section h3 {
+  font-size: 1.05rem;
+}
+.premises-map-section p {
+  font-size: 0.84rem;
+  line-height: 1.8;
+}
+.premises-map {
+  height: 360px;
+  border: 1px solid #b8cad9;
+  border-radius: 12px;
+  background-color: #e6eef2;
+  background-image:
+    linear-gradient(#c7d7e233 1px, transparent 1px),
+    linear-gradient(90deg, #c7d7e233 1px, transparent 1px);
+  background-size: 32px 32px;
+  isolation: isolate;
+  z-index: 0;
+}
+.premises-map:focus {
+  outline: 3px solid #2e6bff;
+  outline-offset: 3px;
+}
+.premises-map .leaflet-control a {
+  color: #153350;
+}
+.premises-map .leaflet-control-attribution {
+  max-width: 100%;
+  font-size: 10px;
+}
+.premises-map .leaflet-control-attribution a {
+  display: inline;
+}
+.premises-pin span {
+  display: block;
+  width: 25px;
+  height: 25px;
+  background: #0b2d6b;
+  border: 3px solid #e3bd52;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 3px 10px #0b2d6b55;
+}
+.premises-pin span::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #3dd6ff;
+}
+.map-notice {
+  padding: 12px 16px;
+  border: 1px solid #d8b85b;
+  border-radius: 8px;
+  background: #fffae9;
+  color: #624e16;
+}
+.map-center {
+  color: #526b87;
+  font-variant-numeric: tabular-nums;
+}
+.premises-coordinates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+.premises-coordinates label {
+  min-width: 0;
+}
+.premises-coordinates input {
+  font-variant-numeric: tabular-nums;
+  background: #edf4f8;
+}
+.premises-gis-note {
+  border-left: 3px solid #bc942f;
+  padding: 10px 14px;
+  color: #5c4b23;
+  background: #fffbef;
+  font-size: 0.84rem;
+  line-height: 1.8;
+}
+.premises-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 24px;
+}
+.premises-actions .button {
+  white-space: normal;
+  line-height: 1.7;
+}
+.premises-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+@media (max-width: 650px) {
+  .premises-fields,
+  .premises-review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .premises-map {
+    height: 300px;
+  }
+  .premises-actions {
+    flex-direction: column;
+  }
+  .premises-actions .button {
+    width: 100%;
+  }
+  .premises-form .panel {
+    padding: 20px;
+  }
+}

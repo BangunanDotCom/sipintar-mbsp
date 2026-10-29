@@ -48,3 +48,11 @@ Jemputan wakil menggunakan token hash 256 bit, tempoh 24 jam, penerima terikat d
 Endpoint draf menggunakan sesi, verified email, permission database, CSRF dan pemeriksaan pemilikan di backend. Schema strict menolak identiti/status/snapshot daripada pelanggan. Server mengambil profil individu dan syarikat/wakil daripada database; hanya pengenalan bertopeng disalin ke snapshot. Pemula kekal berasingan daripada pemohon rasmi. Audit tidak memasukkan isi catatan, password atau pengenalan penuh.
 
 Semakan hubungan semasa menolak kuasa REVOKED/tamat/belum bermula dan syarikat tidak aktif. Pemilikan draf tidak dikongsi kepada wakil lain syarikat sama atau ICT. Conditional version update dan transaksi menghalang kehilangan perubahan daripada dua tab. CHECK PostgreSQL menolak status selain DRAFT; tiada endpoint penghantaran yang berjaya atau rujukan MBSP dijana. Catatan ialah teks biasa yang dienkod React; pengguna diminta tidak memasukkan rahsia/pengenalan penuh dalam catatan.
+
+## Premis Fasa 2B.2
+
+Kawalan pemilikan, verified email, role/permission semasa dan authority syarikat digunakan semula. Body strict menolak status GIS/owner/medan asing; seluruh borang divalidasi di backend, bukan bergantung kepada input HTML. Nilai separa nullable masih diperiksa; koordinat mesti berpasangan, bilangan positif, had saiz teks, keluasan dua perpuluhan dan tarikh sijil sah.
+
+Versi draf dikongsi antara bahagian untuk menghalang lost update. Audit tidak memasukkan alamat/koordinat/nombor sijil dalam metadata. Data lokasi/sijil disimpan dalam PostgreSQL mengikut kawalan backup/retention sedia ada. Grid atau pin tidak dianggap pengesahan bidang kuasa: SQL mengehadkan boundaryStatus kepada UNVERIFIED.
+
+Browser meminta imej jubin OSM mengikut viewport (IP/referrer/tahap zoom kawasan boleh dilihat penyedia). Tiada alamat penuh, nombor pengenalan atau sijil dihantar ke geocoder; tiada perkhidmatan geocoding dibina. Akses perkhidmatan pihak ketiga, CSP/privasi dan polisi penyedia perlu disemak ICT sebelum produksi. Leaflet dibekalkan tempatan; notis BSD disertakan di `apps/web/public/licenses/leaflet.txt`.

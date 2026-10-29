@@ -49,7 +49,57 @@ const draftInput = (update = false) => ({
     },
   ],
 });
+const premisesBody = {
+  address: { type: ["string", "null"], minLength: 1, maxLength: 1000 },
+  postcode: { type: ["string", "null"], pattern: "^[0-9]{5}$" },
+  lotNumber: { type: ["string", "null"], minLength: 1, maxLength: 120 },
+  locality: { type: ["string", "null"], minLength: 1, maxLength: 160 },
+  districtId: { type: ["string", "null"], enum: ["SPU", "SPT", "SPS", null] },
+  latitude: { type: ["number", "null"], minimum: -85, maximum: 85 },
+  longitude: { type: ["number", "null"], minimum: -180, maximum: 180 },
+  buildingType: { type: ["string", "null"], minLength: 1, maxLength: 160 },
+  currentUse: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+  involvedFloors: {
+    type: ["integer", "null"],
+    minimum: 1,
+    maximum: 2147483647,
+  },
+  accommodationUnits: {
+    type: ["integer", "null"],
+    minimum: 1,
+    maximum: 2147483647,
+  },
+  totalRooms: { type: ["integer", "null"], minimum: 1, maximum: 2147483647 },
+  floorAreaSqm: {
+    type: ["number", "null"],
+    exclusiveMinimum: 0,
+    maximum: 1000000000,
+    multipleOf: 0.01,
+  },
+  proposedWorkers: {
+    type: ["integer", "null"],
+    minimum: 1,
+    maximum: 2147483647,
+  },
+  certificateType: {
+    type: ["string", "null"],
+    enum: ["CCC", "CFO", "OC", "NOT_APPLICABLE", "UNKNOWN", null],
+  },
+  certificateNumber: { type: ["string", "null"], minLength: 1, maxLength: 120 },
+  certificateDate: { type: ["string", "null"], format: "date" },
+};
 const bodies: Record<string, unknown> = {
+  "PUT /api/application-drafts/:id/premises": {
+    ...object(
+      {
+        version: { type: "integer", minimum: 1 },
+        action: { type: "string", enum: ["SAVE", "CONTINUE"], default: "SAVE" },
+        premises: { ...object(premisesBody), additionalProperties: false },
+      },
+      ["version", "premises"],
+    ),
+    additionalProperties: false,
+  },
   "POST /api/application-drafts": draftInput(),
   "PATCH /api/application-drafts/:id": draftInput(true),
   "POST /api/application-drafts/:id/submit": object({}),

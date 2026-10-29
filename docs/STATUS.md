@@ -18,7 +18,7 @@ Tarikh semakan: 29 Oktober 2026. Projek ini menyediakan asas aplikasi yang boleh
 - Daftar konfigurasi teknikal/operasi berasingan dengan sejarah versi.
 - Pusat notifikasi, tanda dibaca, SMTP ujian, log penghantaran/failure dan command retry.
 - Audit aktiviti penting dan paparan terhad mengikut kuasa.
-- PostgreSQL sebenar, 24 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
+- PostgreSQL sebenar, 25 jadual teras, SQL migrasi, seed master data, seed demonstrasi pilihan serta OpenAPI.
 - Ujian unit, API dengan database berasingan, dan Playwright pada Chromium sebenar.
 
 ## Batas Fasa 1 yang masih memerlukan kerja
@@ -57,3 +57,9 @@ Persekitaran lain memerlukan migrasi tambahan, `IDENTITY_DATA_KEY` stabil dan SM
 Pilihan kapasiti individu/syarikat, autofill profil sebenar, identiti pemula berasingan, simpan/sambung PostgreSQL, senarai draf dashboard, pemeriksaan pemilikan/kuasa semasa, kawalan versi serentak dan audit telah dibina. 67 unit/API serta 8 aliran pelayar lulus. [Skop dan screenshot](PHASE2B1.md).
 
 Rekod draf bukan penghantaran rasmi. Tiada butiran premis, nombor rujukan, penerimaan rasmi atau kes pegawai dicipta. Senarai `applications` pada API dashboard kekal untuk penghantaran masa depan; draf sebenar dibaca melalui endpoint `application-drafts`. Konfigurasi production, pengesahan dokumen dan UAT kekal pending.
+
+## Fasa 2B.2 — maklumat premis
+
+Lokasi/daerah diisytiharkan, pin koordinat automatik, bangunan agregat, CCC/CFO/OC, simpan separa/lengkap, Sebelumnya/Seterusnya dan semakan draf telah disambungkan ke PostgreSQL serta kawalan pemilik/audit/versi yang sama. 83 unit/API dan 10 aliran pelayar lulus. Tiada penghantaran rasmi atau kelulusan.
+
+**PENDING:** jubin OSM tidak boleh dicapai dalam rangkaian Codex (HTTP CONNECT 403), jadi screenshot menunjukkan grid/amaran sebenar. Enjin pin/koordinat diuji; penghantaran peta asas sebenar belum berjaya diuji. Tiada data GIS rasmi MBSP untuk mengesahkan sempadan. Lihat [skop, batas dan screenshot](PHASE2B2.md). Catatan terdahulu tentang premis belum dibina ialah sejarah sebelum revisi ini; agregat premis kini tersedia, penghantaran rasmi/rekod unit atau aras terperinci belum tersedia.

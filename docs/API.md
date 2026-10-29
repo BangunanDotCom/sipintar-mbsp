@@ -66,3 +66,10 @@ Semua endpoint berikut memerlukan pemohon aktif, e-mel disahkan, pengenalan leng
 | `POST /api/application-drafts/:id/submit` | Penghantaran tidak disediakan: 409 bagi pemilik sah, 404 bagi bukan pemilik |
 
 `notes` maksimum 2,000 aksara. Badan strict menolak medan tambahan seperti owner/status/snapshot; companyId tidak dibenarkan bagi kapasiti individu. Sesi/permission/pengenalan tidak sah ditolak sebelum menyimpan. ID draf ialah UUID dalaman, bukan rujukan rasmi MBSP. Lihat PHASE2B1.md untuk pemilikan dan status perwakilan.
+
+## Maklumat premis Fasa 2B.2
+
+- `GET /api/application-drafts/:id/premises`: pemilik asal dengan permission `applications.draft` dan kuasa syarikat semasa; memulangkan `{draftId,version,status,applicant,premises,complete,locationSource,boundaryStatus,updatedAt,submissionEnabled:false}`. Bahagian belum pernah disimpan memulangkan semua medan NULL dan tidak mencipta rekod rekaan.
+- `PUT /api/application-drafts/:id/premises`: `{version,action:"SAVE"|"CONTINUE",premises:{...}}`. `action` lalai SAVE. Semua 17 medan `premises` diperlukan dalam badan, tetapi nullable untuk draf separa. CONTINUE mewajibkan medan asas/pin lengkap dan nombor sijil jika CCC/CFO/OC dipilih. Baca OpenAPI untuk nama dan had tepat.
+
+CSRF/Origin, verified email, pengenalan dan permission peranan aktif diwajibkan. Satu versi dikongsi bahagian pemohon dan premis; konflik 409 tidak menyimpan sebahagian data. 404 bagi bukan pemilik/kuasa syarikat tidak sah; 400 bagi validasi. Data lokasi/sijil/owner/status GIS tambahan ditolak jika di luar schema. `complete` menandakan kelengkapan medan sahaja; bukan pengesahan MBSP atau penghantaran. Tiada API geocoding/sempadan GIS atau penghantaran rasmi baharu.

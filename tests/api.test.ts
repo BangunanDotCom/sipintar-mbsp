@@ -1420,3 +1420,309 @@ describe("Phase 2B.1 real applicant draft storage and access", () => {
     ).toBe(0);
   });
 });
+
+describe("Phase 2B.2 premises aggregate persistence and access", () => {
+  const complete = {
+    address: "DATA UJIAN Alamat Premis sahaja",
+    postcode: "13000",
+    lotNumber: "PT DATA UJIAN 01",
+    locality: "Mukim DATA UJIAN",
+    districtId: "SPT",
+    latitude: 5.38,
+    longitude: 100.42,
+    buildingType: "Bangunan DATA UJIAN",
+    currentUse: "Kegunaan DATA UJIAN",
+    involvedFloors: 2,
+    accommodationUnits: 4,
+    totalRooms: 12,
+    floorAreaSqm: 250.75,
+    proposedWorkers: 36,
+    certificateType: "CCC",
+    certificateNumber: "DATA-UJIAN-CCC-01",
+    certificateDate: "2025-01-01",
+  };
+  const blank = {
+    address: null,
+    postcode: null,
+    lotNumber: null,
+    locality: null,
+    districtId: null,
+    latitude: null,
+    longitude: null,
+    buildingType: null,
+    currentUse: null,
+    involvedFloors: null,
+    accommodationUnits: null,
+    totalRooms: null,
+    floorAreaSqm: null,
+    proposedWorkers: null,
+    certificateType: null,
+    certificateNumber: null,
+    certificateDate: null,
+  };
+  async function setup(company = false) {
+    const a = await actor("PEMOHON");
+    let companyId: string | undefined;
+    if (company) {
+      const c = await request(a, "/api/companies", "POST", {
+        name: "DATA UJIAN Premis Syarikat",
+        registrationNumber: `UJIAN${randomBytes(7).toString("hex")}`,
+        address: "Alamat data ujian sahaja",
+        phone: "0000000000",
+        email: "ujian@example.test",
+        authorityType: "PENGARAH",
+      });
+      expect(c.statusCode).toBe(201);
+      companyId = c.json().id;
+    }
+    const d = await request(
+      a,
+      "/api/application-drafts",
+      "POST",
+      companyId
+        ? { capacity: "COMPANY", companyId }
+        : { capacity: "INDIVIDUAL" },
+    );
+    expect(d.statusCode).toBe(201);
+    return { a, id: d.json().id as string, companyId };
+  }
+  const path = (id: string) => `/api/application-drafts/${id}/premises`;
+  it("loads an empty section without fabricating a premises record or GIS validation", async () => {
+    const { a, id } = await setup();
+    const r = await request(a, path(id));
+    expect(r.statusCode).toBe(200);
+    expect(r.json().premises).toEqual(blank);
+    expect(r.json().complete).toBe(false);
+    expect(r.json().boundaryStatus).toBe("UNVERIFIED");
+    expect(r.json().submissionEnabled).toBe(false);
+    expect(await db.applicationPremises.count({ where: { draftId: id } })).toBe(
+      0,
+    );
+  });
+  it("saves partial aggregates and resumes them from real PostgreSQL with audit and parent version", async () => {
+    const { a, id } = await setup();
+    const r = await request(a, path(id), "PUT", {
+      version: 1,
+      premises: { ...blank, address: complete.address },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().version).toBe(2);
+    expect(r.json().complete).toBe(false);
+    const stored = await db.applicationPremises.findUniqueOrThrow({
+      where: { draftId: id },
+    });
+    expect(stored.address).toBe(complete.address);
+    expect(stored.totalRooms).toBeNull();
+    expect((await request(a, path(id))).json().premises.address).toBe(
+      complete.address,
+    );
+    const logs = await db.auditLog.findMany({
+      where: { target: id, action: "APPLICATION_PREMISES_SAVED" },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].actorId).toBe(a.id);
+    expect(JSON.stringify(logs)).not.toContain(complete.address);
+  });
+  it("persists complete building totals, certificate and pin without treating district as verified", async () => {
+    const { a, id } = await setup();
+    const r = await request(a, path(id), "PUT", {
+      version: 1,
+      action: "CONTINUE",
+      premises: { ...complete, latitude: 50.1, longitude: -0.1 },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().complete).toBe(true);
+    expect(r.json().premises.districtId).toBe("SPT");
+    expect(r.json().locationSource).toBe("USER_PIN");
+    expect(r.json().boundaryStatus).toBe("UNVERIFIED");
+    const p = await db.applicationPremises.findUniqueOrThrow({
+      where: { draftId: id },
+    });
+    expect(Number(p.floorAreaSqm)).toBe(250.75);
+    expect(p.totalRooms).toBe(12);
+    expect(p.proposedWorkers).toBe(36);
+    expect(p.certificateDate?.toISOString().slice(0, 10)).toBe("2025-01-01");
+    expect(
+      (await db.applicationDraft.findUniqueOrThrow({ where: { id } })).status,
+    ).toBe("DRAFT");
+    expect(
+      (await request(a, `/api/application-drafts/${id}/submit`, "POST", {}))
+        .statusCode,
+    ).toBe(409);
+  });
+  it("blocks incomplete continuation, invalid totals/coordinates and forged GIS status without writing", async () => {
+    const { a, id } = await setup();
+    expect(
+      (
+        await request(a, path(id), "PUT", {
+          version: 1,
+          action: "CONTINUE",
+          premises: blank,
+        })
+      ).statusCode,
+    ).toBe(400);
+    for (const fields of [
+      { postcode: "1234" },
+      { districtId: "INVALID" },
+      { latitude: null },
+      { latitude: 91 },
+      { longitude: 181 },
+      { involvedFloors: 1.5 },
+      { accommodationUnits: 0 },
+      { totalRooms: -1 },
+      { floorAreaSqm: 12.345 },
+      { proposedWorkers: 0 },
+      { certificateType: "UNKNOWN" },
+      { certificateDate: "2099-01-01" },
+      { boundaryStatus: "VERIFIED" },
+      { roomRecords: [] },
+    ])
+      expect(
+        (
+          await request(a, path(id), "PUT", {
+            version: 1,
+            premises: { ...complete, ...fields },
+          })
+        ).statusCode,
+      ).toBe(400);
+    expect(
+      (
+        await request(a, path(id), "PUT", {
+          version: 1,
+          action: "SUBMIT",
+          premises: complete,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(await db.applicationPremises.count({ where: { draftId: id } })).toBe(
+      0,
+    );
+    expect(
+      (await db.applicationDraft.findUniqueOrThrow({ where: { id } })).version,
+    ).toBe(1);
+  });
+  it("enforces session, CSRF, owner and role, including same-company colleagues", async () => {
+    const { a, id, companyId } = await setup(true),
+      other = await actor("PEMOHON");
+    await db.companyRepresentative.create({
+      data: {
+        companyId: companyId!,
+        userId: other.id,
+        authorityType: "PEKERJA",
+      },
+    });
+    expect((await app.inject(path(id))).statusCode).toBe(401);
+    expect((await request(other, path(id))).statusCode).toBe(404);
+    expect(
+      (
+        await request(other, path(id), "PUT", {
+          version: 1,
+          premises: complete,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await request(ict, path(id))).statusCode).toBe(403);
+    expect(
+      (
+        await app.inject({
+          url: path(id),
+          method: "PUT",
+          headers: { cookie: a.cookie, origin: "http://localhost:5173" },
+          payload: { version: 1, premises: complete },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+  it.each(["revoked", "expired", "future", "inactive-company"])(
+    "blocks premises reads/writes when representation becomes %s",
+    async (state) => {
+      const { a, id, companyId } = await setup(true);
+      expect(
+        (await request(a, path(id), "PUT", { version: 1, premises: complete }))
+          .statusCode,
+      ).toBe(200);
+      if (state === "inactive-company")
+        await db.company.update({
+          where: { id: companyId },
+          data: { status: "INACTIVE" },
+        });
+      else
+        await db.companyRepresentative.update({
+          where: { userId_companyId: { userId: a.id, companyId: companyId! } },
+          data:
+            state === "revoked"
+              ? { status: "REVOKED" }
+              : state === "expired"
+                ? { endsAt: new Date(Date.now() - 1000) }
+                : { startsAt: new Date(Date.now() + 86400000) },
+        });
+      expect((await request(a, path(id))).statusCode).toBe(404);
+      expect(
+        (await request(a, path(id), "PUT", { version: 2, premises: complete }))
+          .statusCode,
+      ).toBe(404);
+      expect(
+        (await db.applicationDraft.findUniqueOrThrow({ where: { id } }))
+          .version,
+      ).toBe(2);
+    },
+  );
+  it("serializes concurrent saves and prevents lost updates between applicant and premises sections", async () => {
+    const { a, id } = await setup();
+    const results = await Promise.all([
+      request(a, path(id), "PUT", { version: 1, premises: complete }),
+      request(a, path(id), "PUT", {
+        version: 1,
+        premises: { ...complete, totalRooms: 20 },
+      }),
+    ]);
+    expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    expect(await db.applicationPremises.count({ where: { draftId: id } })).toBe(
+      1,
+    );
+    expect(
+      await db.auditLog.count({
+        where: { target: id, action: "APPLICATION_PREMISES_SAVED" },
+      }),
+    ).toBe(1);
+    expect(
+      (
+        await request(a, `/api/application-drafts/${id}`, "PATCH", {
+          capacity: "INDIVIDUAL",
+          version: 1,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await request(a, `/api/application-drafts/${id}`, "PATCH", {
+          capacity: "INDIVIDUAL",
+          version: 2,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await request(a, path(id), "PUT", { version: 2, premises: complete }))
+        .statusCode,
+    ).toBe(409);
+  });
+  it("enforces one premises per draft, valid foreign keys, paired coordinates and unverified GIS in PostgreSQL", async () => {
+    const { a, id } = await setup();
+    await request(a, path(id), "PUT", { version: 1, premises: complete });
+    await expect(
+      db.applicationPremises.create({ data: { draftId: id } }),
+    ).rejects.toThrow();
+    await expect(
+      db.applicationPremises.create({ data: { draftId: randomUUID() } }),
+    ).rejects.toThrow();
+    await expect(
+      db.$executeRaw`UPDATE application_premises SET "boundaryStatus" = 'VERIFIED' WHERE "draftId" = ${id}`,
+    ).rejects.toThrow();
+    await expect(
+      db.$executeRaw`UPDATE application_premises SET longitude = NULL WHERE "draftId" = ${id}`,
+    ).rejects.toThrow();
+    await expect(
+      db.$executeRaw`UPDATE application_premises SET "totalRooms" = 0 WHERE "draftId" = ${id}`,
+    ).rejects.toThrow();
+  });
+});

@@ -65,3 +65,13 @@ Simpan `IDENTITY_DATA_KEY` bersama prosedur backup berasingan yang terhad. Kehil
 5. Jika kuasa syarikat tamat/dibatalkan atau profil syarikat tidak aktif, draf disembunyikan dan buka/simpan ditolak. Rekod kekal; pemulihan kuasa memerlukan proses sah. Wakil lain tidak mendapat draf pemilik secara automatik.
 
 Kemas kini ini memerlukan codegen dan migrasi `202610290003_application_drafts` pada setiap persekitaran. Kunci identiti/MFA dan konfigurasi SMTP Fasa 2A dikekalkan. Butiran premis dan penghantaran rasmi menunggu fasa seterusnya.
+
+## Mengisi maklumat premis
+
+1. Pada draf pemohon, tekan Seterusnya. Lengkapkan alamat, poskod, lot/PT, mukim/bandar dan daerah diisytiharkan.
+2. Klik/seret pin pada peta atau gunakan anak panah papan kekunci dan Letak Pin di Tengah Peta. Latitude/longitude direkod automatik. Jika peta asas gagal dimuatkan, amaran/grid dipaparkan; semak lokasi pada sumber peta yang boleh dicapai. Pin tidak mengesahkan sempadan daerah.
+3. Isi bilangan agregat bangunan dan pekerja serta keluasan m². Tiada butiran setiap bilik diperlukan. Nyatakan status CCC/CFO/OC dan rujukan jika berkenaan; tarikh pilihan tidak boleh pada masa hadapan.
+4. Simpan Draf membenarkan medan kosong. Sebelumnya menyimpan perubahan sah sebelum kembali. Seterusnya memerlukan medan asas lengkap, kemudian membuka ringkasan tersimpan. Penghantaran rasmi kekal dikunci.
+5. Jika menerima 409, muat semula; simpanan lama tidak menimpa data bahagian lain. Kuasa perwakilan hilang menyekat kedua-dua bahagian tanpa memadam draf.
+
+Migrasi `202610290004_premises` diperlukan pada semua persekitaran. Rangkaian/CSP frontend perlu membenarkan jubin OSM jika penyedia itu diluluskan ICT. Codex semasa menolak domain jubin (403); penghantaran jubin/sempadan GIS rasmi masih pending.

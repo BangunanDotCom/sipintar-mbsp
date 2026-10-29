@@ -152,7 +152,7 @@ export const applicationDraftUpdateSchema = z.discriminatedUnion("capacity", [
 export function safeApplicantReturnPath(value: string | null): string | null {
   if (!value) return null;
   return value === "/permohonan/baharu" ||
-    /^\/permohonan\/draf\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+    /^\/permohonan\/draf\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\/(?:premis|semakan))?$/.test(
       value,
     ) ||
     /^\/jemputan-syarikat\?token=[a-f0-9]{64}$/.test(value)

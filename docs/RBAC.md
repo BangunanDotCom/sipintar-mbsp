@@ -44,3 +44,7 @@ Wakil lama yang belum disahkan tidak dinaik taraf menjadi pengurus secara automa
 PEMOHON/WAKIL_SYARIKAT mendapat `applications.draft`; backend turut memerlukan akaun jenis APPLICANT, pengesahan e-mel dan pengenalan lengkap. Kebenaran ini hanya untuk draf sendiri, bukan kuasa penghantaran/kelulusan. Pencipta draf sentiasa actor sesi; tidak boleh mewakilkan pemilikan draf kepada wakil lain atau ICT.
 
 Pilihan syarikat memerlukan hubungan semasa (bukan REVOKED, sudah bermula, belum tamat) dan syarikat ACTIVE. Hubungan belum disahkan secara rasmi boleh menyediakan draf sahaja. Kebenaran asal dan syarikat baharu, jika kapasiti ditukar, dinilai semula ketika simpanan. Wakil syarikat sama yang lain tidak dapat membaca/mengubah draf pemilik asal. Draf hilang daripada senarai apabila kuasa tidak lagi sah, tanpa memadam sejarah.
+
+## Akses bahagian premis
+
+Tiada permission kelulusan/peranan baharu. `applications.draft` sahaja untuk pemilik asal yang masih layak. Wakil syarikat sama tidak mendapat akses premis draf orang lain. Kuasa syarikat tamat/dibatalkan/belum bermula dan syarikat tidak aktif ditolak seperti Fasa 2B.1. Semakan kelengkapan premis dan pilihan CCC bukan tindakan rasmi pegawai. Status GIS tidak boleh dipilih/dinaikkan pengguna.

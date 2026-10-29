@@ -8,11 +8,11 @@
     "prisma_codegen": "passed",
     "postgres_migration": "passed",
     "vitest": {
-      "passed": 67,
+      "passed": 83,
       "failed": 0
     },
     "playwright": {
-      "passed": 8,
+      "passed": 10,
       "failed": 0
     },
     "frontend_build": "passed",
@@ -653,6 +653,182 @@
       "Retain stable IDENTITY_DATA_KEY and MFA key",
       "Configure approved production SMTP, HTTPS and origin",
       "Official document checks, application premises and submission are future scope"
+    ],
+    "main_modified": false,
+    "cloudflare_deployed": false,
+    "worker_modified": false
+  },
+  "phase2b2": {
+    "date": "2026-10-29",
+    "branch": "staylink-mbsp-phase1",
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 83,
+        "api": 67,
+        "unit": 16,
+        "failed": 0
+      },
+      "playwright": {
+        "passed": 10,
+        "failed": 0
+      },
+      "build": "passed",
+      "codegen": "passed",
+      "development_and_test_migrations": "passed"
+    },
+    "migration": "202610290004_premises",
+    "core_tables": 25,
+    "database_checks": [
+      {
+        "database": "development",
+        "allApplied": true,
+        "migrations": [
+          {
+            "name": "202610290001_core",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290002_applicant_accounts",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290003_application_drafts",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290004_premises",
+            "checksumMatches": true
+          }
+        ]
+      },
+      {
+        "database": "test",
+        "allApplied": true,
+        "migrations": [
+          {
+            "name": "202610290001_core",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290002_applicant_accounts",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290003_application_drafts",
+            "checksumMatches": true
+          },
+          {
+            "name": "202610290004_premises",
+            "checksumMatches": true
+          }
+        ]
+      }
+    ],
+    "draft_model": "One aggregate premises per draft, nullable partial fields, shared draft version",
+    "security": "Same verified applicant, owner and current company authority; audit, CSRF, strict inputs",
+    "premises_flow": "SAVE partial, CONTINUE full, previous autosaves valid fields, read-only draft review",
+    "official_submission_enabled": false,
+    "gis_boundary_status": "UNVERIFIED only, enforced in PostgreSQL",
+    "map": {
+      "library": "Leaflet 1.9.4",
+      "tile_provider": "OpenStreetMap",
+      "tile_origin": "https://tile.openstreetmap.org",
+      "basemap_status": "PENDING - blocked by Codex outbound network (HTTP CONNECT 403)",
+      "actual_tiles_delivered_in_codex": false,
+      "pin_click_drag_keyboard": "passed",
+      "coordinates_automatically_stored": "passed",
+      "screenshots_use_mock_tiles": false,
+      "district_inferred_from_pin": false,
+      "official_mbsp_gis_connected": false
+    },
+    "responsive_widths": [
+      320,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "horizontal_overflow": false,
+    "screenshots": {
+      "phase2b2-premises-desktop": {
+        "path": "docs/screenshots/phase2b2-premises-desktop.png",
+        "width": 1440,
+        "height": 3123,
+        "bytes": 322611,
+        "sha256": "3434588e5b300734f9956c19b44587c678c5eb1cfc7ce4b3a170a6d1582a396f"
+      },
+      "phase2b2-premises-mobile": {
+        "path": "docs/screenshots/phase2b2-premises-mobile.png",
+        "width": 390,
+        "height": 4366,
+        "bytes": 263675,
+        "sha256": "81c7981f8c22d27bdfa437378738e041f569389b84836fedbd5ef65abe6c710b"
+      }
+    },
+    "home_checks": {
+      "viewports": [
+        {
+          "width": 320,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 390,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": [],
+          "pixelFileUnchanged": true,
+          "sha256": "bc1bc7cf1bce0ca44c5e19fb9700c66672f25a2a7dae65644031247e7e4e86f5"
+        },
+        {
+          "width": 768,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 1024,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": [],
+          "pixelFileUnchanged": true,
+          "sha256": "32b66385d435724e9bf2174d4e45e4266c8015332ce085e3d12def1c9fd9c9a5"
+        }
+      ],
+      "mapModuleRequestsOnHome": []
+    },
+    "approved_source_components_unchanged": [
+      "Logo",
+      "OfficialIdentity",
+      "Header",
+      "Home",
+      "Footer"
+    ],
+    "approved_asset_sha256": {
+      "apps/web/src/styles.css": "d05959c294fa74ae082c41dae7d59c87f9b796036977ca31b1370b170699f667",
+      "apps/web/src/premium.css": "132afc17ee653b66e36933b7ec5abd159c80568bc552165590b1e987ac6bae63",
+      "apps/web/src/brand.ts": "0cfa8495943be63be574023aa1900c1bb79800d252035afbc6719ba126ef970b",
+      "apps/web/src/CityScene.tsx": "0f961a370474730d1e69e490b1740e8e1d57ce77c8f5f54fd6533c15cf38e86f",
+      "apps/web/public/assets/logo mbsp-png.png": "29d1cee0f4fab1a36f26c742dc7486eec1498527ca8439d6c768c627237d016d",
+      "apps/web/public/assets/brand/staylink-primary.png": "3f6239415cfc8331d0b9e87608c0f8c716bf26dbfc7ff51fa9e48f084e433217",
+      "apps/web/public/assets/city/staylink-waterfront.png": "a07a62e1a0616c5104de7e8c036e88f58ae64de2e23a3e5bf07549ada1297bab",
+      "docs/screenshots/staylink-desktop.png": "32b66385d435724e9bf2174d4e45e4266c8015332ce085e3d12def1c9fd9c9a5",
+      "docs/screenshots/staylink-mobile.png": "bc1bc7cf1bce0ca44c5e19fb9700c66672f25a2a7dae65644031247e7e4e86f5"
+    },
+    "production_pending": [
+      "Apply additive PostgreSQL migration and regenerate client",
+      "Retain existing identity/MFA keys and configure SMTP/HTTPS/origin",
+      "Allow approved basemap tile provider in browser network and frontend CSP; real tile delivery not tested successfully in Codex",
+      "Official GIS/document verification and formal submission not provided"
     ],
     "main_modified": false,
     "cloudflare_deployed": false,
