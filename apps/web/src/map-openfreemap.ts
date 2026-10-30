@@ -1,15 +1,15 @@
 import L from "leaflet";
 import { Map as VectorMap, setWorkerUrl } from "maplibre-gl";
-import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { resolveMapWorkerUrl } from "./map-worker-url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { OPENFREEMAP_STYLE, OPENFREEMAP_ATTRIBUTION } from "./map-config";
 import type { BasemapEvents } from "./basemap-controller";
-// A local browser rendering worker, never a deployed Cloudflare Worker.
-setWorkerUrl(workerUrl);
 export function mountOpenFreeMap(
   map: L.Map,
   events: BasemapEvents,
 ): () => void {
+  // A browser rendering worker served by this origin, never a Cloudflare Worker.
+  setWorkerUrl(resolveMapWorkerUrl());
   // A small Leaflet Layer using public MapLibre APIs. All scheduled frames are
   // owned/cancelled here so error/removal cannot leave resize callbacks behind.
   class VectorLayer extends L.Layer {

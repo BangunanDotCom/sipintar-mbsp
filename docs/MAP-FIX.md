@@ -2,6 +2,8 @@
 
 Tarikh semakan: **30 Oktober 2026 (Malaysia)**. Branch: `staylink-mbsp-phase1`.
 
+**Kemas kini worker/ZIP:** lihat [diagnosis HTTP/HTTPS terkini](MAP-WORKER-DIAGNOSIS.md). Jangan buka ZIP lama melalui `file://`; gunakan pelancar Codespaces atau pelayan statik HTTP/HTTPS dalam arahan terkini.
+
 ## Status sebenar
 
 **Kod pemulihan/fallback telah diuji, tetapi paparan jalan/bangunan/nama lokasi sebenar dalam Codex masih PENDING.** Kedua-dua domain penyedia ditolak rangkaian Codex. Tiada screenshot jubin/vektor sintetik dipersembahkan sebagai peta sebenar. Google Chrome biasa pada komputer luar Codex belum disahkan oleh semakan ini; pelayar tersedia ialah Chromium 154.0.8037.57.
@@ -66,9 +68,9 @@ Untuk pengguna tanpa Node.js atau terminal, gunakan [ZIP diagnostik kendiri dan 
 
 Komponen: `apps/web/src/PremisesMap.tsx`, `premises.css`. Sumber/controller: `map-config.ts`, `basemap-controller.ts`, `map-basemap.ts`, `map-openfreemap.ts`. Diagnostik: `apps/web/map-check.html`, `src/map-check.ts`. Konfigurasi contoh: `.env.example`, `apps/web/.env.example`; dependencies/lockfile dan lesen MapLibre. Ujian: `tests/maps.test.ts`, `tests/e2e/maps.spec.ts`, route stub peta dalam `tests/e2e/portal.spec.ts`. Dokumentasi/status dan metadata screenshot dikemas kini.
 
-| Bukti sebenar (masih tanpa peta asas) | PNG |
-|---|---|
-| Desktop | [Buka gambar](screenshots/map-fix-desktop.png) |
-| Telefon | [Buka gambar](screenshots/map-fix-mobile.png) |
+| Bukti sebenar (masih tanpa peta asas) | PNG                                            |
+| ------------------------------------- | ---------------------------------------------- |
+| Desktop                               | [Buka gambar](screenshots/map-fix-desktop.png) |
+| Telefon                               | [Buka gambar](screenshots/map-fix-mobile.png)  |
 
 Status akhir: pembetulan kod diuji; **peta jalan sebenar/Google Chrome di rangkaian bebas belum disahkan**. Tiada merge main, deployment Cloudflare atau perubahan Worker dilakukan.

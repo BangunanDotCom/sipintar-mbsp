@@ -1,0 +1,13 @@
+{
+  "name": "STAYLink MBSP — Map diagnostic only",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "forwardPorts": [5174],
+  "portsAttributes": {
+    "5174": {
+      "label": "STAYLink map-check",
+      "onAutoForward": "openBrowser",
+      "protocol": "http"
+    }
+  },
+  "postStartCommand": "nohup node scripts/serve-map-check.mjs --host 0.0.0.0 --port 5174 > /tmp/staylink-map-check.log 2>&1 &"
+}

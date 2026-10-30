@@ -1,4 +1,4 @@
-import { build, transformWithEsbuild } from "vite";
+import { build } from "vite";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath, URL } from "node:url";
 import { Buffer } from "node:buffer";
@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL("../", import.meta.url)),
   output = new URL("../docs/previews/", import.meta.url);
 const common = {
   configFile: false,
+  base: "./",
   root: new URL("../work/", import.meta.url).pathname,
   publicDir: false,
   logLevel: "error",
@@ -18,28 +19,8 @@ const common = {
     rollupOptions: { output: { inlineDynamicImports: true } },
   },
 };
-const workerPath = `${root}node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs`;
-const { code: workerCode } = await transformWithEsbuild(
-  await readFile(workerPath, "utf8"),
-  workerPath,
-  { format: "iife", minify: true, sourcemap: false },
-);
 const bundle = await build({
   ...common,
-  plugins: [
-    {
-      name: "standalone-inline-map-worker",
-      enforce: "pre",
-      resolveId(id) {
-        if (id.endsWith("maplibre-gl-worker.mjs?worker&url"))
-          return "\0staylink-inline-worker";
-      },
-      load(id) {
-        if (id === "\0staylink-inline-worker")
-          return `const workerUrl=URL.createObjectURL(new Blob([${JSON.stringify(workerCode)}],{type:"text/javascript"}));export default workerUrl;`;
-      },
-    },
-  ],
   build: {
     ...common.build,
     lib: {
@@ -64,11 +45,23 @@ const css = bundledOutput
   .map((x) => x.source)
   .join("\n")
   .replace(/<\/style/gi, "<\\/style");
-const html = `<!doctype html><html lang="ms"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>STAYLink MBSP — Ujian Peta Tanpa Pemasangan</title><style>${css}
+const html = `<!doctype html><html lang="ms"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>STAYLink MBSP — Ujian Peta HTTP/HTTPS</title><style>${css}
 body{margin:0;background:#eff5fa;color:#163655;font:16px/1.7 system-ui}header{padding:24px;background:#062345;color:white}main{max-width:1100px;margin:24px auto;padding:0 20px}h1{font-size:clamp(24px,4vw,36px);margin:0}h2{font-size:20px}section{background:white;border:1px solid #cedde9;border-radius:12px;padding:20px;margin:20px 0}#map{height:500px;background:#e5edf2;isolation:isolate}.status{padding:12px;border-left:4px solid #c6a343;background:#fff9e8;overflow-wrap:anywhere}button,a.button{font:inherit;display:inline-block;padding:10px 16px;margin:8px 12px 8px 0;background:#0b2d6b;color:white;border:0;border-radius:8px;text-decoration:none}button:disabled{opacity:.5}a{color:#0b57a4}.coords{display:flex;gap:20px;flex-wrap:wrap}label{display:block}input{display:block;padding:10px;font:inherit;max-width:100%;box-sizing:border-box}.maplibregl-map,.maplibregl-canvas{pointer-events:none}.test-pin span{display:block;width:25px;height:25px;background:#0b2d6b;border:3px solid #dfb94f;border-radius:50% 50% 50% 0;transform:rotate(-45deg)}small{display:block}footer{font-size:13px;color:#526b87;margin:25px 0}@media(max-width:600px){#map{height:350px}main{padding:0 12px}section{padding:16px}}
-</style></head><body><header><h1>STAYLink MBSP — Ujian Peta</h1><p>Fail kendiri · Tanpa Node.js, terminal, localhost atau login</p></header><main><p>Ini alat semakan sumber peta, bukan portal penuh atau penghantaran permohonan. Kod pemapar/controller sama seperti portal. Internet masih diperlukan untuk mendapatkan peta sebenar.</p><section><h2>Semak peta jalan</h2><p id="map-source"></p><p id="map-result" class="status" role="status" data-status="loading">Memuatkan…</p><button id="retry" type="button" disabled>Cuba Semula</button><div id="map" aria-label="Peta ujian STAYLink"></div><p>Pusat awal contoh: Seberang Perai. Klik peta atau seret pin untuk mencuba koordinat.</p><button id="center-pin" type="button">Letak Pin di Tengah Peta</button><div class="coords"><label>Latitude<input id="latitude" readonly></label><label>Longitude<input id="longitude" readonly></label></div><small>Pin tidak mengesahkan sempadan rasmi daerah MBSP. Tiada maklumat disimpan atau dihantar ke backend STAYLink.</small></section><section><h2>Bagaimana mengesahkan?</h2><ol><li>Tunggu READY dan pastikan jalan serta nama lokasi benar-benar kelihatan.</li><li>Cuba zoom, klik dan seret pin. Koordinat sepatutnya berubah.</li><li>Jika UNAVAILABLE, semak sambungan internet atau sekatan ke tiles.openfreemap.org. Status gagal tidak bermaksud peta berjaya.</li></ol><a class="button" href="https://www.openstreetmap.org/#map=15/5.38/100.42" target="_blank" rel="noopener noreferrer">Buka peta OSM dalam tab baharu</a><small>Pautan luar itu menguji penyedia sahaja, bukan portal STAYLink.</small></section><footer>Library Leaflet / MapLibre dibundel tempatan; data peta langsung daripada penyedia yang dinyatakan, dengan atribusi pada peta. Tiada jubin arkib atau geografi sintetik dibundel. Fail tempatan menggunakan OpenFreeMap kerana jubin OSM memerlukan Referer HTTP yang sah.</footer></main><script>${js}</script></body></html>`;
+</style></head><body><header><h1>STAYLink MBSP — Ujian Peta</h1><p>Diagnostik HTTP/HTTPS · Tiada login atau database</p></header><main><p>Ini alat semakan sumber peta, bukan portal penuh atau penghantaran permohonan. Kod pemapar/controller sama seperti portal. Internet masih diperlukan untuk mendapatkan peta sebenar.</p><section><h2>Semak peta jalan</h2><p id="map-source"></p><p>Worker URL: <code style="overflow-wrap:anywhere" id="worker-url">Belum dimuatkan</code></p><p id="worker-result" role="status"></p><p><a class="button" href="?provider=auto">OSM + fallback (seperti portal)</a><a class="button" href="?provider=openfreemap">Uji OpenFreeMap / Worker</a></p><p id="map-result" class="status" role="status" data-status="loading">Memuatkan…</p><button id="retry" type="button" disabled>Cuba Semula</button><div id="map" aria-label="Peta ujian STAYLink"></div><p>Pusat awal contoh: Seberang Perai. Klik peta atau seret pin untuk mencuba koordinat.</p><button id="center-pin" type="button">Letak Pin di Tengah Peta</button><div class="coords"><label>Latitude<input id="latitude" readonly></label><label>Longitude<input id="longitude" readonly></label></div><small>Pin tidak mengesahkan sempadan rasmi daerah MBSP. Tiada maklumat disimpan atau dihantar ke backend STAYLink.</small></section><section><h2>Bagaimana mengesahkan?</h2><ol><li>Tunggu READY dan pastikan jalan serta nama lokasi benar-benar kelihatan.</li><li>Cuba zoom, klik dan seret pin. Koordinat sepatutnya berubah.</li><li>Jika UNAVAILABLE, semak internet, sumber peta dan status worker di atas. Status gagal tidak bermaksud peta berjaya.</li></ol><a class="button" href="https://www.openstreetmap.org/#map=15/5.38/100.42" target="_blank" rel="noopener noreferrer">Buka peta OSM dalam tab baharu</a><small>Pautan luar itu menguji penyedia sahaja, bukan portal STAYLink.</small></section><footer>Library Leaflet / MapLibre dibundel tempatan; data peta langsung daripada penyedia yang dinyatakan, dengan atribusi pada peta. Tiada jubin arkib atau geografi sintetik dibundel. Buka melalui HTTP/HTTPS sahaja. Fail worker JavaScript mesti berada pada origin yang sama dan memberi HTTP 200 tanpa pengalihan. Jangan buka HTML terus melalui file://.</footer></main><script>if (["http:","https:"].includes(location.protocol)) { ${js} } else { const output=document.querySelector("#map-result");output.dataset.status="http-required";output.textContent="HTTP_REQUIRED — Buka melalui HTTP/HTTPS atau Codespaces. file:// tidak disokong; jangan gunakan ZIP lama."; }</script></body></html>`;
 await mkdir(output, { recursive: true });
 await writeFile(new URL("map-check.html", output), html);
+const workerAssets = bundledOutput.filter(
+  (x) =>
+    x.type === "asset" &&
+    x.fileName.startsWith("assets/") &&
+    /\.(?:js|mjs)$/.test(x.fileName),
+);
+if (workerAssets.length !== 1)
+  throw new Error("Expected exactly one same-origin worker asset");
+for (const asset of workerAssets) {
+  await mkdir(new URL("assets/", output), { recursive: true });
+  await writeFile(new URL(asset.fileName, output), asset.source);
+}
 // Small deterministic ZIP using Node built-ins; users use their OS's built-in Extract All.
 function crc32(buffer) {
   let crc = 0xffffffff;
@@ -123,10 +116,12 @@ function zip(entries) {
   return Buffer.concat([...locals, directory, end]);
 }
 const instructions =
-  "UJIAN PETA STAYLink MBSP — TANPA PEMASANGAN\n\n1. Gunakan Extract All pada ZIP ini.\n2. Buka map-check.html dengan Google Chrome (Open with > Google Chrome).\n3. Tunggu READY dan semak jalan/nama lokasi secara visual.\n4. Jika UNAVAILABLE, peta belum berjaya; semak internet/sekatan penyedia.\n\nTiada Node.js, terminal, localhost, akaun atau database diperlukan. Internet diperlukan untuk peta sebenar. Fail ini alat ujian peta sahaja, bukan portal penuh. Tiada data peribadi dibundel.\n";
+  "UJIAN PETA STAYLink MBSP — HTTP/HTTPS\n\nJangan buka map-check.html dengan file://. Muat naik keseluruhan folder (termasuk assets/) kepada pelayan statik HTTP/HTTPS yang diluluskan, atau gunakan GitHub Codespaces mengikut README.md. Pautan: https://codespaces.new/BangunanDotCom/sipintar-mbsp?ref=staylink-mbsp-phase1&devcontainer_path=.devcontainer%2Fmap-check%2Fdevcontainer.json Tiada backend/database diperlukan.\n\nPembangun dengan Node.js sedia ada: node scripts/serve-map-check.mjs dari root repositori. Buka URL yang dicetak. Jangan jalankan localhost Codex pada komputer lain.\n\nREADY masih memerlukan pengesahan visual jalan dan nama lokasi. Jika UNAVAILABLE, peta belum berjaya. Tiada data peribadi dibundel.\n";
 const entries = [
   ["map-check.html", html],
   ["BACA-DAHULU.txt", instructions],
+  ["README.md", await readFile(new URL("README.md", output))],
+  ...workerAssets.map((asset) => [asset.fileName, asset.source]),
   [
     "licenses/leaflet.txt",
     await readFile(`${root}apps/web/public/licenses/leaflet.txt`),

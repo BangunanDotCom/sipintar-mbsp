@@ -1,9 +1,26 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 const artifact = new URL("../../docs/previews/map-check.html", import.meta.url);
-// Managed Chromium blocks file://. Exercise the exact inline document on an
-// opaque about:blank origin; this does not verify opening a local file in Chrome.
-const html = await readFile(artifact, "utf8");
+let server: Server, origin: string;
+test.beforeAll(async () => {
+  const moduleUrl = new URL(
+    "../../scripts/serve-map-check.mjs",
+    import.meta.url,
+  );
+  const { createMapCheckServer } = (await import(moduleUrl.href)) as {
+    createMapCheckServer: () => Server;
+  };
+  server = createMapCheckServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  origin = `http://localhost:${(server.address() as AddressInfo).port}`;
+});
+test.afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+});
 const syntheticStyle = {
   version: 8,
   sources: {
@@ -41,21 +58,15 @@ const syntheticStyle = {
     },
   ],
 };
-test("inline download renders a controlled fixture over HTTP without external scripts", async ({
-  page,
-}) => {
-  const errors: string[] = [],
-    disallowed: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("request", (r) => {
-    const u = new URL(r.url());
-    if (
-      ["http:", "https:"].includes(u.protocol) &&
-      u.hostname !== "tiles.openfreemap.org" &&
-      u.hostname !== "localhost"
-    )
-      disallowed.push(r.url());
-  });
+
+const pixel = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==",
+  "base64",
+);
+async function vectorFixture(page: import("@playwright/test").Page) {
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.abort(),
+  );
   await page.route("https://tiles.openfreemap.org/**", (route) =>
     route.fulfill({
       status: 200,
@@ -64,16 +75,79 @@ test("inline download renders a controlled fixture over HTTP without external sc
       body: JSON.stringify(syntheticStyle),
     }),
   );
-  await page.route("http://localhost:5173/download-check", (route) =>
-    route.fulfill({ contentType: "text/html", body: html }),
+}
+test("HTTP download uses OSM first without requiring a WebGL worker", async ({
+  page,
+}) => {
+  const workers: string[] = [],
+    alternatives: string[] = [],
+    errors: string[] = [];
+  page.on("worker", (worker) => workers.push(worker.url()));
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("https://tile.openstreetmap.org/**", (route) => {
+    expect(route.request().headers().referer).toBe(origin + "/");
+    return route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: pixel,
+    });
+  });
+  await page.route("https://tiles.openfreemap.org/**", (route) => {
+    alternatives.push(route.request().url());
+    return route.abort();
+  });
+  await page.goto(origin + "/map-check.html");
+  await expect(page.locator("#map-result")).toHaveAttribute(
+    "data-status",
+    "ready",
   );
-  await page.goto("/download-check");
+  await expect(page.locator("#map-result")).toHaveAttribute(
+    "data-provider",
+    "primary",
+  );
+  await expect(page.locator("#worker-result")).toHaveAttribute(
+    "data-status",
+    "ready",
+  );
+  expect(workers).toEqual([]);
+  expect(alternatives).toEqual([]);
+  expect(errors).toEqual([]);
+});
+test("HTTP fallback uses same-origin worker with HTTP 200 JavaScript and no redirect", async ({
+  page,
+  request,
+}) => {
+  const errors: string[] = [],
+    workers: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("worker", (worker) => workers.push(worker.url()));
+  await vectorFixture(page);
+  await page.goto(origin + "/map-check.html");
   await expect(page.locator("#map-result")).toHaveAttribute(
     "data-status",
     "ready",
     { timeout: 20000 },
   );
-  await expect(page.locator("#map-source")).toContainText("tanpa localhost");
+  await expect(page.locator("#map-result")).toHaveAttribute(
+    "data-provider",
+    "openfreemap",
+  );
+  const workerUrl = await page.locator("#worker-url").textContent();
+  expect(new URL(workerUrl!).origin).toBe(origin);
+  const response = await request.get(workerUrl!, { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("javascript");
+  expect(response.headers().location).toBeUndefined();
+  await expect(page.locator("#worker-result")).toHaveAttribute(
+    "data-status",
+    "ready",
+  );
+  expect(workers.length).toBeGreaterThan(0);
+  expect(
+    workers.every(
+      (url) => new URL(url).origin === origin && url.startsWith("http:"),
+    ),
+  ).toBe(true);
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await page.locator("#map").click({ position: { x: 200, y: 150 } });
   const before = await page.locator("#latitude").inputValue();
@@ -87,36 +161,72 @@ test("inline download renders a controlled fixture over HTTP without external sc
     "data-status",
     "ready",
   );
-  expect(disallowed).toEqual([]);
   expect(errors).toEqual([]);
 });
-test("inline download reports provider failure and keeps coordinate selection without localhost", async ({
+test("forced vector test diagnoses a worker cross-origin redirect without claiming READY", async ({
   page,
 }) => {
-  const errors: string[] = [],
-    localRequests: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("request", (r) => {
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(r.url()))
-      localRequests.push(r.url());
-  });
-  await page.route("https://tiles.openfreemap.org/**", (route) =>
-    route.abort(),
+  await vectorFixture(page);
+  await page.route("**/assets/maplibre-gl-worker-*.js", (route) =>
+    route.fulfill({
+      status: 302,
+      headers: { location: "http://127.0.0.1:5173/worker-test.js" },
+      body: "",
+    }),
   );
-  await page.setContent(html);
+  await page.goto(origin + "/map-check.html?provider=openfreemap");
+  await expect(page.locator("#worker-result")).toHaveAttribute(
+    "data-status",
+    "unavailable",
+  );
   await expect(page.locator("#map-result")).toHaveAttribute(
     "data-status",
     "unavailable",
     { timeout: 20000 },
   );
-  await expect(
-    page.getByRole("button", { name: "Cuba Semula", exact: true }),
-  ).toBeEnabled();
+});
+test("HTTP failure remains unavailable and coordinates remain usable on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.abort(),
+  );
+  await page.route("https://tiles.openfreemap.org/**", (route) =>
+    route.abort(),
+  );
+  await page.goto(origin + "/map-check.html");
+  await expect(page.locator("#map-result")).toHaveAttribute(
+    "data-status",
+    "unavailable",
+    { timeout: 20000 },
+  );
   await page
     .getByRole("button", { name: "Letak Pin di Tengah Peta", exact: true })
     .click();
   await expect(page.locator("#latitude")).toHaveValue("5.380000");
   await expect(page.locator("#longitude")).toHaveValue("100.420000");
-  expect(localRequests).toEqual([]);
-  expect(errors).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+test("non-HTTP document refuses to initialize a map or a Blob worker", async ({
+  page,
+}) => {
+  const requests: string[] = [],
+    workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  page.on("worker", (worker) => workers.push(worker.url()));
+  // Enterprise Chromium disallows file:// navigation. Exercise the protocol guard
+  // on another non-HTTP opaque document without bypassing the browser policy.
+  await page.setContent(await readFile(artifact, "utf8"));
+  await expect(page.locator("#map-result")).toHaveAttribute(
+    "data-status",
+    "http-required",
+  );
+  await expect(page.locator(".leaflet-container")).toHaveCount(0);
+  expect(requests).toEqual([]);
+  expect(workers).toEqual([]);
 });
