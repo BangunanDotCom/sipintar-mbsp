@@ -23,7 +23,8 @@
     "mail:retry": "tsx scripts/retry-email.ts",
     "db:demo": "tsx scripts/demo.ts",
     "db:test:migrate": "tsx scripts/migrate.ts --test",
-    "format": "prettier --write apps packages scripts tests prisma/*.ts *.ts *.js *.json"
+    "format": "prettier --write apps packages scripts tests prisma/*.ts *.ts *.js *.json",
+    "check:registration": "tsx scripts/check-registration.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

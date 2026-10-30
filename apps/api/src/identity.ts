@@ -6,7 +6,7 @@ function identityKey() {
   if (!raw || !/^[a-f0-9]{64}$/i.test(raw))
     throw Object.assign(
       Error("Pendaftaran belum dikonfigurasi. Hubungi pentadbir."),
-      { statusCode: 503 },
+      { statusCode: 503, code: "REGISTRATION_NOT_CONFIGURED" },
     );
   return Buffer.from(raw, "hex");
 }

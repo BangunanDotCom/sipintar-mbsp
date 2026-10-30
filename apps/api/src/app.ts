@@ -9,6 +9,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import { ZodError } from "zod";
 import { authRoutes } from "./auth.js";
 import { routes } from "./routes.js";
+import { safeServerFailure } from "./errors.js";
 export async function buildApp() {
   const app = Fastify({
     bodyLimit: 3 * 1024 * 1024,
@@ -22,6 +23,7 @@ export async function buildApp() {
       ],
     },
     disableRequestLogging: true,
+    requestIdHeader: false,
   });
   await app.register(cookie);
   await app.register(helmet, {
@@ -47,7 +49,7 @@ export async function buildApp() {
     },
   });
   await app.register(swaggerUi, { routePrefix: "/api/docs" });
-  app.setErrorHandler(async (error, _req, reply) => {
+  app.setErrorHandler(async (error, req, reply) => {
     if (error instanceof ZodError)
       return reply
         .code(400)
@@ -59,15 +61,26 @@ export async function buildApp() {
         .send({ message: "Rekod bertindih. Semak maklumat yang dimasukkan." });
     if (e.code === "P2025")
       return reply.code(404).send({ message: "Rekod tidak ditemui." });
-    const status = e.statusCode || 500;
-    if (status >= 500)
-      app.log.error({ code: e.code || e.name }, "Ralat dalaman");
-    return reply.code(status).send({
-      message:
-        status >= 500
-          ? "Perkhidmatan tidak dapat diproses. Cuba lagi."
-          : e.message,
-    });
+    if (!e.statusCode || e.statusCode >= 500) {
+      const failure = safeServerFailure(error);
+      app.log.error(
+        {
+          code: failure.code,
+          diagnosticCode: failure.diagnosticCode,
+          requestId: req.id,
+          operation: req.routeOptions.url || "unknown",
+        },
+        "Ralat dalaman",
+      );
+      return reply
+        .code(failure.status)
+        .send({
+          message: failure.message,
+          code: failure.code,
+          requestId: req.id,
+        });
+    }
+    return reply.code(e.statusCode).send({ message: e.message });
   });
   app.get("/api/health", async () => ({
     status: "ok",

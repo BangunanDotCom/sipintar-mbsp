@@ -48,6 +48,7 @@ import Dashboard from "./Dashboard";
 import ApplicationDraft from "./ApplicationDraft";
 const Premises = React.lazy(() => import("./Premises"));
 import { CompanyInvitation } from "./CompanyInvitation";
+import { PasswordField } from "./PasswordField";
 import "@fontsource/montserrat/latin-400.css";
 import "@fontsource/montserrat/latin-500.css";
 import "@fontsource/montserrat/latin-600.css";
@@ -561,6 +562,7 @@ function Auth({
 }) {
   const nav = useNavigate();
   const [params] = useSearchParams();
+  const passwordId = React.useId();
   const {
     register,
     handleSubmit,
@@ -712,25 +714,31 @@ function Auth({
               mode === "register" ||
               (mode === "activate" &&
                 params.get("type") !== "VERIFY_EMAIL")) && (
-              <label>
-                {mode === "activate" ? "Kata laluan baharu" : "Kata laluan"}
-                <input
+              <div className="auth-password-group">
+                <label htmlFor={passwordId}>
+                  {mode === "activate" ? "Kata laluan baharu" : "Kata laluan"}
+                </label>
+                <PasswordField
+                  key={mode}
+                  id={passwordId}
                   {...register("password", { required: true })}
-                  type="password"
                   autoComplete={
                     mode === "login" ? "current-password" : "new-password"
                   }
                   minLength={mode === "login" ? 1 : 12}
                   maxLength={128}
+                  aria-describedby={
+                    mode !== "login" ? `${passwordId}-help` : undefined
+                  }
                   required
                 />
                 {mode !== "login" && (
-                  <small>
+                  <small id={`${passwordId}-help`}>
                     Minimum 12 aksara dengan huruf besar, kecil, nombor dan
                     simbol.
                   </small>
                 )}
-              </label>
+              </div>
             )}
             {mode === "recover" && (
               <label>

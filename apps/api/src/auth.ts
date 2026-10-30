@@ -1,4 +1,5 @@
 import { protectIdentification } from "./identity.js";
+import { assertDatabaseConfigured } from "./errors.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import argon2 from "argon2";
@@ -108,6 +109,7 @@ export async function authRoutes(app: FastifyInstance) {
   };
   app.post("/api/auth/register", authLimit, async (req, reply) => {
     const b = registerSchema.parse(req.body);
+    assertDatabaseConfigured();
     let user;
     try {
       user = await db.user.create({
