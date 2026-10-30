@@ -4,7 +4,7 @@
 
 ## Bukti dan batas akses
 
-Ralat dilaporkan pengguna dalam **GitHub Codespaces**, frontend 5173 dan Fastify 3001. Alat sesi ini mengakses workspace Codex; ia tidak mempunyai terminal/sambungan langsung kepada Codespace pengguna. Kejayaan ujian Codex tidak membuktikan konfigurasi Codespaces sudah betul. **Punca sebenar pemasangan Codespaces masih menunggu hasil diagnosis daripada persekitaran tersebut.**
+Ralat dilaporkan pengguna dalam **GitHub Codespaces**, frontend 5173 dan Fastify 3001. Alat sesi ini mengakses workspace Codex; ia tidak mempunyai terminal/sambungan langsung kepada Codespace pengguna. Percubaan membaca senarai Codespaces melalui GitHub CLI juga ditolak akses API; tiada cubaan memintas sekatan dibuat. Kejayaan ujian Codex tidak membuktikan konfigurasi Codespaces sudah betul. **Punca sebenar pemasangan Codespaces masih menunggu hasil diagnosis daripada persekitaran tersebut.**
 
 Konfigurasi `.devcontainer/map-check/devcontainer.json` hanya menyediakan Node.js dan pelayan fail diagnostik peta. Ia tidak menyediakan PostgreSQL atau mengisi `.env`. Jika konfigurasi tersebut digunakan untuk menjalankan backend penuh, ketiadaan servis/config database ialah calon punca yang perlu disahkan, bukan kesimpulan daripada log generik sahaja.
 
@@ -50,6 +50,8 @@ Butang mata dipasang pada borang daftar, login dan reset/aktivasi kata laluan. I
 
 ## Ujian
 
-Lint, typecheck dan build lulus. **102 unit/API** lulus termasuk pengendalian ralat selamat; **empat ujian pelayar baharu** lulus untuk toggle daftar/login/reset, papan kekunci dan telefon. Ujian sambungan PostgreSQL/Prisma baca sahaja serta pendaftaran HTTP sebenar dilaksanakan dalam Codex. Keputusan ini tidak menutup status Codespaces yang masih PENDING; laporan regresi lanjut dikemas kini selepas larian selesai.
+Lint, typecheck dan build lulus. **102 unit/API** lulus termasuk pengendalian ralat selamat; **empat ujian pelayar baharu** lulus untuk toggle daftar/login/reset, papan kekunci dan telefon. Ujian sambungan PostgreSQL/Prisma baca sahaja serta pendaftaran HTTP sebenar dilaksanakan dalam Codex. Keseluruhan **24 kes pelayar** lulus: larian penuh merekodkan 21 lulus dan tiga selector lama bertindih dengan label butang mata baharu; selector medan diperincikan kepada padanan tepat dan ketiga-tiga kes ulangan lulus. Ini termasuk pendaftaran, e-mel ujian, login, MFA, pemulihan, profil syarikat, draf/premis PostgreSQL dan regresi peta. Ia bukan dakwaan satu larian 24/24 tanpa pembetulan. Keputusan ini tidak menutup status Codespaces yang masih PENDING.
+
+Screenshot dengan medan kosong sahaja: [daftar desktop](screenshots/password-register-desktop.png), [login telefon](screenshots/password-login-mobile.png).
 
 Tiada perubahan main, merge, deployment Cloudflare atau sentuhan Worker `dashboard-bangunan-mbsp`.

@@ -114,7 +114,7 @@ test("registration, real email activation, login, role selection and company cre
     .fill(`UJIAN${randomBytes(6).toString("hex")}`);
   await page.getByLabel("E-mel", { exact: true }).fill(email);
   await page.getByLabel("Nombor telefon", { exact: true }).fill("0123456789");
-  await page.getByLabel("Kata laluan", { exact: false }).fill(password);
+  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Daftar Akaun" }).click();
   await expect(page.getByRole("status")).toContainText("Akaun didaftarkan");
@@ -248,7 +248,7 @@ async function registerApplicant(
     .fill(`UJIAN${randomBytes(6).toString("hex")}`);
   await page.getByLabel("Nombor telefon", { exact: true }).fill("0000000000");
   await page.getByLabel("E-mel", { exact: true }).fill(email);
-  await page.getByLabel("Kata laluan", { exact: false }).fill(password);
+  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Daftar Akaun" }).click();
   await expect(page.getByRole("status")).toContainText("Akaun didaftarkan");

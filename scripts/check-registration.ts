@@ -84,6 +84,7 @@ if (valid) {
     checks.applicantRole = roles.rows[0].present ? "PASS" : "MISSING";
     await client.query("ROLLBACK");
   } catch (error) {
+    if (checks.postgres !== "PASS") checks.postgres = "FAIL";
     const failure = safeServerFailure(error);
     checks.databaseFailure = {
       code: failure.code,
