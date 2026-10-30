@@ -53,6 +53,8 @@ Buka **http://localhost:5173/map-check.html** dalam Chrome pada komputer yang me
 
 ## Ujian yang benar-benar dilaksanakan
 
+Untuk pengguna tanpa Node.js atau terminal, gunakan [ZIP diagnostik kendiri dan arahan tanpa pemasangan](previews/README.md). Alamat `localhost` di atas hanya untuk pembangun pada komputer yang menjalankan pelayan. Sesi Codex ini tidak menyediakan URL preview awam. Fail muat turun bukan preview portal penuh; paparan jalan sebenar masih perlu disahkan di luar rangkaian Codex.
+
 - Lint, typecheck dan build lulus; **91 unit/API (67 API + 24 unit)** lulus, termasuk lapan ujian konfigurasi/controller baharu.
 - **15 ujian pelayar** lulus: lima senario peta terkawal, sepuluh regresi portal/akaun/MFA/syarikat/draf/premis.
 - Senario peta: sumber utama berjaya; kegagalan utama → vektor alternatif; kedua-duanya gagal tanpa loop; retry pulih; WebGL tidak tersedia tidak merosakkan zoom/retry; portal mengekalkan klik/drag/zoom/koordinat serta Simpan Draf PostgreSQL semasa fallback.
