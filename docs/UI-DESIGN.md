@@ -55,3 +55,7 @@ Destinasi Permohonan Baharu kini `/permohonan/baharu` dengan semakan sesi/login-
 ## Ruang premis Fasa 2B.2
 
 Halaman utama, logo asal, latar, warna dan animasi tidak diubah. Borang premis menggunakan komponen kad/form korporat, susun atur dua kolum desktop dan satu kolum telefon. CSS baharu diskop pada ruang premis; Leaflet/CSS peta dimuatkan apabila diperlukan. Pin berwarna biru/emas adalah penanda lokasi, bukan logo rasmi baharu. Screenshot memaparkan keadaan rangkaian sebenar (peta asas OSM disekat, grid/amaran kelihatan). Lihat PHASE2B2.md.
+
+## Status/fallback peta
+
+Pembetulan peta hanya menyentuh komponen sumber peta/status/retry di Maklumat Premis. Identiti/homepage tidak diubah. Snapshot baharu menggunakan keadaan rangkaian sebenar; provider terkawal dalam ujian tidak dianggap visual portal sebenar. [Screenshot dan batas pengesahan Chrome](MAP-FIX.md).

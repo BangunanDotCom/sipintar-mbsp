@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ms">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>STAYLink — Diagnostik Peta</title>
+  </head>
+  <body>
+    <main>
+      <h1>STAYLink — Diagnostik Peta</h1>
+      <p>
+        Halaman semakan pembangun. Tiada login, maklumat peribadi atau simpanan
+        draf digunakan. Buka halaman ini pada Chrome melalui HTTP/HTTPS, bukan
+        file://.
+      </p>
+      <p id="map-result" role="status">Memuatkan sumber sebenar…</p>
+      <div id="map" aria-label="Peta diagnostik"></div>
+      <button id="retry" type="button" disabled>Cuba Semula</button>
+      <p>
+        Jubin/peta tidak disimulasikan. Status berjaya memerlukan imej jubin
+        terdekod atau ciri geografi vektor yang benar-benar dirender. Rujuk
+        Network dalam DevTools untuk respons HTTP.
+      </p>
+    </main>
+    <script type="module" src="/src/map-check.ts"></script>
+  </body>
+</html>

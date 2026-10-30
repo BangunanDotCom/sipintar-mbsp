@@ -2,6 +2,12 @@ import React from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapPin } from "lucide-react";
+import { readMapConfig } from "./map-config";
+import {
+  createBasemapController,
+  type BasemapState,
+} from "./basemap-controller";
+import { mountBasemap } from "./map-basemap";
 export default function PremisesMap({
   latitude,
   longitude,
@@ -23,16 +29,26 @@ export default function PremisesMap({
   pick.current = onPick;
   const enabled = React.useRef(!disabled);
   enabled.current = !disabled;
-  const [tileState, setTileState] = React.useState("loading"),
-    [center, setCenter] = React.useState({ lat: 5.38, lng: 100.42 });
+  const [tileState, setTileState] = React.useState<BasemapState>({
+      phase: "loading",
+      provider: "primary",
+      fallback: false,
+    }),
+    [center, setCenter] = React.useState({ lat: 5.38, lng: 100.42, zoom: 13 });
+  const config = React.useMemo(() => readMapConfig(import.meta.env), []);
+  const basemap = React.useRef<ReturnType<
+    typeof createBasemapController
+  > | null>(null);
   const initial = React.useRef({ latitude, longitude });
   React.useEffect(() => {
     if (!container.current) return;
     const start = initial.current;
     const m = L.map(container.current, {
       scrollWheelZoom: false,
-      zoomAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)")
-        .matches,
+      minZoom: 3,
+      maxZoom: 19,
+      // Keep one camera transform for raster/vector layers; no competing CSS zoom animation.
+      zoomAnimation: false,
       fadeAnimation: !window.matchMedia("(prefers-reduced-motion: reduce)")
         .matches,
       zoomControl: true,
@@ -75,7 +91,11 @@ export default function PremisesMap({
       return normalized;
     }
     placePin.current = pin;
-    setCenter({ lat: m.getCenter().lat, lng: m.getCenter().lng });
+    setCenter({
+      lat: m.getCenter().lat,
+      lng: m.getCenter().lng,
+      zoom: m.getZoom(),
+    });
     if (start.latitude !== null && start.longitude !== null)
       pin(start.latitude, start.longitude);
     m.on("click", (e: L.LeafletMouseEvent) => {
@@ -85,45 +105,35 @@ export default function PremisesMap({
     });
     m.on("moveend", () => {
       const p = m.getCenter();
-      setCenter({ lat: p.lat, lng: p.lng });
+      setCenter({ lat: p.lat, lng: p.lng, zoom: m.getZoom() });
     });
-    const tiles = L.tileLayer(
-      "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-      {
-        maxZoom: 19,
-        minZoom: 3,
-        noWrap: true,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
-      },
-    );
-    let loaded = false,
-      failed = false;
-    tiles.on("tileload", () => {
-      loaded = true;
-      if (!failed) setTileState("ready");
-    });
-    tiles.on("tileerror", () => {
-      failed = true;
-      setTileState("unavailable");
-    });
-    tiles.addTo(m);
-    const timer = setTimeout(() => {
-      if (!loaded) setTileState("unavailable");
-    }, 6000);
+    if (config.issue)
+      setTileState({
+        phase: "unavailable",
+        provider: "primary",
+        fallback: false,
+        reason: "configuration",
+      });
+    else
+      basemap.current = createBasemapController(
+        (provider, events) => mountBasemap(m, config, provider, events),
+        setTileState,
+        config.fallback !== "none",
+      );
     const resize = new ResizeObserver(() =>
       m.invalidateSize({ animate: false }),
     );
     resize.observe(container.current);
     return () => {
-      clearTimeout(timer);
+      basemap.current?.dispose();
+      basemap.current = null;
       resize.disconnect();
       m.remove();
       map.current = null;
       marker.current = null;
       placePin.current = null;
     };
-  }, []);
+  }, [config]);
   React.useEffect(() => {
     if (disabled) marker.current?.dragging?.disable();
     else marker.current?.dragging?.enable();
@@ -142,18 +152,65 @@ export default function PremisesMap({
         Klik peta atau seret pin. Untuk papan kekunci, fokus peta, gerakkan
         dengan kekunci anak panah dan tekan Letak Pin di Tengah Peta.
       </p>
-      {tileState === "loading" && (
-        <p className="map-notice" role="status">
-          Memuatkan peta asas OpenStreetMap…
-        </p>
-      )}
-      {tileState === "unavailable" && (
-        <p className="map-notice" role="status">
-          Peta asas tidak dapat dimuatkan. Paparan grid sahaja; tiada jalan atau
-          alamat dipaparkan. Pemilihan koordinat masih berfungsi, tetapi semak
-          lokasi pada peta yang boleh dicapai sebelum meneruskan.
-        </p>
-      )}
+      <p className="map-provider">
+        Peta asas:{" "}
+        {tileState.provider === "primary"
+          ? config.primaryName
+          : "OpenFreeMap (alternatif)"}
+      </p>
+      <div
+        className="map-status"
+        role="status"
+        data-basemap-status={tileState.phase}
+        data-basemap-provider={tileState.provider}
+      >
+        {tileState.phase === "loading" && (
+          <p className="map-notice">
+            {tileState.fallback
+              ? "Peta utama tidak dapat dimuatkan. Mencuba peta alternatif OpenFreeMap…"
+              : `Memuatkan peta asas ${config.primaryName}…`}
+          </p>
+        )}
+        {tileState.phase === "ready" && (
+          <p className="map-ready">
+            Peta asas telah dimuatkan
+            {tileState.fallback ? " melalui OpenFreeMap (alternatif)" : ""}.
+          </p>
+        )}
+        {tileState.phase === "unavailable" && (
+          <>
+            <p className="map-notice">
+              {config.issue ||
+                "Peta jalan belum dapat dipaparkan. Sumber peta tidak dapat dicapai atau pemapar peta gagal. Grid dan pin sahaja dipaparkan; jangan anggap jalan atau nama lokasi telah disahkan."}
+            </p>
+            <p className="map-help">
+              Semak sambungan rangkaian, penyekat kandungan dan kebenaran sumber
+              peta. Anda boleh mencuba semula atau menyemak lokasi pada laman
+              peta luar.
+            </p>
+          </>
+        )}
+      </div>
+      <div className="map-recovery">
+        {tileState.phase === "unavailable" && !config.issue && (
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={disabled}
+            onClick={() => basemap.current?.retry()}
+          >
+            Cuba Semula Peta
+          </button>
+        )}
+        <a
+          className="text-button"
+          href={`https://www.openstreetmap.org/#map=${center.zoom}/${latitude ?? center.lat}/${longitude ?? center.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Buka lokasi di OpenStreetMap ↗
+        </a>
+      </div>
       <div
         ref={container}
         className="premises-map"
@@ -161,7 +218,8 @@ export default function PremisesMap({
         aria-describedby="map-help"
       />
       <p className="map-center">
-        Pusat peta: {center.lat.toFixed(6)}, {center.lng.toFixed(6)}
+        Pusat peta: {center.lat.toFixed(6)}, {center.lng.toFixed(6)} · Zoom{" "}
+        {center.zoom}
       </p>
       <button
         type="button"

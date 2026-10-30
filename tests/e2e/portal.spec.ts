@@ -14,6 +14,16 @@ async function activationLink(email: string) {
   ).then((r) => r.json());
   return detail.Text.trim();
 }
+// Exercise form/auth/draft behavior without fetching community map tiles in automation.
+// Provider rendering is covered by maps.spec.ts fixtures; review captures use a separate real-network run.
+test.beforeEach(async ({ page }) => {
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.abort(),
+  );
+  await page.route("https://tiles.openfreemap.org/**", (route) =>
+    route.abort(),
+  );
+});
 test("portal desktop navigation, FAQ and honest future module state", async ({
   page,
 }) => {
@@ -853,7 +863,7 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
       ),
     ).toBe(true);
     if (width === 390 || width === 1440) {
-      // Capture the real portal and actual network state, with no simulated map tiles.
+      // Regression-only capture under controlled network failure; not the real-network review evidence.
       await expect(
         page.getByText("Memuatkan peta asas OpenStreetMap…", { exact: true }),
       ).toHaveCount(0);

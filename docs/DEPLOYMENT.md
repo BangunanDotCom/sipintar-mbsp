@@ -30,3 +30,11 @@ Deploy kod aplikasi yang serasi dengan skema. Rollback aplikasi hanya jika skema
 ## Sebelum penerimaan
 
 Tentukan backup/RPO/RTO, log dan monitoring, SMTP, kuota fail, pengurusan sesi berbilang instance, pentest, pemulihan MFA, domain rasmi dan peraturan data. Dapatkan aset sah MBSP, kelulusan branding, polisi privasi dan UAT setiap peranan. Integrasi SSO, MBSPPay, AI, GIS dan tandatangan digital memerlukan spesifikasi/akses serta kelulusan berasingan.
+
+## Sumber peta dan persekitaran frontend
+
+Vite kekal ber-root `apps/web`. Tetapan VITE_MAP_* dibaca dari `apps/web/.env.local`, bukan `.env` backend di akar. Rujuk template frontend; semua VITE_* adalah awam, bukan tempat rahsia sistem. Override sumber memerlukan build baharu dan atribusi berlesen. Kod tidak menukar konfigurasi auth, database atau CSP API.
+
+Sumber lalai: OSM HTTPS raster, alternatif OpenFreeMap HTTPS vector. Frontend memerlukan akses imej OSM dan fetch style/tiles/fonts/sprite OpenFreeMap serta worker renderer JavaScript tempatan (self). Sesuaikan img-src/connect-src/worker-src pada hosting sebenar tanpa mematikan CSP secara menyeluruh. Tiada resource CDN JavaScript atau proxy jubin tanpa identiti digunakan. OpenFreeMap menggunakan WebGL; kegagalan renderer dilaporkan dan tidak mengubah draf.
+
+Rangkaian Codex semasa menolak kedua-dua domain (CONNECT 403). Akses peta pada IIS/hosting/Chrome luar belum diuji; jangan menganggap isu selesai hanya kerana unit test atau fallback fixture lulus. [Laporan semakan Chrome](MAP-FIX.md).

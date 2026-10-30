@@ -139,3 +139,7 @@ Selepas memilih pemohon, tekan **Seterusnya** untuk membuka Maklumat Premis. Ala
 Jalankan `npm run db:generate` dan `npm run db:migrate` untuk migrasi `202610290004_premises`; migrasi database ujian menggunakan `npm run db:test:migrate`. Tiada rahsia baharu atau putaran kunci sedia ada diperlukan.
 
 Peta interaktif Leaflet menggunakan jubin OpenStreetMap. **Akses jubin disekat oleh rangkaian Codex semasa (HTTP CONNECT 403)**: screenshot memaparkan grid dan amaran sebenar, bukan peta jalan simulasi. Klik/seret pin, pan/zoom dan koordinat masih tersedia; lokasi perlu disemak pada peta asas yang boleh dicapai. Penggunaan lain memerlukan akses browser/CSP kepada `https://tile.openstreetmap.org` atau integrasi penyedia diluluskan ICT. Pin tidak mengesahkan sempadan daerah. [Skop, ujian dan screenshot Fasa 2B.2](docs/PHASE2B2.md).
+
+## Pembetulan sumber peta
+
+Peta kini mempunyai sumber utama OSM, fallback OpenFreeMap dan Cuba Semula yang diuji. Tetapan awam berada di `apps/web/.env.local` (contoh `apps/web/.env.example`), berasingan daripada `.env` backend. **Peta jalan sebenar masih belum disahkan dalam Codex:** rangkaian menyekat kedua-dua penyedia. Ujian terkawal tidak dianggap bukti jalan sebenar. Untuk semakan Chrome tanpa backend, jalankan `npm run dev:web` dan buka `http://localhost:5173/map-check.html`. [Punca, fail, bukti screenshot dan langkah pengesahan](docs/MAP-FIX.md).

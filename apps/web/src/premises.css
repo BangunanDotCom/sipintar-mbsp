@@ -186,3 +186,30 @@
     padding: 20px;
   }
 }
+
+.map-provider,
+.map-help {
+  color: #526b87;
+  overflow-wrap: anywhere;
+}
+.map-ready {
+  color: #08756b;
+  padding: 10px 14px;
+  border-left: 3px solid #08756b;
+  background: #edf9f5;
+}
+.map-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 12px 0;
+}
+.map-recovery .button {
+  white-space: normal;
+  line-height: 1.7;
+}
+.premises-map .maplibregl-map,
+.premises-map .maplibregl-canvas {
+  pointer-events: none;
+}

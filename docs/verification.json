@@ -1,6 +1,6 @@
 {
   "project": "STAYLink MBSP",
-  "date": "2026-10-29",
+  "date": "2026-10-30",
   "timezone": "Asia/Kuala_Lumpur",
   "checks": {
     "lint": "passed",
@@ -8,11 +8,11 @@
     "prisma_codegen": "passed",
     "postgres_migration": "passed",
     "vitest": {
-      "passed": 83,
+      "passed": 91,
       "failed": 0
     },
     "playwright": {
-      "passed": 10,
+      "passed": 15,
       "failed": 0
     },
     "frontend_build": "passed",
@@ -829,6 +829,157 @@
       "Retain existing identity/MFA keys and configure SMTP/HTTPS/origin",
       "Allow approved basemap tile provider in browser network and frontend CSP; real tile delivery not tested successfully in Codex",
       "Official GIS/document verification and formal submission not provided"
+    ],
+    "main_modified": false,
+    "cloudflare_deployed": false,
+    "worker_modified": false
+  },
+  "map_fix": {
+    "date": "2026-10-30",
+    "timezone": "Asia/Kuala_Lumpur",
+    "branch": "staylink-mbsp-phase1",
+    "status": "PENDING_REAL_MAP_AND_EXTERNAL_CHROME_VERIFICATION",
+    "checks": {
+      "lint": "passed",
+      "typecheck": "passed",
+      "unit_api": {
+        "passed": 91,
+        "api": 67,
+        "unit": 24,
+        "failed": 0
+      },
+      "playwright": {
+        "passed": 15,
+        "provider_scenarios": 5,
+        "portal_regressions": 10,
+        "failed": 0
+      },
+      "build": "passed, fallback renderer size warning"
+    },
+    "primary_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "fallback": "OpenFreeMap Liberty via MapLibre, attributed, no private API key",
+    "fallback_limits": "One primary and one alternative per attempt; 12s timeout per provider; explicit manual retry only",
+    "fixed_code": [
+      "Current tile batch status, stale failure recovery",
+      "Layer removal cleanup before clearing listeners",
+      "Cancelled renderer animation frames and obsolete async mounts",
+      "Independent fallback and truthful unavailable/retry state"
+    ],
+    "frontend_env": "apps/web/.env.local; backend root .env and Vite configuration unchanged",
+    "provider_fixtures_are_real_delivery_proof": false,
+    "real_network_verification": {
+      "browser": "Chromium 154.0.8037.57",
+      "googleChromeAvailable": false,
+      "state": "unavailable",
+      "provider": "openfreemap",
+      "roadMapVerified": false,
+      "mockedResponses": false,
+      "network": {
+        "tile.openstreetmap.org: net::ERR_TUNNEL_CONNECTION_FAILED": 18,
+        "tiles.openfreemap.org: net::ERR_TUNNEL_CONNECTION_FAILED": 1
+      },
+      "errors": [],
+      "viewports": [
+        {
+          "width": 320,
+          "overflow": false
+        },
+        {
+          "width": 390,
+          "overflow": false
+        },
+        {
+          "width": 768,
+          "overflow": false
+        },
+        {
+          "width": 1024,
+          "overflow": false
+        },
+        {
+          "width": 1440,
+          "overflow": false
+        }
+      ]
+    },
+    "proxy_probe": "HTTP CONNECT 403 Forbidden, server envoy, before provider HTTP response",
+    "allowed_map_hosts_in_codex_policy": [],
+    "screenshots": {
+      "map-fix-mobile": {
+        "path": "docs/screenshots/map-fix-mobile.png",
+        "width": 390,
+        "height": 4615,
+        "bytes": 275717,
+        "sha256": "596184b6aee07aca27343a2afea5ed1cfe363ef80399946c869282d8c9c21571"
+      },
+      "map-fix-desktop": {
+        "path": "docs/screenshots/map-fix-desktop.png",
+        "width": 1440,
+        "height": 3236,
+        "bytes": 334382,
+        "sha256": "6d2319dcf67ef758a8668bbe8b79e803f9a8045a5336a66db574aabea3d8186c"
+      }
+    },
+    "home_checks": {
+      "viewports": [
+        {
+          "width": 320,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 390,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": [],
+          "pixelFileUnchanged": true,
+          "sha256": "bc1bc7cf1bce0ca44c5e19fb9700c66672f25a2a7dae65644031247e7e4e86f5"
+        },
+        {
+          "width": 768,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 1024,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": []
+        },
+        {
+          "width": 1440,
+          "overflow": false,
+          "allImagesLoaded": true,
+          "errors": [],
+          "pixelFileUnchanged": true,
+          "sha256": "32b66385d435724e9bf2174d4e45e4266c8015332ce085e3d12def1c9fd9c9a5"
+        }
+      ],
+      "mapModuleRequestsOnHome": []
+    },
+    "protected_paths_unchanged": [
+      "apps/api",
+      "prisma",
+      "packages/shared",
+      "apps/web/src/main.tsx",
+      "apps/web/src/ApplicationDraft.tsx",
+      "apps/web/src/Dashboard.tsx",
+      "apps/web/src/Premises.tsx",
+      "apps/web/src/brand.ts",
+      "apps/web/src/styles.css",
+      "apps/web/src/premium.css",
+      "apps/web/src/CityScene.tsx",
+      "apps/web/vite.config.ts",
+      "apps/web/public/assets"
+    ],
+    "build_note": "MapLibre fallback chunk ~1.06MB, ~290kB gzip; loaded only after primary fails, never on homepage",
+    "production_pending": [
+      "Allow tile.openstreetmap.org and tiles.openfreemap.org through approved network policy",
+      "Verify provider response and actual roads/labels in external Google Chrome",
+      "Configure frontend CSP for approved images/vector fetch/local renderer worker",
+      "Review provider terms/attribution and custom source rights"
     ],
     "main_modified": false,
     "cloudflare_deployed": false,

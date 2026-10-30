@@ -63,3 +63,9 @@ Rekod draf bukan penghantaran rasmi. Tiada butiran premis, nombor rujukan, pener
 Lokasi/daerah diisytiharkan, pin koordinat automatik, bangunan agregat, CCC/CFO/OC, simpan separa/lengkap, Sebelumnya/Seterusnya dan semakan draf telah disambungkan ke PostgreSQL serta kawalan pemilik/audit/versi yang sama. 83 unit/API dan 10 aliran pelayar lulus. Tiada penghantaran rasmi atau kelulusan.
 
 **PENDING:** jubin OSM tidak boleh dicapai dalam rangkaian Codex (HTTP CONNECT 403), jadi screenshot menunjukkan grid/amaran sebenar. Enjin pin/koordinat diuji; penghantaran peta asas sebenar belum berjaya diuji. Tiada data GIS rasmi MBSP untuk mengesahkan sempadan. Lihat [skop, batas dan screenshot](PHASE2B2.md). Catatan terdahulu tentang premis belum dibina ialah sejarah sebelum revisi ini; agregat premis kini tersedia, penghantaran rasmi/rekod unit atau aras terperinci belum tersedia.
+
+## Pembetulan peta — 30 Oktober 2026
+
+Sumber utama HTTPS OSM dikekalkan; fallback OpenFreeMap, status pemuatan semasa, timeout/retry terhad dan cleanup layer/renderer telah diuji. Konfigurasi frontend kini mempunyai template sendiri dalam apps/web/.env.example. 91 unit/API dan 15 pelayar lulus tanpa perubahan backend/login/Simpan Draf.
+
+**PENDING sebenar:** Codex menyekat kedua-dua penyedia melalui CONNECT 403. Jalan/bangunan/nama lokasi dan Chrome luar belum disahkan. Screenshot terkini menunjukkan grid/amaran sebenar, bukan peta simulasi. [Laporan lengkap](MAP-FIX.md).

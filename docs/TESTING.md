@@ -11,8 +11,8 @@ Tarikh: **29 Oktober 2026**, waktu paparan pengguna Malaysia. Runtime yang digun
 | Seed peranan, permission, daerah, jabatan dan kategori | Lulus |
 | ESLint | Lulus |
 | TypeScript `tsc --noEmit` | Lulus |
-| Vitest unit dan API | **83/83 lulus** (67 API, 16 unit) |
-| Playwright aliran pelayar | **10/10 lulus** |
+| Vitest unit dan API | **91/91 lulus** (67 API, 24 unit) |
+| Playwright aliran pelayar | **15/15 lulus** |
 | Binaan frontend produksi | Lulus |
 | Bootstrap pentadbir pertama pada database baharu | Berjaya; percubaan kedua ditolak |
 | Semakan visual desktop 1440px dan telefon 390px | Dilakukan; tiada overflow mendatar pada aliran diuji |
@@ -99,3 +99,9 @@ API/database tambahan menguji: bahagian kosong tanpa rekod palsu, draf separa, s
 Dua aliran pelayar tambahan menguji navigasi pemohon → premis, gagal CONTINUE tidak lengkap, simpan separa/reload, klik/memindah/seret pin, koordinat automatik, input agregat, CCC, semakan draf termasuk reload, navigasi Sebelumnya dan autosave, pan/pin papan kekunci serta logout/login-return ke premis. Ujian berasaskan data sintetik DATA UJIAN. 320, 390, 768, 1024 dan 1440 piksel disemak tanpa overflow. Suite menunggu kuota API sebenar; had kadar tidak dilonggarkan.
 
 **Peta asas PENDING:** akses ke tile.openstreetmap.org disekat HTTP CONNECT 403. Screenshot menggunakan portal/keadaan rangkaian sebenar tanpa mock jubin; grid/pin/amaran dipaparkan. Kejayaan ujian pin tidak membuktikan jubin peta asas atau GIS rasmi boleh dicapai. [Screenshot dan batas](PHASE2B2.md).
+
+## Pembetulan peta — 30 Oktober 2026
+
+Keputusan semasa: lint/typecheck/build lulus; 91 unit/API dan 15 pelayar lulus. Lapan unit baharu menguji konfigurasi HTTPS/atribusi, fallback terhad, timeout, retry, viewport pulih dan cleanup asynchronous. Lima pelayar baharu menguji primary, renderer vektor alternatif, kegagalan berganda/retry, WebGL tidak disokong serta simpanan koordinat portal melalui fallback. Provider fixtures ialah PNG/geografi sintetik dan tidak digunakan untuk screenshot semakan. Regresi portal membatalkan domain peta komuniti bagi mengelakkan permintaan bot kepada penyedia.
+
+Semakan rangkaian sebenar dibuat berasingan tanpa route mocks: Chromium 154, kedua-dua domain gagal ERR_TUNNEL_CONNECTION_FAILED, ujian proksi CONNECT 403; peta jalan/nama lokasi sebenar dan Google Chrome luar masih PENDING. Capture portal desktop/telefon menunjukkan amaran sebenar dan tiada ralat JS/overflow 320–1440. Build memberi amaran chunk renderer vektor ~1.06 MB (290 kB gzip), hanya dimuatkan apabila fallback diperlukan. [Bukti, screenshot dan langkah Chrome](MAP-FIX.md).
