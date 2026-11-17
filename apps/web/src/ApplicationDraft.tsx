@@ -18,6 +18,7 @@ import {
 import { api, ApiError, malaysiaTime, setCsrf } from "./api";
 import { applicationDraftSchema } from "../../../packages/shared/src/index";
 import { Loading, Notice } from "./main";
+import { DraftDocumentReadiness } from "./DraftDocumentReadiness";
 import "./application-draft.css";
 
 function ProfileDetails({ profile }: { profile: any }) {
@@ -353,6 +354,7 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               </span>
             </section>
           )}
+          {draft && <DraftDocumentReadiness draftId={draft.id} />}
           <section className="panel">
             <h2>
               <FileText size={21} /> Langkah seterusnya
