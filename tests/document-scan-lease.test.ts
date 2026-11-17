@@ -15,7 +15,7 @@ function setup(status = "PENDING") {
     sha256: createHash("sha256").update(bytes).digest("hex"),
     scanStatus: status, supersededAt: null,
   }));
-  const updateMany = vi.fn(async (_args: { where: Record<string, any>; data: Record<string, any> }) => ({ count: 1 }));
+  const updateMany = vi.fn(async (_args: { where: Record<string, unknown>; data: Record<string, any> }) => ({ count: 1 }));
   const db = { applicationDocument: { findUnique, updateMany } } as unknown as PrismaClient;
   const store: PrivateDocumentStore = {
     putQuarantined: async () => undefined,
@@ -31,8 +31,8 @@ describe("document scan lease ownership", () => {
     const f = setup();
     await expect(processPendingDocumentScan(f.db, f.store, f.scanner, id)).resolves.toBe("CLEAN");
     expect(f.updateMany).toHaveBeenCalledTimes(2);
-    const claim = f.updateMany.mock.calls[0][0];
-    const complete = f.updateMany.mock.calls[1][0];
+    const claim = f.updateMany.mock.calls[0][0] as { where: { OR: unknown }; data: { scanStatus: string; scanLeaseToken: string } };
+    const complete = f.updateMany.mock.calls[1][0] as { where: { scanLeaseToken: string; scanLeaseExpiresAt: unknown } };
     expect(claim.where.OR).toEqual([
       { scanStatus: "PENDING" },
       { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: expect.any(Date) } },
