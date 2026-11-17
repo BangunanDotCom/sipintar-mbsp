@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { draftDocumentUploadPolicy } from "../apps/api/src/draft-document-upload-policy.js";
 import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
@@ -9,6 +10,19 @@ const state = (documents: ReturnType<typeof doc>[]) =>
   documentChecklistRows("INDIVIDUAL", documents).find((row) => row.category === "premises_plan");
 
 describe("document checklist statuses", () => {
+  it("accepts the actual API upload guidance contract for each applicant capacity", () => {
+    const draftId = "11111111-1111-4111-8111-111111111111";
+    for (const capacity of ["INDIVIDUAL", "COMPANY"] as const) {
+      const uploadPolicy = draftDocumentUploadPolicy(capacity);
+      const parsed = validatedDocumentResponse({
+        draftId, capacity, documents: [], uploadPolicy,
+        uploadEnabled: false, submissionEnabled: false,
+      }, draftId, capacity);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.uploadPolicy).toEqual(uploadPolicy);
+      expect(parsed?.uploadPolicy.length).toBe(documentChecklistRows(capacity, []).length);
+    }
+  });
   it("validates upload policy rows before displaying file guidance", () => {
     const policy = {
       category: "premises_plan", label: "Pelan premis",
