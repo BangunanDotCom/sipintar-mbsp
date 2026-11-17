@@ -283,6 +283,8 @@ describe("document checklist statuses", () => {
     expect(queue.map((item) => item.priority)).toEqual(["CRITICAL", "ACTION", "ACTION", "WAITING"]);
     expect(queue.map((item) => item.category)).toEqual(["floor_layout", "company_authority", "premises_plan", "fire_safety"]);
     expect(queue.find((item) => item.category === "floor_layout")?.version).toBe(1);
+    expect(queue.find((item) => item.category === "floor_layout")?.nextAction).toBe("SECURITY_REVIEW");
+    expect(queue.find((item) => item.category === "premises_plan")?.nextAction).toBe("REVIEW_DOCUMENT");
     expect(queue.some((item) => item.category === "premises_photos")).toBe(false);
     expect(documentReviewQueue(rows)).toEqual(queue);
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
