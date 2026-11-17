@@ -30,6 +30,28 @@ describe("private document quarantine adapter", () => {
     expect(result.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(putQuarantined).toHaveBeenCalledOnce();
   });
+  it("isolates quarantined bytes from mutations of the caller-owned Buffer", async () => {
+    const source = Buffer.from(bytes);
+    let stored: Buffer | undefined;
+    const adapter: PrivateDocumentStore = {
+      putQuarantined: async ({ content }) => {
+        stored = content;
+        source.fill(0);
+      },
+      readQuarantined: async () => stored ?? Buffer.alloc(0),
+      deleteQuarantined: async () => undefined,
+    };
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const prepared = await storeQuarantinedDocument(adapter, {
+      draftId, storageKey, content: source, mimeType: "application/pdf",
+    });
+    expect(source.equals(bytes)).toBe(false);
+    expect(stored).toEqual(bytes);
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: prepared.sha256,
+      expectedByteSize: prepared.byteSize, expectedMimeType: "application/pdf",
+    })).resolves.toEqual(bytes);
+  });
   it("verifies stored quarantine content against the recorded digest and size", async () => {
     const { adapter } = store();
     const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
