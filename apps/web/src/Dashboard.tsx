@@ -888,7 +888,7 @@ function Companies() {
                   <details>
                     <summary>Surat kuasa & dokumen</summary>
                     <p>
-                      PDF maksimum 2 MB. Dokumen disimpan secara peribadi dan
+                      PDF maksimum 10 MiB. Dokumen disimpan secara peribadi dan
                       dimuat turun sebagai lampiran.
                     </p>
                     <label>
@@ -900,8 +900,8 @@ function Companies() {
                           const file = e.target.files?.[0];
                           if (!file) return;
                           try {
-                            if (file.size > 2 * 1024 * 1024)
-                              throw Error("Saiz maksimum ialah 2 MB.");
+                            if (file.size > 10 * 1024 * 1024)
+                              throw Error("Saiz maksimum ialah 10 MiB.");
                             const base64 = await new Promise<string>(
                               (resolve, reject) => {
                                 const reader = new FileReader();
