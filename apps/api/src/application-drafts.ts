@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
 import { validRepresentative } from "./company-invitations.js";
+import { loadDocumentSubmissionReadiness } from "./document-submission-readiness-db.js";
 import {
   applicationDraftSchema,
   applicationDraftUpdateSchema,
@@ -246,6 +247,23 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
         },
       });
       return tx.applicationDraft.findUniqueOrThrow({ where: { id } });
+    });
+  });
+  // Read-only pre-submission feedback; this does not activate submission.
+  app.get("/api/application-drafts/:id/submission-readiness", async (req) => {
+    const s = await applicant(req),
+      { id } = z.object({ id: z.uuid() }).parse(req.params);
+    return db.$transaction(async (tx) => {
+      const draft = await tx.applicationDraft.findFirst({
+        where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
+        select: { id: true, capacity: true, companyId: true },
+      });
+      if (!draft) fail(404, "Draf tidak ditemui.");
+      if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
+      if (draft.capacity !== "INDIVIDUAL" && draft.capacity !== "COMPANY")
+        fail(409, "Jenis pemohon draf tidak sah.");
+      const readiness = await loadDocumentSubmissionReadiness(tx, draft.id, draft.capacity);
+      return { draftId: draft.id, ...readiness, submissionEnabled: false };
     });
   });
   app.post("/api/application-drafts/:id/submit", async (req) => {
