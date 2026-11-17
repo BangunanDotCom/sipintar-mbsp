@@ -178,6 +178,13 @@ export async function routes(app: FastifyInstance) {
       "Gunakan jemputan wakil syarikat; penerima perlu menerima melalui akaun sendiri.",
     );
   });
+  app.get("/api/upload-limits", async (req) => {
+    await session(req);
+    const setting = await db.systemConfiguration.findUnique({ where: { key: "technical.upload_delegation_mib" } });
+    const configured = Number(setting?.value ?? 10);
+    const maxMiB = Number.isInteger(configured) && configured >= 1 && configured <= 20 ? configured : 10;
+    return { delegationPdfMiB: maxMiB };
+  });
   app.post("/api/companies/:id/documents", async (req) => {
     const companyId = id(req),
       s = await ownCompany(req, companyId);
@@ -188,19 +195,22 @@ export async function routes(app: FastifyInstance) {
           .min(1)
           .max(120)
           .regex(/^[^/\\]+\.pdf$/i),
-        content: z.string().max(13981016).regex(/^[A-Za-z0-9+/]*={0,2}$/),
+        content: z.string().max(27962028).regex(/^[A-Za-z0-9+/]*={0,2}$/),
         validUntil: z.iso.datetime().optional(),
       })
       .parse(req.body);
     if (b.validUntil && new Date(b.validUntil) <= new Date())
       fail(400, "Tarikh sah dokumen mesti pada masa hadapan.");
+    const setting = await db.systemConfiguration.findUnique({ where: { key: "technical.upload_delegation_mib" } });
+    const configured = Number(setting?.value ?? 10);
+    const maxMiB = Number.isInteger(configured) && configured >= 1 && configured <= 20 ? configured : 10;
     const content = Buffer.from(b.content, "base64");
     if (
-      content.length > 10 * 1024 * 1024 ||
+      content.length > maxMiB * 1024 * 1024 ||
       content.length < 5 ||
       content.subarray(0, 5).toString() !== "%PDF-"
     )
-      fail(400, "Hanya PDF maksimum 10 MiB dibenarkan.");
+      fail(400, `Hanya PDF maksimum ${maxMiB} MiB dibenarkan.`);
     const doc = await db.delegationDocument.create({
       data: {
         companyId,
@@ -652,6 +662,7 @@ export async function routes(app: FastifyInstance) {
         reason: z.string().min(5).max(500),
       })
       .parse(req.body);
+    if (scope === "technical" && b.key === "upload_delegation_mib" && (typeof b.value !== "number" || !Number.isInteger(b.value) || b.value < 1 || b.value > 20)) fail(400, "Had PDF mesti nombor bulat 1 hingga 20 MiB.");
     const key = `${scope}.${b.key}`;
     await db.$transaction(async (tx) => {
       await tx.systemConfiguration.upsert({
