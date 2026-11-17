@@ -361,3 +361,7 @@ Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kate
 ## Pengesahan struktur fail dokumen bersama
 
 `document-file-signatures.ts` kini menyediakan pemeriksaan struktur asas MIME PDF, JPEG dan PNG yang digunakan oleh validator pra-muat-naik serta storan kuarantin. PNG memerlukan tandatangan, panjang IHDR 13 bait, sekurang-kurangnya 33 bait dan lebar/tinggi bukan sifar. Ujian tambahan menolak PNG yang terpotong dan dimensi sifar. Ini hanya pengesahan awal; ia tidak mengesahkan CRC, kandungan PDF/imej sepenuhnya atau keselamatan malware. Storan dan laluan muat naik produksi masih tidak diaktifkan; keputusan CI belum disahkan.
+
+## Pengekodan Base64 kanonik untuk fail draf
+
+`validateDraftUpload()` kini memerlukan hasil pengekodan semula `Buffer` kepada Base64 sepadan tepat dengan input asal selepas semakan saiz dan sintaks. Ini menolak pengekodan yang mempunyai bit pelapik bukan sifar walaupun decoder Node.js masih boleh menghasilkan bait yang sama. Ujian unit menambah kes input tidak kanonik. Kawalan ini tidak menggantikan pengimbasan malware atau pengesahan format penuh, dan tidak mengaktifkan endpoint muat naik. Keputusan CI masih belum disahkan.
