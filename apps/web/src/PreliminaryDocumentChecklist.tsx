@@ -27,11 +27,14 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const [documentSearch, setDocumentSearch] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("ALL");
   const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch, scopeFilter);
+  // Counts reflect the selected scope and keyword, but not the selected
+  // status, so users can compare available statuses without resetting filters.
   const filterCounts = {
-    attention: filterDocumentChecklistRows(visible, "ATTENTION").length,
-    pending: filterDocumentChecklistRows(visible, "PENDING").length,
-    verified: filterDocumentChecklistRows(visible, "VERIFIED").length,
-    missing: filterDocumentChecklistRows(visible, "MISSING").length,
+    all: filterDocumentChecklistRows(visible, "ALL", documentSearch, scopeFilter).length,
+    attention: filterDocumentChecklistRows(visible, "ATTENTION", documentSearch, scopeFilter).length,
+    pending: filterDocumentChecklistRows(visible, "PENDING", documentSearch, scopeFilter).length,
+    verified: filterDocumentChecklistRows(visible, "VERIFIED", documentSearch, scopeFilter).length,
+    missing: filterDocumentChecklistRows(visible, "MISSING", documentSearch, scopeFilter).length,
   };
   const summary = documentChecklistSummary(visible);
   const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
@@ -129,7 +132,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <label htmlFor="document-status-filter">Tapis senarai dokumen mengikut status</label>{" "}
           <select id="document-status-filter" value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as DocumentStatusFilter)}>
-            <option value="ALL">Semua dokumen</option>
+            <option value="ALL">Semua dokumen ({filterCounts.all})</option>
             <option value="ATTENTION">Perlu perhatian atau pembetulan ({filterCounts.attention})</option>
             <option value="PENDING">Menunggu imbasan atau pengesahan ({filterCounts.pending})</option>
             <option value="VERIFIED">Telah disahkan pegawai ({filterCounts.verified})</option>
