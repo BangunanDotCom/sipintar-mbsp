@@ -32,15 +32,15 @@ describe("document scan worker state transition", () => {
     const s = setup();
     await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("CLEAN");
     expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ scanStatus: "PENDING", supersededAt: null }),
-      data: { scanStatus: "CLEAN" },
+      where: expect.objectContaining({ scanStatus: "SCANNING", supersededAt: null }),
+      data: { scanStatus: "CLEAN", scanLeaseToken: null, scanLeaseExpiresAt: null },
     }));
   });
   it("persists FAILED if scanner cannot run", async () => {
     const s = setup();
     s.scan.mockRejectedValueOnce(new Error("daemon offline"));
     await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("FAILED");
-    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { scanStatus: "FAILED" } }));
+    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { scanStatus: "FAILED", scanLeaseToken: null, scanLeaseExpiresAt: null } }));
   });
   it("skips already processed or superseded records", async () => {
     for (const override of [{ scanStatus: "CLEAN" }, { supersededAt: new Date().toISOString() }]) {
