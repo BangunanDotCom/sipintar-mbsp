@@ -303,3 +303,26 @@ export function filterDocumentReviewQueue(
     && (!term || [item.label, item.category].some((value) => value.toLocaleLowerCase("ms-MY").includes(term)))
   );
 }
+
+/**
+ * Triage guidance is informational only. It does not authorize officer actions,
+ * override malware scanning, or mark any document as approved.
+ */
+export type DocumentReviewNextAction = "RESOLVE_CONFLICT" | "SECURITY_REVIEW" | "REVIEW_DOCUMENT" | "AWAIT_SCAN" | "APPLICANT_CORRECTION";
+export function documentReviewNextAction(state: DocumentChecklistRow["state"]): DocumentReviewNextAction | null {
+  switch (state) {
+    case "CONFLICT": return "RESOLVE_CONFLICT";
+    case "UNSAFE": return "SECURITY_REVIEW";
+    case "PENDING_REVIEW": return "REVIEW_DOCUMENT";
+    case "PENDING_SCAN": return "AWAIT_SCAN";
+    case "REJECTED": return "APPLICANT_CORRECTION";
+    default: return null;
+  }
+}
+export const documentReviewNextActionLabels: Record<DocumentReviewNextAction, string> = {
+  RESOLVE_CONFLICT: "Semak percanggahan versi dan sejarah dokumen",
+  SECURITY_REVIEW: "Rujuk isu keselamatan fail kepada pegawai yang diberi kuasa",
+  REVIEW_DOCUMENT: "Menunggu semakan kesahihan dan pengesahan pegawai",
+  AWAIT_SCAN: "Tunggu imbasan keselamatan selesai sebelum semakan",
+  APPLICANT_CORRECTION: "Pemohon perlu menyemak sebab penolakan dan menyediakan pembetulan",
+};
