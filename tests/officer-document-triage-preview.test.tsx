@@ -30,6 +30,19 @@ describe("officer document triage preview", () => {
     expect(markup).not.toContain("type=\"file\"");
   });
 
+  it("escapes untrusted document labels rather than interpreting them as HTML", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      record("premises_plan", "CLEAN", "UNVERIFIED"),
+    ]);
+    const modified = rows.map((row) => row.category === "premises_plan"
+      ? { ...row, label: '<img src=x onerror=alert(1)>' }
+      : row);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows: modified }));
+    expect(markup).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(markup).not.toContain("<img src=x onerror=alert(1)>");
+    expect(markup).not.toContain('type="submit"');
+  });
+
   it("shows a clear empty state and no critical alert when nothing needs triage", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       record("premises_plan", "CLEAN", "VERIFIED"),
