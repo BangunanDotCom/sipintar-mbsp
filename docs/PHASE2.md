@@ -457,3 +457,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Had metadata identiti enjin pengimbas
 
 `scanQuarantinedDocument` kini menolak hasil pengimbas apabila `engine.trim()` kosong atau melebihi 128 aksara. Ini menghalang respons pengimbas tidak dipercayai daripada menghasilkan metadata identiti enjin yang terlalu panjang. Ujian regresi merangkumi 128 aksara (diterima) dan 129 aksara (ditolak). Pengimbas sebenar belum diaktifkan dan keputusan CI belum disahkan.
+
+## Sanitasi identiti enjin pengimbas daripada aksara kawalan
+
+`scanQuarantinedDocument` kini menolak nama enjin pengimbas yang mengandungi aksara kawalan ASCII (0x00–0x1F dan 0x7F), termasuk baris baharu, carriage return, tab dan null. Ini mengurangkan risiko pemalsuan baris log apabila identiti pengimbas digunakan dalam rekod audit. Ujian regresi merangkumi lima jenis input aksara kawalan. Had 128 aksara dan senarai medan respons yang dibenarkan kekal. Keputusan CI belum disahkan; pengimbas produksi belum diaktifkan.
