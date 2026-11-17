@@ -251,7 +251,10 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
     });
   });
   // Read-only pre-submission feedback; this does not activate submission.
-  app.get("/api/application-drafts/:id/submission-readiness", async (req) => {
+  app.get("/api/application-drafts/:id/submission-readiness", async (req, reply) => {
+    // Sensitive applicant-specific metadata must not be cached by browsers or proxies.
+    reply.header("Cache-Control", "private, no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
     const s = await applicant(req),
       { id } = z.object({ id: z.uuid() }).parse(req.params);
     return db.$transaction(async (tx) => {
