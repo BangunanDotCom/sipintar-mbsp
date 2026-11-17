@@ -9,6 +9,7 @@ import {
   type DocumentReviewPriorityFilter,
   type DocumentReviewOwnerFilter,
   type DocumentScopeFilter,
+  type DocumentReviewStatusFilter,
 } from "../../../packages/shared/src/document-checklist-status";
 
 const priorityLabels = {
@@ -39,11 +40,10 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const [owner, setOwner] = useState<DocumentReviewOwnerFilter>("ALL");
   const [scope, setScope] = useState<DocumentScopeFilter>("ALL");
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<DocumentChecklistRow["state"] | "ALL">("ALL");
+  const [status, setStatus] = useState<DocumentReviewStatusFilter>("ALL");
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
-  const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner)
-    .filter((item) => status === "ALL" || item.state === status);
+  const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner, status);
   const filteredSummary = documentReviewQueueSummary(filtered);
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
@@ -82,7 +82,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         <option value="OPTIONAL">Tambahan jika berkaitan</option>
       </select>
       <label htmlFor={statusId}>Status dokumen</label>
-      <select id={statusId} value={status} onChange={(e) => setStatus(e.target.value as DocumentChecklistRow["state"] | "ALL")}>
+      <select id={statusId} value={status} onChange={(e) => setStatus(e.target.value as DocumentReviewStatusFilter)}>
         <option value="ALL">Semua status</option>
         <option value="CONFLICT">Konflik versi</option>
         <option value="UNSAFE">Isu keselamatan</option>
