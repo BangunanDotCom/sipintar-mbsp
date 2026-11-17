@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { matchesDeclaredFileSignature } from "./document-file-signatures.js";
 import { isPrivateDocumentKeyForDraft } from "./private-document-keys.js";
 import { UPLOAD_CATEGORIES } from "./upload-policy.js";
 import { uploadKindForSupportingDocument } from "./draft-document-upload-policy.js";
@@ -37,17 +38,7 @@ export async function storeQuarantinedDocument(
     throw new Error("Saiz fail tidak dibenarkan.");
   if (!policy.mime.split(",").includes(input.mimeType))
     throw new Error("Jenis fail tidak dibenarkan bagi kategori dokumen.");
-  const pdf = input.content.subarray(0, 5).toString("ascii") === "%PDF-";
-  const jpeg = input.content.length >= 4 && input.content[0] === 0xff &&
-    input.content[1] === 0xd8 && input.content[2] === 0xff &&
-    input.content[input.content.length - 2] === 0xff &&
-    input.content[input.content.length - 1] === 0xd9;
-  const png = input.content.length >= 24 &&
-    input.content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
-    input.content.subarray(12, 16).toString("ascii") === "IHDR";
-  if (!(input.mimeType === "application/pdf" && pdf ||
-    input.mimeType === "image/jpeg" && jpeg ||
-    input.mimeType === "image/png" && png))
+  if (!matchesDeclaredFileSignature(input.content, input.mimeType))
     throw new Error("Kandungan fail tidak sepadan dengan MIME.");
   const sha256 = createHash("sha256").update(input.content).digest("hex");
   await store.putQuarantined({
