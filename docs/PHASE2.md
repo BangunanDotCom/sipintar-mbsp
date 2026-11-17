@@ -409,3 +409,7 @@ Semakan struktur `IHDR` PNG kini menolak lebar atau tinggi melebihi `2^31 - 1`, 
 ## Semakan sintaks pengepala PDF
 
 Pengesahan tandatangan `application/pdf` kini memerlukan pengepala versi berbentuk `%PDF-X.Y` (X dan Y digit ASCII), bukan sekadar awalan `%PDF-`. Ujian regresi menolak nombor versi bukan digit, pemisah tidak sah dan pengepala terpotong. Ini hanya semakan struktur awal; ia tidak mengesahkan keseluruhan fail PDF, tidak menggantikan parser atau pengimbas malware dan tidak mengaktifkan muat naik produksi. Keputusan CI belum disahkan.
+
+## Penyelarasan keselamatan muat naik surat kuasa wakil
+
+Laluan keserasian `validateDelegationPdf` kini menguatkuasakan had pentadbir integer 1–20 MiB, menolak dokumen kosong dan Base64 tidak kanonik, serta menggunakan pengesahan tandatangan PDF bersama (termasuk sintaks versi `%PDF-X.Y`). Semakan panjang pengekodan dilakukan sebelum decode untuk mengehadkan penggunaan memori. Ujian regresi ditambah untuk Base64 tidak kanonik, pengepala PDF tidak sah, dokumen kosong dan had konfigurasi tidak sah. Pemeriksaan ini tidak menggantikan pengimbasan malware, storan persendirian atau pengesahan menyeluruh PDF. Keputusan CI belum disahkan.
