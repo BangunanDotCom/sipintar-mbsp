@@ -489,3 +489,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Sempadan eksklusif penyimpanan keputusan pajakan pengimbasan
 
 Selepas pembetulan pengambilalihan pajakan pada masa tamat (`lte`), penulisan keputusan pengimbasan kini memerlukan `scanLeaseExpiresAt: { gt: new Date() }`. Ini memastikan pekerja asal tidak lagi layak menyimpan keputusan tepat pada masa tamat, ketika pekerja lain sudah boleh menuntut semula pajakan. Token unik, status `SCANNING`, identiti dokumen dan syarat belum diganti kekal diwajibkan. Ujian regresi memeriksa operator `gt` pada operasi kemas kini keputusan. Keputusan CI belum disahkan; tiada perubahan produksi.
+
+## Pengesahan ID dokumen bagi barisan tugas pengimbasan
+
+`processPendingDocumentScan` kini menyemak bahawa `documentId` berbentuk UUID yang sah sebelum memanggil `applicationDocument.findUnique`. Input kosong, UUID rosak, rentetan laluan dan UUID dengan versi tidak sah dipulangkan sebagai `SKIPPED` tanpa pertanyaan Prisma, tuntutan pajakan atau panggilan pengimbas. Ujian regresi meliputi input tersebut. Pengesahan ini bukan pengganti kawalan kebenaran dokumen dan token pajakan yang masih diwajibkan. Keputusan CI belum disahkan dan tiada perubahan produksi.
