@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -247,6 +247,22 @@ describe("document checklist statuses", () => {
     expect(queue.find((item) => item.category === "floor_layout")?.version).toBe(1);
     expect(queue.some((item) => item.category === "premises_photos")).toBe(false);
     expect(documentReviewQueue(rows)).toEqual(queue);
+    expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
+  });
+  it("summarizes officer triage by priority and document applicability", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "premises_plan" },
+      { ...doc(1, "PENDING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "premises_photos" },
+    ]);
+    const queue = documentReviewQueue(rows);
+    expect(documentReviewQueueSummary(queue)).toEqual({
+      total: 3, critical: 1, action: 1, waiting: 1, main: 2, optional: 1,
+    });
+    expect(documentReviewQueueSummary([])).toEqual({
+      total: 0, critical: 0, action: 0, waiting: 0, main: 0, optional: 0,
+    });
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
   });
   it("shows missing documents as missing", () => {
