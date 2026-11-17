@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validDraftApplicantContext } from "../apps/api/src/draft-applicant-context.js";
+import { validDraftApplicantContext, isDraftApplicantCapacity } from "../apps/api/src/draft-applicant-context.js";
 
 const user = "550e8400-e29b-41d4-a716-446655440000";
 const other = "550e8400-e29b-41d4-a716-446655440001";
@@ -30,5 +30,16 @@ describe("draft applicant context consistency", () => {
   });
   it("rejects unknown capacity", () => {
     expect(validDraftApplicantContext("OTHER", company, null, user)).toBe(false);
+  });
+});
+
+
+describe("isDraftApplicantCapacity", () => {
+  it("accepts only supported persisted capacity values", () => {
+    expect(isDraftApplicantCapacity("INDIVIDUAL")).toBe(true);
+    expect(isDraftApplicantCapacity("COMPANY")).toBe(true);
+    expect(isDraftApplicantCapacity("UNKNOWN")).toBe(false);
+    expect(isDraftApplicantCapacity("company")).toBe(false);
+    expect(isDraftApplicantCapacity("")).toBe(false);
   });
 });
