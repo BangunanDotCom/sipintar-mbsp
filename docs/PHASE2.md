@@ -413,3 +413,7 @@ Pengesahan tandatangan `application/pdf` kini memerlukan pengepala versi berbent
 ## Penyelarasan keselamatan muat naik surat kuasa wakil
 
 Laluan keserasian `validateDelegationPdf` kini menguatkuasakan had pentadbir integer 1–20 MiB, menolak dokumen kosong dan Base64 tidak kanonik, serta menggunakan pengesahan tandatangan PDF bersama (termasuk sintaks versi `%PDF-X.Y`). Semakan panjang pengekodan dilakukan sebelum decode untuk mengehadkan penggunaan memori. Ujian regresi ditambah untuk Base64 tidak kanonik, pengepala PDF tidak sah, dokumen kosong dan had konfigurasi tidak sah. Pemeriksaan ini tidak menggantikan pengimbasan malware, storan persendirian atau pengesahan menyeluruh PDF. Keputusan CI belum disahkan.
+
+## Ujian regresi keputusan imbasan dan pemilikan lease
+
+Ujian pekerja imbasan ditambah bagi memastikan status `INFECTED` disimpan tanpa dipromosikan kepada `CLEAN`, metadata MIME disertakan ketika tuntutan lease, dan keputusan imbasan daripada pekerja yang kehilangan lease tidak dilaporkan sebagai keputusan muktamad (`SKIPPED`). Ini menguji perlindungan sedia ada, bukan pengaktifan pengimbas malware produksi. Keputusan CI belum dapat disahkan.
