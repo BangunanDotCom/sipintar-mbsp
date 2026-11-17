@@ -6,6 +6,7 @@ import { fail } from "./auth.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { premiseFloorsSchema, summarizePremiseFloors } from "../../../packages/shared/src/floor-summary.js";
 import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
+import { evaluateDraftReadiness } from "../../../packages/shared/src/draft-readiness.js";
 import {
   premisesSaveSchema,
   completePremisesSchema,
@@ -91,7 +92,8 @@ export async function premisesRoutes(app: FastifyInstance) {
       })));
       const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
       return { ...response(d, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [] };
+        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [],
+        readiness: evaluateDraftReadiness({ premises: fields(p), floors: parsed.success ? parsed.data : [] }) };
     });
   });
   app.put("/api/application-drafts/:id/premises", async (req) => {
@@ -148,7 +150,8 @@ export async function premisesRoutes(app: FastifyInstance) {
       })));
       const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
       return { ...response({ ...d, version: b.version + 1 }, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [] };
+        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [],
+        readiness: evaluateDraftReadiness({ premises: fields(p), floors: parsed.success ? parsed.data : [] }) };
     });
   });
 }
