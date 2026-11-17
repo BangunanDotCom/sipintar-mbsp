@@ -19,6 +19,7 @@ describe("document checklist statuses", () => {
     expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [] })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [null] })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, label: "  " })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, category: " premises_plan " })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, defaultMaxMiB: Infinity })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, hardCeilingMiB: 5 })).toBe(false);
   });
@@ -37,6 +38,9 @@ describe("document checklist statuses", () => {
     ])).toEqual([]);
     expect(unambiguousDocumentUploadPolicies([
       policy, { category: "premises_plan", mimeTypes: null },
+    ])).toEqual([]);
+    expect(unambiguousDocumentUploadPolicies([
+      policy, { ...policy, category: " premises_plan " },
     ])).toEqual([]);
     expect(unambiguousDocumentUploadPolicies([
       policy, { ...policy, category: "company_authority" }, null,
@@ -64,6 +68,7 @@ describe("document checklist statuses", () => {
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), version: "1" })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: false })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), category: "  " })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), category: " premises_plan " })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), fileName: "" })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: " " })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), verificationStatus: "" })).toBe(false);
