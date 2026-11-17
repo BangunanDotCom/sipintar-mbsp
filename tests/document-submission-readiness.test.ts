@@ -31,7 +31,7 @@ describe("preliminary document submission readiness", () => {
   });
   it("blocks pending scans, infected files and rejected documents", () => {
     const result = documentSubmissionReadiness("INDIVIDUAL", [
-      ...readyDocs.filter((d) => d.category !== "floor_layout"),
+      ...readyDocs.filter((d) => !["floor_layout", "premises_photos", "ownership_or_tenancy"].includes(d.category)),
       document("floor_layout", { scanStatus: "PENDING" }),
       document("premises_photos", { scanStatus: "INFECTED" }),
       document("ownership_or_tenancy", { verificationStatus: "REJECTED" }),
