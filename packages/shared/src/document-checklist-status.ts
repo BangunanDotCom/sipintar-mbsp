@@ -31,10 +31,11 @@ export function unambiguousDocumentUploadPolicies(value: unknown): DocumentUploa
     if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
     const category = (item as Record<string, unknown>).category;
     if (typeof category !== "string" || category.trim().length === 0) continue;
-    counts.set(category, (counts.get(category) ?? 0) + 1);
+    const key = category.trim();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return value.filter((item): item is DocumentUploadPolicy =>
-    isDocumentUploadPolicy(item) && counts.get(item.category) === 1
+    isDocumentUploadPolicy(item) && counts.get(item.category.trim()) === 1
   );
 }
 
