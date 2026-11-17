@@ -225,3 +225,7 @@ Arahan `npm run documents:scan` kini memulangkan kod keluar `1` apabila sekurang
 ## Semakan awal kesediaan dokumen untuk penghantaran
 
 Ditambah `apps/api/src/document-submission-readiness.ts` untuk mengira kategori dokumen wajib yang masih menghalang penghantaran berdasarkan senarai semak sedia ada. Kategori `ALL` wajib untuk semua pemohon; `COMPANY` hanya bagi syarikat; `IF_AVAILABLE` tidak menghalang penghantaran. Fail semasa mesti berstatus imbasan `CLEAN` dan tidak ditolak; pengesahan pegawai `VERIFIED` tidak diwajibkan pada tahap penghantaran awal. Modul memulangkan `ready`, `blockingCategories` dan `pendingScanCategories`. Ujian meliputi individu, syarikat, dokumen pilihan, imbasan tertangguh, malware, penolakan dan versi dokumen yang diganti. **Belum dihubungkan kepada endpoint penghantaran sebenar**; semakan kebenaran, akuan dan transaksi pelayan tetap diperlukan sebelum pengaktifan. Keputusan CI belum disahkan.
+
+## Integriti versi dokumen sebelum penghantaran
+
+Semakan awal `documentSubmissionReadiness` kini menolak kategori wajib jika terdapat versi aktif yang tidak sah (bukan integer selamat positif) atau dua rekod aktif dengan nombor versi sama. Ini mengelakkan pilihan rekod secara tidak tentu apabila rekod bercanggah, termasuk keadaan satu rekod bersih dan satu dijangkiti. Versi terdahulu yang telah diganti (`supersededAt`) tidak dikira. Ujian regresi disediakan. Semakan ini masih modul dalaman dan belum disambungkan kepada endpoint penghantaran; keputusan CI belum disahkan.
