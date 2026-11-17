@@ -26,7 +26,7 @@ function fixture() {
   };
   const scan = vi.fn(async () => ({ status: "CLEAN" as const, engine: "test" }));
   const scanner: DocumentMalwareScanner = { scan };
-  return { db, store, scanner, findMany, updateMany, scan };
+  return { db, store, scanner, findMany, findUnique, updateMany, scan };
 }
 describe("document scan batch orchestration", () => {
   it("processes bounded pending documents and returns counts", async () => {
@@ -43,6 +43,14 @@ describe("document scan batch orchestration", () => {
     await expect(processPendingDocumentScanBatch(f.db, f.store, f.scanner, { limit: 100 }))
       .rejects.toThrow();
     expect(f.findMany).not.toHaveBeenCalled();
+  });
+  it("continues with later documents when one database worker lookup throws", async () => {
+    const f = fixture();
+    f.findUnique.mockRejectedValueOnce(new Error("transient database error"));
+    await expect(processPendingDocumentScanBatch(f.db, f.store, f.scanner, { limit: 2 }))
+      .resolves.toEqual({ examined: 2, clean: 1, infected: 0, failed: 1, skipped: 0 });
+    expect(f.findUnique).toHaveBeenCalledTimes(2);
+    expect(f.scan).toHaveBeenCalledTimes(1);
   });
   it("records scanner failure as FAILED rather than CLEAN", async () => {
     const f = fixture();
