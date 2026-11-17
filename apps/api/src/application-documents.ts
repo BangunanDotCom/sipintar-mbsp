@@ -4,7 +4,7 @@ import { db } from "./core.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { fail } from "./auth.js";
 import { draftDocumentUploadPolicy } from "./draft-document-upload-policy.js";
-import { validDraftApplicantContext } from "./draft-applicant-context.js";
+import { validDraftApplicantContext, isDraftApplicantCapacity } from "./draft-applicant-context.js";
 
 // Read-only metadata endpoint. Never return private object keys or download URLs.
 export async function applicationDocumentRoutes(app: FastifyInstance) {
@@ -22,7 +22,7 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
         },
       });
       if (!draft) fail(404, "Draf tidak ditemui.");
-      if (!validDraftApplicantContext(
+      if (!isDraftApplicantCapacity(draft.capacity) || !validDraftApplicantContext(
         draft.capacity, draft.companyId, draft.officialApplicantUserId, draft.initiatedByUserId,
       )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
