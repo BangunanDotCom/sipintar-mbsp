@@ -36,7 +36,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       <p>Senarai persediaan awal, tertakluk kepada pengesahan MBSP. Muat naik dokumen permohonan belum diaktifkan.</p>
       {query.isPending && <p role="status">Memuatkan status dokumen...</p>}
       {query.isError && <p role="alert">Status dokumen tidak dapat diperoleh. Tiada dokumen dianggap lengkap.</p>}
-      {!query.isError && <div style={{ overflowX: "auto" }}>
+      {query.isSuccess && <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Rekod sistem</th></tr></thead>
           <tbody>
@@ -55,6 +55,10 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
         </table>
       </div>}
       <p><small>Rekod fail bukan bukti penerimaan atau pengesahan. Penghantaran rasmi dan muat naik kekal tidak tersedia.</small></p>
+      <button className="button secondary small" type="button"
+        onClick={() => void query.refetch()} disabled={query.isFetching}>
+        {query.isFetching ? "Menyemak…" : "Semak semula senarai dokumen"}
+      </button>
     </section>
   );
 }
