@@ -14,7 +14,7 @@ export async function buildApp() {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.
     // Per-document validation remains mandatory in the upload route.
-    bodyLimit: 15 * 1024 * 1024,
+    bodyLimit: 29 * 1024 * 1024,
     logger: {
       level: process.env.NODE_ENV === "test" ? "silent" : "info",
       redact: [
