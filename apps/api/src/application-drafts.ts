@@ -5,6 +5,7 @@ import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
 import { validRepresentative } from "./company-invitations.js";
 import { loadDocumentSubmissionReadiness } from "./document-submission-readiness-db.js";
+import { validDraftApplicantContext } from "./draft-applicant-context.js";
 import {
   applicationDraftSchema,
   applicationDraftUpdateSchema,
@@ -256,12 +257,13 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
     return db.$transaction(async (tx) => {
       const draft = await tx.applicationDraft.findFirst({
         where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-        select: { id: true, capacity: true, companyId: true },
+        select: { id: true, capacity: true, companyId: true, officialApplicantUserId: true, initiatedByUserId: true },
       });
       if (!draft) fail(404, "Draf tidak ditemui.");
+      if (!validDraftApplicantContext(
+        draft.capacity, draft.companyId, draft.officialApplicantUserId, draft.initiatedByUserId,
+      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
-      if (draft.capacity !== "INDIVIDUAL" && draft.capacity !== "COMPANY")
-        fail(409, "Jenis pemohon draf tidak sah.");
       const readiness = await loadDocumentSubmissionReadiness(tx, draft.id, draft.capacity);
       return { draftId: draft.id, ...readiness, submissionEnabled: false };
     });
