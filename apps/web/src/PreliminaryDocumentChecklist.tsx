@@ -45,9 +45,16 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const verifiedPriority = priorityCategories.filter((item) => item.state === "VERIFIED").length;
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
-  const policyByCategory = new Map(
-    (query.isSuccess && Array.isArray(query.data.uploadPolicy) ? query.data.uploadPolicy : []).map((row) => [row.category, row]),
-  );
+  // API policy is untrusted: malformed entries must not crash the checklist.
+  const uploadPolicy = query.isSuccess && Array.isArray(query.data.uploadPolicy)
+    ? query.data.uploadPolicy.filter((row): row is UploadPolicyRow =>
+      typeof row === "object" && row !== null &&
+      typeof row.category === "string" &&
+      Array.isArray(row.mimeTypes) && row.mimeTypes.every((mime) => typeof mime === "string") &&
+      typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0
+    )
+    : [];
+  const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
   const mimeLabel = (mime: string) => mime === "application/pdf" ? "PDF" :
     mime === "image/jpeg" ? "JPEG" : mime === "image/png" ? "PNG" : mime;
   return (
