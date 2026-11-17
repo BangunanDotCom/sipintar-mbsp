@@ -264,18 +264,22 @@ export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): Docu
     PENDING_SCAN: "WAITING",
   };
   const rank = { CRITICAL: 0, ACTION: 1, WAITING: 2 };
-  return rows.flatMap((row) => {
+  return rows.flatMap((row): DocumentReviewQueueItem[] => {
     const priority = priorityByState[row.state];
-    return priority ? [{
+    const nextAction = documentReviewNextAction(row.state);
+    // If a new state is introduced without a reviewed action mapping,
+    // fail closed rather than emitting a queue entry with an undefined action.
+    if (!priority || !nextAction) return [];
+    return [{
       category: row.category,
       label: row.label,
       applicability: row.applicability,
       state: row.state,
       version: row.current?.version ?? null,
       priority,
-      nextAction: documentReviewNextAction(row.state)!,
+      nextAction,
       actionOwner: row.state === "REJECTED" ? "APPLICANT" : row.state === "PENDING_SCAN" ? "SYSTEM" : "OFFICER",
-    }] : [];
+    }];
   }).sort((a, b) => rank[a.priority] - rank[b.priority]
     || a.category.localeCompare(b.category));
 }
