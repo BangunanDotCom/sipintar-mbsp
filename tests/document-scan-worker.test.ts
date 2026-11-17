@@ -13,6 +13,7 @@ const document = {
   draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
   sha256: createHash("sha256").update(bytes).digest("hex"),
   byteSize: bytes.length,
+  mimeType: "application/pdf",
   scanStatus: "PENDING", supersededAt: null,
 };
 function setup(overrides: { scanStatus?: string; supersededAt?: string | null } = {}) {
@@ -46,6 +47,13 @@ describe("document scan worker state transition", () => {
     expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { scanStatus: "FAILED", scanLeaseToken: null, scanLeaseExpiresAt: null },
     }));
+  });
+  it("rejects mismatched persisted MIME before scanning", async () => {
+    const s = setup();
+    s.findUnique.mockResolvedValueOnce({ ...document, mimeType: "image/png" });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("FAILED");
+    expect(s.scan).not.toHaveBeenCalled();
   });
   it("persists FAILED if scanner cannot run", async () => {
     const s = setup();
