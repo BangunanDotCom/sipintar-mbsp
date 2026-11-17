@@ -51,6 +51,8 @@ describe("document checklist statuses", () => {
   });
   it("requires a complete document API response before displaying statuses", () => {
     const response = {
+      draftId: "11111111-1111-4111-8111-111111111111",
+      capacity: "INDIVIDUAL",
       documents: [{ ...doc(1, "CLEAN", "VERIFIED"), uploadedAt: "2026-11-17T00:00:00Z", byteSize: 1024, mimeType: "application/pdf" }],
       uploadPolicy: [],
       uploadEnabled: false,
@@ -59,12 +61,15 @@ describe("document checklist statuses", () => {
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
     const draftId = "11111111-1111-4111-8111-111111111111";
     expect(validatedDocumentResponse({ ...response, draftId }, draftId)?.documents).toHaveLength(1);
+    expect(validatedDocumentResponse({ ...response, draftId: "not-a-uuid" })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, capacity: "UNKNOWN" })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, capacity: undefined })).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId, capacity: "COMPANY" }, draftId, "COMPANY")?.documents).toHaveLength(1);
     expect(validatedDocumentResponse({ ...response, draftId, capacity: "COMPANY" }, draftId, "INDIVIDUAL")).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId, capacity: "INDIVIDUAL" }, draftId, "COMPANY")).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId }, draftId, "COMPANY")).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId: "22222222-2222-4222-8222-222222222222" }, draftId)).toBeNull();
-    expect(validatedDocumentResponse(response, draftId)).toBeNull();
+    expect(validatedDocumentResponse({ ...response, draftId: undefined }, draftId)).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId: null }, draftId)).toBeNull();
     expect(isDocumentApiRecord(response.documents[0])).toBe(true);
     expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-16T23:59:59Z" })).toBe(false);
