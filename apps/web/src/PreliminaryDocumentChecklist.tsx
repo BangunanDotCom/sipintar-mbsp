@@ -1,16 +1,13 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
-import { preliminarySupportingDocuments } from "../../../packages/shared/src/supporting-documents";
+import { documentChecklistRows, documentStatusLabels, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
 
-type DocumentRecord = {
-  id: string;
-  category: string;
-  version: number;
-  fileName: string;
-  scanStatus: string;
-  verificationStatus: string;
-  supersededAt: string | null;
+type DocumentRecord = DocumentStatusRecord & {
+  uploadedAt: string;
+  byteSize: number;
+  mimeType: string;
+  sha256: string;
 };
 type DocumentResponse = {
   documents: DocumentRecord[];
@@ -28,8 +25,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity }: {
     retry: false,
   });
   const documents = query.data?.documents ?? [];
-  const visible = preliminarySupportingDocuments.filter((item) =>
-    item.applicability !== "COMPANY" || capacity === "COMPANY");
+  const visible = documentChecklistRows(capacity, documents);
   return (
     <section className="panel" aria-labelledby="supporting-documents-heading">
       <h2 id="supporting-documents-heading">Dokumen sokongan permohonan</h2>
@@ -41,15 +37,13 @@ export function PreliminaryDocumentChecklist({ draftId, capacity }: {
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Rekod sistem</th></tr></thead>
           <tbody>
             {visible.map((item) => {
-              const current = documents.find((d) => d.category === item.category && !d.supersededAt);
+              const current = item.current;
               return (
                 <tr key={item.category}>
                   <th scope="row">{item.label}</th>
                   <td>{item.applicability === "ALL" ? "Semua pemohon" : item.applicability === "COMPANY" ? "Pemohon syarikat" : "Jika berkaitan / tersedia"}</td>
                   <td>{item.note}</td>
-                  <td>{current
-                    ? `Versi ${current.version} · ${current.fileName} · Imbasan: ${current.scanStatus} · Pengesahan: ${current.verificationStatus}`
-                    : "Tiada dokumen direkodkan"}</td>
+                  <td>{current ? `Versi ${current.version} · ${current.fileName} · ` : ""}{documentStatusLabels[item.state]}</td>
                 </tr>
               );
             })}
