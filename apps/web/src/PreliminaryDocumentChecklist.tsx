@@ -39,9 +39,9 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   // Never show a cached document list after a failed authorization or refresh.
   const documents = query.isSuccess ? query.data.documents : [];
   const visible = documentChecklistRows(capacity, documents);
-  const mandatory = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
-  const recordedMandatory = mandatory.filter((item) => Boolean(item.current)).length;
-  const missingMandatory = mandatory.filter((item) => !item.current);
+  const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
+  const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
+  const missingPriority = priorityCategories.filter((item) => !item.current);
   const policyByCategory = new Map(
     (query.isSuccess ? query.data.uploadPolicy ?? [] : []).map((row) => [row.category, row]),
   );
@@ -50,7 +50,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   return (
     <section className="panel" aria-labelledby="supporting-documents-heading">
       <h2 id="supporting-documents-heading">Dokumen sokongan permohonan</h2>
-      <p>Senarai persediaan awal, tertakluk kepada pengesahan MBSP. Muat naik dokumen permohonan belum diaktifkan.</p>
+      <p>Senarai persediaan awal, bukan senarai syarat wajib rasmi MBSP. Muat naik dokumen permohonan belum diaktifkan.</p>
       {query.isPending && <p role="status">Memuatkan status dokumen...</p>}
       {query.isError && (
         <div role="alert">
@@ -67,16 +67,16 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       )}
       {query.isSuccess && (
         <p role="status">
-          <strong>Rekod dokumen wajib: {recordedMandatory} daripada {mandatory.length} kategori.</strong>{" "}
+          <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
           Angka ini hanya menunjukkan kewujudan rekod fail, bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
       )}
-      {query.isSuccess && missingMandatory.length > 0 && (
+      {query.isSuccess && missingPriority.length > 0 && (
         <div>
-          <p>Kategori dokumen wajib yang belum mempunyai rekod aktif:</p>
+          <p>Kategori persediaan utama yang belum mempunyai rekod aktif (belum ditetapkan sebagai syarat wajib rasmi):</p>
           <ul>
-            {missingMandatory.map((item) => <li key={item.category}>{item.label}</li>)}
+            {missingPriority.map((item) => <li key={item.category}>{item.label}</li>)}
           </ul>
         </div>
       )}
