@@ -59,6 +59,10 @@ describe("document checklist statuses", () => {
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
     const draftId = "11111111-1111-4111-8111-111111111111";
     expect(validatedDocumentResponse({ ...response, draftId }, draftId)?.documents).toHaveLength(1);
+    expect(validatedDocumentResponse({ ...response, draftId, capacity: "COMPANY" }, draftId, "COMPANY")?.documents).toHaveLength(1);
+    expect(validatedDocumentResponse({ ...response, draftId, capacity: "COMPANY" }, draftId, "INDIVIDUAL")).toBeNull();
+    expect(validatedDocumentResponse({ ...response, draftId, capacity: "INDIVIDUAL" }, draftId, "COMPANY")).toBeNull();
+    expect(validatedDocumentResponse({ ...response, draftId }, draftId, "COMPANY")).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId: "22222222-2222-4222-8222-222222222222" }, draftId)).toBeNull();
     expect(validatedDocumentResponse(response, draftId)).toBeNull();
     expect(validatedDocumentResponse({ ...response, draftId: null }, draftId)).toBeNull();
