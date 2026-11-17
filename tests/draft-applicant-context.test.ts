@@ -22,6 +22,12 @@ describe("draft applicant context consistency", () => {
     expect(validDraftApplicantContext("COMPANY", "", null, user)).toBe(false);
     expect(validDraftApplicantContext("COMPANY", company, user, user)).toBe(false);
   });
+  it("rejects malformed or whitespace-only persisted identities", () => {
+    expect(validDraftApplicantContext("INDIVIDUAL", null, "not-a-uuid", "not-a-uuid")).toBe(false);
+    expect(validDraftApplicantContext("COMPANY", "   ", null, user)).toBe(false);
+    expect(validDraftApplicantContext("COMPANY", "not-a-uuid", null, user)).toBe(false);
+    expect(validDraftApplicantContext("COMPANY", company, null, "bad-user")).toBe(false);
+  });
   it("rejects unknown capacity", () => {
     expect(validDraftApplicantContext("OTHER", company, null, user)).toBe(false);
   });
