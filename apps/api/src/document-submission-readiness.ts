@@ -21,6 +21,15 @@ export function documentSubmissionReadiness(
   const pendingScanCategories: SupportingDocumentCategory[] = [];
   for (const row of documentChecklistRows(capacity, documents)) {
     if (row.applicability === "IF_AVAILABLE") continue;
+    // Reject ambiguous active versions rather than selecting an arbitrary record.
+    // A corrupt/duplicated active version must never satisfy a submission gate.
+    const active = documents.filter((d) => d.category === row.category && !d.supersededAt);
+    const versions = new Set(active.map((d) => d.version));
+    const invalidVersions = active.some((d) => !Number.isSafeInteger(d.version) || d.version < 1);
+    if (invalidVersions || versions.size !== active.length) {
+      blockingCategories.push(row.category as SupportingDocumentCategory);
+      continue;
+    }
     if (row.state === "PENDING_SCAN") pendingScanCategories.push(row.category as SupportingDocumentCategory);
     if (row.state !== "PENDING_REVIEW" && row.state !== "VERIFIED")
       blockingCategories.push(row.category as SupportingDocumentCategory);
