@@ -31,3 +31,25 @@ export function preliminaryDocumentChecklist(capacity: "INDIVIDUAL" | "COMPANY")
   return preliminarySupportingDocuments.filter((item) =>
     item.applicability !== "COMPANY" || capacity === "COMPANY");
 }
+
+/**
+ * Advisory checklist only: this does not authorize submission, verify documents,
+ * or decide whether an item is legally mandatory. The final requirements are
+ * configured and approved by MBSP.
+ */
+export type PreliminaryDocumentStatus = {
+  category: SupportingDocumentCategory;
+  label: string;
+  applicability: SupportingDocumentRequirement["applicability"];
+  note: string;
+  advisoryOnly: true;
+};
+
+export function preliminaryDocumentStatus(
+  capacity: "INDIVIDUAL" | "COMPANY",
+): PreliminaryDocumentStatus[] {
+  return preliminaryDocumentChecklist(capacity).map((item) => ({
+    ...item,
+    advisoryOnly: true as const,
+  }));
+}
