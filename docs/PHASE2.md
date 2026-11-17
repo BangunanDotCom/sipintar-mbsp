@@ -185,3 +185,7 @@ Adapter storan setempat kini menyemak setiap komponen direktori antara akar kuar
 ## Pembersihan kegagalan penulisan dan symlink akar
 
 Adapter setempat kini menggunakan `dirname` dan `relative` untuk memeriksa direktori induk, menggantikan pengiraan rentetan laluan yang lebih rapuh. Jika `writeFile` atau `sync` gagal, adapter cuba menutup fail dan memadam objek separa tanpa menutup ralat asal. Ujian tambahan memastikan direktori akar kuarantin yang berupa symlink ditolak. Adapter kekal untuk pembangunan/ujian sahaja; ia belum mempunyai jaminan atomicity sepenuhnya terhadap proses serentak yang boleh mengubah sistem fail. CI dan integrasi storan objek sebenar belum disahkan.
+
+## Elak penciptaan direktori melalui symlink
+
+`LocalQuarantineDocumentStore.putQuarantined` tidak lagi menggunakan `mkdir(..., { recursive: true })` sebelum pemeriksaan keselamatan. Sebaliknya setiap komponen direktori diperiksa dengan `lstat` selepas cubaan penciptaan satu peringkat, dan operasi dihentikan jika komponen tersebut merupakan symlink atau bukan direktori. Ujian regresi mengesahkan objek tidak diwujudkan pada sasaran symlink. Ini mengurangkan risiko penciptaan fail di luar laluan yang dimaksudkan, namun ancaman TOCTOU daripada proses lain yang boleh menukar direktori serentak masih memerlukan kawalan OS dan storan produksi yang sesuai. Pengisytiharan fixture pengimbas yang tidak digunakan juga dibuang. Ujian CI belum disahkan lulus.
