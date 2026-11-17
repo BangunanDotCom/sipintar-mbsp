@@ -473,3 +473,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Ketekalan SHA-256 dalam keputusan pengimbasan
 
 `scanQuarantinedDocument` kini menyimpan nilai `expectedSha256` sebelum `await` membaca dokumen dan memanggil adapter pengimbas. Nilai SHA-256 yang dipulangkan menggunakan salinan awal yang disahkan oleh pembaca kuarantin, bukan metadata input yang mungkin diubah oleh adapter ketika pengimbasan. Ujian regresi mensimulasikan pengimbas mengubah `input.expectedSha256` kepada nilai palsu tetapi keputusan masih mengekalkan digest asal. CI belum disahkan dan pengimbas produksi belum diaktifkan.
+
+## Pengasingan memori dokumen yang telah disahkan
+
+`readVerifiedQuarantinedDocument` kini membuat salinan `Buffer.from(content)` selepas menyemak jenis dan saiz data adapter. SHA-256 serta tandatangan MIME diperiksa pada salinan tersebut, dan fungsi memulangkan salinan yang dimiliki sendiri, bukannya rujukan `Buffer` adapter. Ujian regresi mengubah `Buffer` asal adapter selepas bacaan dan memastikan hasil yang telah disahkan kekal utuh. Ini bukan pengganti storan persendirian sebenar atau pengimbas malware; CI belum disahkan.
