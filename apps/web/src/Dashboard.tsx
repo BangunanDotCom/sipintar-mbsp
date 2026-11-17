@@ -1481,7 +1481,43 @@ function Config({ scope }: { scope: string }) {
           }
         </ResourceState>
       </section>
-      {scope === "technical" && (<section className="panel"><h3>Had muat naik PDF surat kuasa</h3><Notice>Pentadbir ICT boleh menetapkan had antara 1 hingga 20 MiB. Had lalai ialah 10 MiB. Perubahan direkodkan dan berkuat kuasa untuk muat naik seterusnya.</Notice><Form fields={[{ name: "maxMiB", label: "Saiz maksimum (MiB), 1 hingga 20" }, { name: "reason", label: "Sebab perubahan", type: "textarea" }]} onSubmit={async (b) => { const maxMiB = Number(b.maxMiB); if (!Number.isInteger(maxMiB) || maxMiB < 1 || maxMiB > 20) throw Error("Masukkan nombor bulat antara 1 hingga 20 MiB."); await api("/config/technical", "POST", { key: "upload_delegation_mib", value: maxMiB, reason: b.reason }); refresh(); }} /></section>)}
+      {scope === "technical" && (
+        <section className="panel">
+          <h3>Had maksimum muat naik mengikut kategori</h3>
+          <Notice>
+            Nilai dikawal oleh Pentadbir ICT dan direkodkan dalam sejarah konfigurasi.
+            Had untuk dokumen permohonan baharu ialah persediaan polisi;
+            modul muat naiknya belum diaktifkan.
+          </Notice>
+          {([
+            ["upload_delegation_mib", "Surat kuasa PDF", 10, 20],
+            ["upload_supporting_mib", "Dokumen sokongan PDF", 20, 50],
+            ["upload_plan_mib", "Pelan bangunan PDF", 50, 100],
+            ["upload_photo_mib", "Gambar premis JPEG/PNG", 10, 20],
+          ] as const).map(([key, label, defaultMiB, ceiling]) => {
+            const current = q.data?.find((item: any) => item.key === `technical.${key}`);
+            return (
+              <div className="company-record" key={key}>
+                <strong>{label}</strong>
+                <p>Had semasa: {typeof current?.value === "number" ? current.value : defaultMiB} MiB · Julat 1–{ceiling} MiB</p>
+                <Form
+                  fields={[
+                    { name: "maxMiB", label: "Saiz maksimum (MiB)" },
+                    { name: "reason", label: "Sebab perubahan", type: "textarea" },
+                  ]}
+                  onSubmit={async (b) => {
+                    const value = Number(b.maxMiB);
+                    if (!Number.isInteger(value) || value < 1 || value > ceiling)
+                      throw Error(`Masukkan nombor bulat antara 1 hingga ${ceiling} MiB.`);
+                    await api("/config/technical", "POST", { key, value, reason: b.reason });
+                    refresh();
+                  }}
+                />
+              </div>
+            );
+          })}
+        </section>
+      )}
       <section className="panel">
         <h3>Simpan konfigurasi berversi</h3>
         <Form
