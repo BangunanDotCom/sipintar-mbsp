@@ -1,0 +1,93 @@
+import { useState } from "react";
+import {
+  documentReviewQueue,
+  documentReviewQueueSummary,
+  filterDocumentReviewQueue,
+  documentReviewNextActionLabels,
+  type DocumentChecklistRow,
+  type DocumentReviewPriorityFilter,
+  type DocumentReviewOwnerFilter,
+  type DocumentScopeFilter,
+} from "../../../packages/shared/src/document-checklist-status";
+
+const priorityLabels = {
+  CRITICAL: "Kritikal",
+  ACTION: "Perlu tindakan",
+  WAITING: "Menunggu proses",
+} as const;
+const ownerLabels = {
+  OFFICER: "Pegawai",
+  APPLICANT: "Pemohon",
+  SYSTEM: "Sistem",
+} as const;
+
+/**
+ * Presentation-only component for a future authorized officer route.
+ * Does not fetch records, grant permissions, update verification or submit applications.
+ * The parent route and API must enforce active officer role, MFA and district scope.
+ */
+export function OfficerDocumentTriagePreview({ rows }: { rows: readonly DocumentChecklistRow[] }) {
+  const [priority, setPriority] = useState<DocumentReviewPriorityFilter>("ALL");
+  const [owner, setOwner] = useState<DocumentReviewOwnerFilter>("ALL");
+  const [scope, setScope] = useState<DocumentScopeFilter>("ALL");
+  const [search, setSearch] = useState("");
+  const queue = documentReviewQueue(rows);
+  const summary = documentReviewQueueSummary(queue);
+  const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner);
+
+  return (
+    <section className="panel" aria-labelledby="officer-document-triage-heading">
+      <h2 id="officer-document-triage-heading">Pratonton keutamaan semakan dokumen</h2>
+      <p>Ringkasan untuk pegawai yang diberi kuasa sahaja. Cadangan tindakan bukan keputusan kelulusan.</p>
+      <p role="status">
+        Jumlah memerlukan pemantauan: {summary.total}. Kritikal: {summary.critical}.
+        {" "}Tindakan pegawai: {summary.officerTasks}. Tindakan pemohon: {summary.applicantTasks}.
+        {" "}Proses sistem: {summary.systemTasks}.
+      </p>
+      <label htmlFor="triage-priority">Keutamaan</label>
+      <select id="triage-priority" value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
+        <option value="ALL">Semua keutamaan</option>
+        <option value="CRITICAL">Kritikal</option>
+        <option value="ACTION">Perlu tindakan</option>
+        <option value="WAITING">Menunggu proses</option>
+      </select>
+      <label htmlFor="triage-owner">Pihak bertanggungjawab</label>
+      <select id="triage-owner" value={owner} onChange={(e) => setOwner(e.target.value as DocumentReviewOwnerFilter)}>
+        <option value="ALL">Semua pihak</option>
+        <option value="OFFICER">Pegawai</option>
+        <option value="APPLICANT">Pemohon</option>
+        <option value="SYSTEM">Sistem</option>
+      </select>
+      <label htmlFor="triage-scope">Kategori dokumen</label>
+      <select id="triage-scope" value={scope} onChange={(e) => setScope(e.target.value as DocumentScopeFilter)}>
+        <option value="ALL">Semua kategori</option>
+        <option value="PRIORITY">Persediaan utama</option>
+        <option value="OPTIONAL">Tambahan jika berkaitan</option>
+      </select>
+      <label htmlFor="triage-search">Cari dokumen</label>
+      <input id="triage-search" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nama atau kategori dokumen" />
+      <button className="button secondary small" type="button" onClick={() => {
+        setPriority("ALL"); setOwner("ALL"); setScope("ALL"); setSearch("");
+      }}>Kosongkan penapis</button>
+      <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.</p>
+      <div style={{ overflowX: "auto" }}>
+        <table>
+          <thead><tr><th scope="col">Dokumen</th><th scope="col">Keutamaan</th><th scope="col">Pihak</th><th scope="col">Versi</th><th scope="col">Panduan tindakan</th></tr></thead>
+          <tbody>
+            {filtered.map((item) => (
+              <tr key={item.category}>
+                <th scope="row">{item.label}</th>
+                <td>{priorityLabels[item.priority]}</td>
+                <td>{ownerLabels[item.actionOwner]}</td>
+                <td>{item.version ?? "Tiada versi aktif"}</td>
+                <td>{documentReviewNextActionLabels[item.nextAction]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length === 0 && <p>Tiada rekod sepadan dengan penapis.</p>}
+      <p><small>Pratonton baca sahaja. Pengesahan dokumen, muat naik dan penghantaran rasmi tidak tersedia melalui komponen ini.</small></p>
+    </section>
+  );
+}
