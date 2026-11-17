@@ -2,10 +2,16 @@ import "dotenv/config";
 import pg from "pg";
 import { readFile, readdir } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
+const testMode = process.argv.includes("--test");
+if (testMode) {
+  const value = process.env.TEST_DATABASE_URL;
+  if (!value) throw Error("TEST_DATABASE_URL diperlukan untuk migrasi ujian.");
+  const url = new URL(value);
+  if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.pathname.endsWith("_test"))
+    throw Error("Migrasi ujian hanya dibenarkan pada pangkalan data PostgreSQL berakhir _test.");
+}
 const client = new pg.Client({
-  connectionString: process.argv.includes("--test")
-    ? process.env.TEST_DATABASE_URL
-    : process.env.DATABASE_URL,
+  connectionString: testMode ? process.env.TEST_DATABASE_URL : process.env.DATABASE_URL,
 });
 await client.connect();
 try {
