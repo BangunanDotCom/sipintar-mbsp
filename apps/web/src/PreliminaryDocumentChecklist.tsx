@@ -23,7 +23,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const summary = documentChecklistSummary(visible);
-  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
+  const { total, recorded, verified, safetyAttention, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -54,7 +54,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
         <p role="status">
           <strong>Rekod kategori persediaan utama: {recorded} daripada {total} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verified} kategori.</strong>{" "}
-          {safetyAttention > 0 && <strong> Perlu perhatian keselamatan: {safetyAttention} kategori.</strong>}{" "}
+          {safetyAttention > 0 && <strong> Imbasan belum selesai atau isu keselamatan: {safetyAttention} kategori.</strong>}{" "}
           {conflicts > 0 && <strong> Konflik sejarah/versi dokumen: {conflicts} kategori — rujuk pegawai.</strong>}{" "}
           {pendingReview > 0 && <strong> Menunggu pengesahan pegawai: {pendingReview} kategori.</strong>}{" "}
           {rejected > 0 && <strong> Ditolak pegawai: {rejected} kategori — semak maklum balas.</strong>}{" "}
@@ -63,6 +63,16 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
+      )}
+      {validDocuments && pendingScanRows.length > 0 && (
+        <div role="status">
+          <p>Dokumen yang sedang menunggu imbasan keselamatan (belum boleh dianggap selamat atau disahkan):</p>
+          <ul>
+            {pendingScanRows.map((item) => (
+              <li key={item.category}>{item.label}: {documentNextStepLabels[item.state]}</li>
+            ))}
+          </ul>
+        </div>
       )}
       {validDocuments && attentionRows.length > 0 && (
         <div role="status">
