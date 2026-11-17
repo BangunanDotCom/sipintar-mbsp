@@ -91,6 +91,17 @@ function PremisesSummary({ record }: { record: any }) {
         Penghantaran rasmi dan kelulusan tidak tersedia. Semakan ini hanya
         memaparkan maklumat draf anda.
       </Notice>
+      <section className="panel">
+        <h2>Status semakan kelengkapan draf</h2>
+        {record.readiness?.readyForNextStage ? (
+          <Notice>Maklumat premis dan tingkat lengkap serta konsisten untuk semakan peringkat seterusnya. Ini bukan pengesahan atau kelulusan MBSP.</Notice>
+        ) : (
+          <Notice error>
+            Masih terdapat perkara yang perlu dilengkapkan sebelum semakan seterusnya:
+            <ul>{(record.readiness?.issues || ["Status kelengkapan belum dapat disahkan."]).map((issue: string, i: number) => <li key={i}>{issue}</li>)}</ul>
+          </Notice>
+        )}
+      </section>
       <div className="premises-review-grid">
         <section className="panel">
           <h2>Pemohon rasmi</h2>
