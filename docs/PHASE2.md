@@ -193,3 +193,7 @@ Adapter setempat kini menggunakan `dirname` dan `relative` untuk memeriksa direk
 ## Konfigurasi storan setempat: allowlist persekitaran
 
 `configuredDocumentStore` kini hanya membenarkan mod `local` apabila `NODE_ENV` tepat `development` atau `test`, `STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED=true`, dan direktori akar ditetapkan. `NODE_ENV` kosong, tidak ditetapkan, `staging`, `preview`, atau `Production` ditolak (*fail closed*). Mod lalai kekal `disabled`; tiada perubahan kepada storan produksi. Ujian regresi ditambah dalam `tests/document-store-config.test.ts`. Keputusan CI masih perlu disahkan.
+
+## Had saiz objek kuarantin setempat
+
+Adapter setempat kini mengenakan had pertahanan 100 MiB bagi `putQuarantined` dan `readQuarantined`, termasuk panggilan terus yang tidak melalui validasi kategori muat naik. Bacaan memeriksa `FileHandle.stat()` terlebih dahulu dan menolak objek kosong, bukan fail biasa atau melebihi had sebelum `readFile()`. Had kategori yang lebih rendah dalam `storeQuarantinedDocument` tetap berkuat kuasa. Ujian menambah kes fail kosong, fail lebih 100 MiB dan fail sparse bersaiz berlebihan. Ini belum bermaksud storan produksi atau laluan upload telah diaktifkan; keputusan CI belum disahkan.
