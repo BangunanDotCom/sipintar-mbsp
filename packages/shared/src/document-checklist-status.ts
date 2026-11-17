@@ -66,9 +66,22 @@ export type DocumentApiRecord = DocumentStatusRecord & {
 
 /** Require a real, timezone-qualified ISO timestamp from the API. */
 function isIsoTimestamp(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed);
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day, hour, minute, second, timezone] = match;
+  const y = Number(year), m = Number(month), d = Number(day);
+  const h = Number(hour), min = Number(minute), sec = Number(second);
+  if (y < 1 || m < 1 || m > 12 || h > 23 || min > 59 || sec > 59) return false;
+  const leapYear = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (d < 1 || d > daysInMonth[m - 1]) return false;
+  if (timezone !== "Z") {
+    const offsetHours = Number(timezone.slice(1, 3));
+    const offsetMinutes = Number(timezone.slice(4, 6));
+    if (offsetHours > 23 || offsetMinutes > 59) return false;
+  }
+  return Number.isFinite(Date.parse(value));
 }
 
 /** Validate document metadata as well as scan and officer status. */
