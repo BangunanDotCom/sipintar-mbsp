@@ -304,6 +304,17 @@ describe("document checklist statuses", () => {
     expect(hiddenCriticalDocumentCount(queue, critical)).toBe(0);
     expect(criticalDocumentReviewQueue([])).toEqual([]);
   });
+  it("counts distinct hidden critical records even if category names repeat", () => {
+    const queue = documentReviewQueue(documentChecklistRows("INDIVIDUAL", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+    ]));
+    const critical = criticalDocumentReviewQueue(queue);
+    expect(critical).toHaveLength(1);
+    const repeated = [critical[0], { ...critical[0] }];
+    expect(hiddenCriticalDocumentCount(repeated, [repeated[0]])).toBe(1);
+    expect(hiddenCriticalDocumentCount(repeated, [])).toBe(2);
+    expect(hiddenCriticalDocumentCount(repeated, repeated)).toBe(0);
+  });
   it("counts critical categories hidden by active filters", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
