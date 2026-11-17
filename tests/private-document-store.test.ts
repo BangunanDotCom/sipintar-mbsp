@@ -185,6 +185,15 @@ describe("private document quarantine adapter", () => {
     })).rejects.toThrow();
     expect(putQuarantined).not.toHaveBeenCalled();
   });
+  it("rejects a forged PDF when the copied snapshot lacks a valid signature", async () => {
+    const { adapter, putQuarantined } = store();
+    const invalid = Buffer.from("not-a-pdf");
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
+      content: invalid, mimeType: "application/pdf",
+    })).rejects.toThrow("Kandungan fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
   it("rejects MIME spoofing before writing to quarantine", async () => {
     const { adapter, putQuarantined } = store();
     await expect(storeQuarantinedDocument(adapter, {
