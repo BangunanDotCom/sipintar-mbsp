@@ -105,8 +105,11 @@ beforeAll(async () => {
   pic = await actor("PIC_KAWASAN", "SPU");
 });
 afterAll(async () => {
-  await app.close();
-  await db.$disconnect();
+  try {
+    if (app) await app.close();
+  } finally {
+    await db.$disconnect();
+  }
 });
 describe("authentication, real PostgreSQL and test SMTP", () => {
   it("health endpoint is live", async () =>
