@@ -181,3 +181,7 @@ Semakan kod mendapati arahan INSTREAM pernah menggunakan aksara backslash dan an
 ## Semakan symlink bagi setiap direktori perantaraan
 
 Adapter storan setempat kini menyemak setiap komponen direktori antara akar kuarantin dan objek menggunakan `lstat`, dan menolak sebarang direktori perantaraan yang merupakan symlink, termasuk symlink yang menunjuk semula ke dalam akar. Ujian `tests/local-quarantine-document-store.test.ts` meliputi kes ini. Ini mengurangkan risiko lencongan laluan, namun masih bukan pertahanan lengkap terhadap perlumbaan TOCTOU apabila direktori boleh diubah serentak oleh proses lain. Penggunaan produksi kekal dilarang; keputusan ujian CI masih belum disahkan.
+
+## Pembersihan kegagalan penulisan dan symlink akar
+
+Adapter setempat kini menggunakan `dirname` dan `relative` untuk memeriksa direktori induk, menggantikan pengiraan rentetan laluan yang lebih rapuh. Jika `writeFile` atau `sync` gagal, adapter cuba menutup fail dan memadam objek separa tanpa menutup ralat asal. Ujian tambahan memastikan direktori akar kuarantin yang berupa symlink ditolak. Adapter kekal untuk pembangunan/ujian sahaja; ia belum mempunyai jaminan atomicity sepenuhnya terhadap proses serentak yang boleh mengubah sistem fail. CI dan integrasi storan objek sebenar belum disahkan.
