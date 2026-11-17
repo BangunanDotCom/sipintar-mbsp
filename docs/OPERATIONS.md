@@ -75,3 +75,7 @@ Kemas kini ini memerlukan codegen dan migrasi `202610290003_application_drafts` 
 5. Jika menerima 409, muat semula; simpanan lama tidak menimpa data bahagian lain. Kuasa perwakilan hilang menyekat kedua-dua bahagian tanpa memadam draf.
 
 Migrasi `202610290004_premises` diperlukan pada semua persekitaran. Rangkaian/CSP frontend perlu membenarkan jubin OSM jika penyedia itu diluluskan ICT. Codex semasa menolak domain jubin (403); penghantaran jubin/sempadan GIS rasmi masih pending.
+
+## Had muat naik mengikut kategori (pembangunan)
+
+Pentadbir ICT boleh menetapkan had dalam Konfigurasi Teknikal: `upload_delegation_mib` (lalai 10, maksimum 20), `upload_supporting_mib` (lalai 20, maksimum 50), `upload_plan_mib` (lalai 50, maksimum 100), dan `upload_photo_mib` (lalai 10, maksimum 20). Semua nilai ialah MiB dan minimum 1. Konfigurasi mempunyai sejarah versi dan sebab perubahan. Endpoint `/api/upload-limits` mengembalikan had aktif kepada pengguna yang telah log masuk. **Hanya muat naik surat kuasa sedia ada dikuatkuasakan pada peringkat ini.** Laluan penyimpanan, imbasan keselamatan, kawalan akses dan muat naik berperingkat untuk kategori lain mesti dibangunkan dan diuji sebelum diaktifkan. Jangan menganggap konfigurasi ini sebagai modul muat naik PPTT yang siap.
