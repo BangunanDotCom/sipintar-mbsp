@@ -45,6 +45,22 @@ describe("private document quarantine adapter", () => {
     })).rejects.toThrow();
     expect(putQuarantined).not.toHaveBeenCalled();
   });
+  it("rejects MIME spoofing before writing to quarantine", async () => {
+    const { adapter, putQuarantined } = store();
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
+      content: Buffer.from("not really a pdf"), mimeType: "application/pdf",
+    })).rejects.toThrow("Kandungan fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
+  it("does not allow PDF content in photo category", async () => {
+    const { adapter, putQuarantined } = store();
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      content: bytes, mimeType: "application/pdf",
+    })).rejects.toThrow("Jenis fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
   it("does not enable uploads without an actual configured store", async () => {
     await expect(storeQuarantinedDocument(new DisabledDocumentStore(), {
       draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
