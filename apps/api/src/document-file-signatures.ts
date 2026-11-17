@@ -19,7 +19,9 @@ export function matchesDeclaredFileSignature(content: Buffer, mimeType: string):
       0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8],
       4: [8, 16], 6: [8, 16],
     };
-    return width > 0 && height > 0 &&
+    // PNG IHDR dimensions are restricted to the signed 31-bit range.
+    return width > 0 && width <= 0x7fffffff &&
+      height > 0 && height <= 0x7fffffff &&
       (supportedDepths[colorType]?.includes(bitDepth) ?? false) &&
       content[26] === 0 && content[27] === 0 &&
       (content[28] === 0 || content[28] === 1);
