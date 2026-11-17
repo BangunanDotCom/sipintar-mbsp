@@ -8,6 +8,17 @@ export type DocumentStatusRecord = {
   verificationStatus: string;
   supersededAt: string | null;
 };
+/** Reject malformed API records rather than allowing them to appear verified. */
+export function isDocumentStatusRecord(value: unknown): value is DocumentStatusRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.category === "string"
+    && Number.isSafeInteger(record.version) && (record.version as number) > 0
+    && typeof record.fileName === "string"
+    && typeof record.scanStatus === "string"
+    && typeof record.verificationStatus === "string"
+    && (record.supersededAt === null || typeof record.supersededAt === "string");
+}
 export type DocumentChecklistRow = {
   category: string;
   label: string;
