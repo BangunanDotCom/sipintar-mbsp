@@ -84,6 +84,9 @@ describe("document checklist statuses", () => {
     expect(validatedDocumentResponse({ ...response, documents: [null] })).toBeNull();
     expect(validatedDocumentResponse({ ...response, uploadPolicy: null })).toBeNull();
     expect(validatedDocumentResponse({ ...response, uploadEnabled: "false" })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, uploadEnabled: true })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, submissionEnabled: true })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, uploadEnabled: true, submissionEnabled: true })).toBeNull();
     expect(validatedDocumentResponse({ ...response, submissionEnabled: undefined })).toBeNull();
   });
   it("rejects malformed API document records", () => {
