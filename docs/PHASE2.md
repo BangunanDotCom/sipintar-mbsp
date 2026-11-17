@@ -341,3 +341,7 @@ Workflow manual `staylink-api-integration.yml` kini melakukan pra-pemeriksaan se
 ## Pengukuhan pengasingan ujian API
 
 Sebelum `seed()` dijalankan dalam `tests/api.test.ts`, ujian integrasi kini mewajibkan kedua-dua `DATABASE_URL` dan `TEST_DATABASE_URL`, memastikan protokol PostgreSQL, nama pangkalan data berakhir dengan `_test`, serta kedua-dua URL adalah sepadan sepenuhnya. Ini menutup keadaan berisiko apabila `TEST_DATABASE_URL` selamat tetapi Prisma sebenarnya menggunakan `DATABASE_URL` berbeza. Perubahan hanya pada pengawal ujian; tidak mengaktifkan penghantaran permohonan atau muat naik. Keputusan CI dan ujian integrasi selepas commit masih belum disahkan.
+
+## Semakan sambungan sebenar Prisma dan Mailpit dalam CI
+
+Workflow integrasi manual kini memeriksa kesediaan Mailpit melalui `/api/v1/messages`, endpoint yang juga digunakan oleh ujian e-mel, menggantikan `/api/v1/info`. Sebelum `seed()` dalam `tests/api.test.ts`, ujian menjalankan `SELECT current_database()` melalui Prisma dan mengesahkan nama sebenar sambungan sepadan dengan nama pangkalan data dalam `TEST_DATABASE_URL`, selepas pengesahan kedua-dua URL adalah sama dan berakhir dengan `_test`. Ini ialah kawalan tambahan untuk mengelakkan ujian mengubah pangkalan data yang tidak dijangka. Ujian sebenar dan keputusan CI selepas perubahan masih belum disahkan; tiada pengaktifan upload atau penghantaran rasmi.
