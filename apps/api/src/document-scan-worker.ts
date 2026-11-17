@@ -11,6 +11,9 @@ export async function processPendingDocumentScan(
   scanner: DocumentMalwareScanner,
   documentId: string,
 ): Promise<"CLEAN" | "INFECTED" | "FAILED" | "SKIPPED"> {
+  // Fail closed on malformed worker queue identifiers before querying Prisma.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId))
+    return "SKIPPED";
   const document = await db.applicationDocument.findUnique({
     where: { id: documentId },
     select: {
