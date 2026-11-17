@@ -98,6 +98,9 @@ beforeAll(async () => {
       !testDb.pathname.endsWith("_test") ||
       activeDb.href !== testDb.href)
     throw Error("DATABASE_URL mesti sepadan dengan TEST_DATABASE_URL PostgreSQL khusus berakhir _test.");
+  const activeDatabase = await db.$queryRaw<Array<{ name: string }>>`SELECT current_database() AS name`;
+  if (activeDatabase[0]?.name !== decodeURIComponent(testDb.pathname.slice(1)))
+    throw Error("Sambungan Prisma bukan kepada pangkalan data ujian yang dijangka.");
   await seed();
   app = await buildApp();
   applicant = await actor("PEMOHON");
