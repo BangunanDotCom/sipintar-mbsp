@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { ApplicantDraftWorkspace } from "./ApplicationDraft";
@@ -21,6 +21,7 @@ function newFloor(): PremiseFloor {
 }
 function FloorEditor({ draftId }: { draftId: string }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["draft-floors", draftId],
     queryFn: () => api(`/application-drafts/${draftId}/floors`),
@@ -56,6 +57,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
       return { ...floor, [key]: number };
     }));
     setDirty(true);
+    setMismatches([]);
     setMessage("");
   };
   const parsed = premiseFloorsSchema.safeParse(floors);
@@ -71,6 +73,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
       <Notice>Maklumat masih berstatus draf. Penghantaran rasmi kepada MBSP belum diaktifkan.</Notice>
       <form className="panel" onSubmit={async (event) => {
         event.preventDefault();
+        const continueNext = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "continue";
         setError(""); setMessage(""); setConflict(false);
         const result = premiseFloorsSchema.safeParse(floors);
         if (!result.success) {
@@ -88,6 +91,8 @@ function FloorEditor({ draftId }: { draftId: string }) {
           setMessage("Maklumat tingkat berjaya disimpan sebagai draf.");
           await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
           await qc.invalidateQueries({ queryKey: ["application-drafts"] });
+          await qc.invalidateQueries({ queryKey: ["premises", draftId] });
+          if (continueNext) navigate(`/permohonan/draf/${draftId}/semakan`);
         } catch (cause: any) {
           setConflict(cause instanceof ApiError && cause.status === 409);
           setError(cause.message || "Maklumat gagal disimpan.");
@@ -113,7 +118,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
               ))}
             </div>
             <button type="button" className="button secondary small" disabled={busy || floors.length === 1}
-              onClick={() => { setFloors((current) => current.filter((_, i) => i !== index)); setDirty(true); }}>
+              onClick={() => { setFloors((current) => current.filter((_, i) => i !== index)); setDirty(true); setMismatches([]); }}>
               Buang tingkat
             </button>
           </fieldset>
@@ -137,7 +142,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
             </tbody>
           </table></div>
         ) : <Notice error>Lengkapkan nama tingkat dan semak nilai sebelum menyimpan.</Notice>}
-        {mismatches.length > 0 && (
+        {!dirty && mismatches.length > 0 && (
           <Notice error>
             Maklumat agregat premis tidak sepadan dengan butiran tingkat.
             Semak semula sebelum penghantaran rasmi:
@@ -157,12 +162,12 @@ function FloorEditor({ draftId }: { draftId: string }) {
           await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
         }}>Muat semula draf terkini (perubahan belum disimpan akan hilang)</button>}
         {message && <Notice>{message}</Notice>}
-        <button className="button" disabled={busy || !totals}>
-          {busy ? "Menyimpan…" : "Simpan butiran tingkat"}
+        <button className="button secondary" type="submit" name="action" value="save" disabled={busy || !totals}>
+          {busy ? "Menyimpan…" : "Simpan draf tingkat"}
         </button>
-        <Link to={`/permohonan/draf/${draftId}/semakan`} className="button secondary">
-          Semakan draf
-        </Link>
+        <button className="button" type="submit" name="action" value="continue" disabled={busy || !totals}>
+          Simpan dan ke Semakan Draf
+        </button>
       </form>
     </div>
   );
