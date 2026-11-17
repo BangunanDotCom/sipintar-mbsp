@@ -19,6 +19,7 @@ import {
 } from "../../../packages/shared/src/premises";
 import PremisesMap from "./PremisesMap";
 import { FloorReview } from "./FloorReview";
+import { PreliminaryDocumentChecklist } from "./PreliminaryDocumentChecklist";
 import "./premises.css";
 const textFields = [
   { name: "address", label: "Alamat penuh premis", max: 1000, area: true },
@@ -180,6 +181,7 @@ function PremisesSummary({ record }: { record: any }) {
         </section>
       </div>
       <FloorReview draftId={record.draftId} premises={p} />
+      <PreliminaryDocumentChecklist />
       <div className="premises-actions">
         <Link
           className="button secondary"
