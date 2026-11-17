@@ -461,3 +461,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Sanitasi identiti enjin pengimbas daripada aksara kawalan
 
 `scanQuarantinedDocument` kini menolak nama enjin pengimbas yang mengandungi aksara kawalan ASCII (0x00–0x1F dan 0x7F), termasuk baris baharu, carriage return, tab dan null. Ini mengurangkan risiko pemalsuan baris log apabila identiti pengimbas digunakan dalam rekod audit. Ujian regresi merangkumi lima jenis input aksara kawalan. Had 128 aksara dan senarai medan respons yang dibenarkan kekal. Keputusan CI belum disahkan; pengimbas produksi belum diaktifkan.
+
+## Pembetulan ujian aksara kawalan dan jenis status pengimbas
+
+Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`, `\\u0000` dan `\\u007f` dalam literal TypeScript, bukannya rentetan backslash biasa. Pengesahan hasil pengimbas turut mewajibkan `status` bertipe string sebelum dibandingkan dengan `CLEAN`, `INFECTED` atau `FAILED`. Ujian negatif meliputi null, nombor, objek dan status tidak dikenali. Ujian CI belum disahkan dan pengimbas produksi belum diaktifkan.
