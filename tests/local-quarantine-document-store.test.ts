@@ -62,6 +62,18 @@ describe("local quarantine development adapter", () => {
       key, content: Buffer.from("%PDF-1.7\\ntest"), mimeType: "application/pdf",
     })).rejects.toThrow("symlink");
   });
+  it("rejects a symlinked quarantine root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "staylink-root-target-"));
+    const aliasParent = await mkdtemp(join(tmpdir(), "staylink-root-alias-"));
+    roots.push(root, aliasParent);
+    const alias = join(aliasParent, "quarantine");
+    await symlink(root, alias, "dir");
+    const store = new LocalQuarantineDocumentStore(alias);
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    await expect(store.putQuarantined({
+      key, content: Buffer.from("%PDF-1.7\\nroot"), mimeType: "application/pdf",
+    })).rejects.toThrow("symlink");
+  });
   it("rejects path traversal and arbitrary object keys", async () => {
     const store = await setup();
     await expect(store.readQuarantined("../../etc/passwd")).rejects.toThrow("Kunci");
