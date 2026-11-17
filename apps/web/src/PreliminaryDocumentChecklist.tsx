@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, unambiguousDocumentUploadPolicies, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
 
 type DocumentRecord = DocumentStatusRecord & {
   uploadedAt: string;
@@ -30,8 +30,9 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
     gcTime: 0,
   });
   // Never show a cached document list after a failed authorization or refresh.
-  const validDocuments = query.isSuccess && Array.isArray(query.data?.documents) && query.data.documents.every(isDocumentStatusRecord);
-  const documents = validDocuments ? query.data!.documents : [];
+  const validated = query.isSuccess ? validatedDocumentResponse(query.data) : null;
+  const validDocuments = validated !== null;
+  const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
@@ -42,7 +43,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const rejectedPriority = priorityCategories.filter((item) => item.state === "REJECTED").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   // Reject malformed upload guidance from the API.
-  const uploadPolicy = unambiguousDocumentUploadPolicies(query.isSuccess ? query.data?.uploadPolicy : null);
+  const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
   const mimeLabel = (mime: string) => mime === "application/pdf" ? "PDF" :
     mime === "image/jpeg" ? "JPEG" : mime === "image/png" ? "PNG" : mime;
