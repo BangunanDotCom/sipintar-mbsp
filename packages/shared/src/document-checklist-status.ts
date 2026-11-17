@@ -12,11 +12,11 @@ export type DocumentStatusRecord = {
 export function isDocumentStatusRecord(value: unknown): value is DocumentStatusRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  return typeof record.category === "string"
+  return typeof record.category === "string" && record.category.trim().length > 0
     && Number.isSafeInteger(record.version) && (record.version as number) > 0
-    && typeof record.fileName === "string"
-    && typeof record.scanStatus === "string"
-    && typeof record.verificationStatus === "string"
+    && typeof record.fileName === "string" && record.fileName.trim().length > 0
+    && typeof record.scanStatus === "string" && record.scanStatus.trim().length > 0
+    && typeof record.verificationStatus === "string" && record.verificationStatus.trim().length > 0
     && (record.supersededAt === null || typeof record.supersededAt === "string");
 }
 export type DocumentChecklistRow = {
