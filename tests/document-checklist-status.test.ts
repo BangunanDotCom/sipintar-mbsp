@@ -18,6 +18,9 @@ describe("document checklist statuses", () => {
     expect(isDocumentUploadPolicy(null)).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [] })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [null] })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, mimeTypes: ["pdf"] })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, mimeTypes: ["application/pdf", "application/pdf"] })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, mimeTypes: ["image/jpeg", "application/pdf"] })).toBe(true);
     expect(isDocumentUploadPolicy({ ...policy, label: "  " })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, category: " premises_plan " })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, defaultMaxMiB: Infinity })).toBe(false);
