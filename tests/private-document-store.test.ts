@@ -99,6 +99,16 @@ describe("private document quarantine adapter", () => {
     })).rejects.toThrow();
     expect(putQuarantined).not.toHaveBeenCalled();
   });
+  it("rejects non-Buffer upload payloads before writing to quarantine", async () => {
+    for (const invalid of ["%PDF-1.7", new Uint8Array(bytes), null]) {
+      const { adapter, putQuarantined } = store();
+      await expect(storeQuarantinedDocument(adapter, {
+        draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
+        content: invalid as unknown as Buffer, mimeType: "application/pdf",
+      })).rejects.toThrow("Saiz fail");
+      expect(putQuarantined).not.toHaveBeenCalled();
+    }
+  });
   it("rejects empty payloads before storage access", async () => {
     const { adapter, putQuarantined } = store();
     await expect(storeQuarantinedDocument(adapter, {
