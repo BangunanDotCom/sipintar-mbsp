@@ -24,6 +24,11 @@ describe("premises floor summary", () => {
     const floor = { floorLabel: "Tingkat 1", rooms: 1, beds: 1, workers: 1, areaSqm: 10, facilities };
     expect(premiseFloorsSchema.safeParse([floor, { ...floor, floorLabel: "tingkat 1" }]).success).toBe(false);
   });
+  it("rejects visually duplicate labels with repeated whitespace or fullwidth characters", () => {
+    const floor = { floorLabel: "Tingkat 1", rooms: 1, beds: 1, workers: 1, areaSqm: 10, facilities };
+    expect(premiseFloorsSchema.safeParse([floor, { ...floor, floorLabel: "Tingkat   1" }]).success).toBe(false);
+    expect(premiseFloorsSchema.safeParse([floor, { ...floor, floorLabel: "Ｔｉｎｇｋａｔ １" }]).success).toBe(false);
+  });
   it("rejects negative counts and employer allocations", () => {
     const floor = { floorLabel: "Aras 1", rooms: -1, beds: 1, workers: 1, areaSqm: 10, facilities };
     expect(premiseFloorsSchema.safeParse([floor]).success).toBe(false);
