@@ -29,6 +29,31 @@ describe("local quarantine development adapter", () => {
     await store.deleteQuarantined(key);
     await expect(store.readQuarantined(key)).rejects.toThrow();
   });
+  it("rejects empty and oversized direct writes", async () => {
+    const store = await setup();
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    await expect(store.putQuarantined({
+      key, content: Buffer.alloc(0), mimeType: "application/pdf",
+    })).rejects.toThrow("Saiz");
+    await expect(store.putQuarantined({
+      key, content: Buffer.alloc(100 * 1024 * 1024 + 1), mimeType: "application/pdf",
+    })).rejects.toThrow("Saiz");
+  });
+  it("rejects oversized stored objects before reading their contents", async () => {
+    const root = await mkdtemp(join(tmpdir(), "staylink-oversize-"));
+    roots.push(root);
+    const store = new LocalQuarantineDocumentStore(root);
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    const location = join(root, ...key.split("/"));
+    await mkdir(join(root, ...key.split("/").slice(0, -1)), { recursive: true });
+    const handle = await (await import("node:fs/promises")).open(location, "w");
+    try {
+      await handle.truncate(100 * 1024 * 1024 + 1);
+    } finally {
+      await handle.close();
+    }
+    await expect(store.readQuarantined(key)).rejects.toThrow("Saiz");
+  });
   it("rejects duplicate keys rather than overwriting documents", async () => {
     const store = await setup();
     const key = createPrivateDocumentKey(draftId, "premises_plan");
