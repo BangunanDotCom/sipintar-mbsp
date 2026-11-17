@@ -188,7 +188,7 @@ export async function routes(app: FastifyInstance) {
           .min(1)
           .max(120)
           .regex(/^[^/\\]+\.pdf$/i),
-        content: z.string().max(2800000),
+        content: z.string().max(13981016).regex(/^[A-Za-z0-9+/]*={0,2}$/),
         validUntil: z.iso.datetime().optional(),
       })
       .parse(req.body);
@@ -196,11 +196,11 @@ export async function routes(app: FastifyInstance) {
       fail(400, "Tarikh sah dokumen mesti pada masa hadapan.");
     const content = Buffer.from(b.content, "base64");
     if (
-      content.length > 2 * 1024 * 1024 ||
+      content.length > 10 * 1024 * 1024 ||
       content.length < 5 ||
       content.subarray(0, 5).toString() !== "%PDF-"
     )
-      fail(400, "Hanya PDF maksimum 2 MB dibenarkan.");
+      fail(400, "Hanya PDF maksimum 10 MiB dibenarkan.");
     const doc = await db.delegationDocument.create({
       data: {
         companyId,
