@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftDocumentUploadPolicy } from "../apps/api/src/draft-document-upload-policy.js";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -260,6 +260,16 @@ describe("document checklist statuses", () => {
     expect(count("ALL", "kuasa", "PRIORITY")).toBe(1);
     expect(count("PENDING", "kuasa", "PRIORITY")).toBe(1);
     expect(count("ATTENTION", "kuasa", "PRIORITY")).toBe(0);
+  });
+  it("offers safe next actions without treating verification or missing files as officer tasks", () => {
+    expect(documentReviewNextAction("CONFLICT")).toBe("RESOLVE_CONFLICT");
+    expect(documentReviewNextAction("UNSAFE")).toBe("SECURITY_REVIEW");
+    expect(documentReviewNextAction("PENDING_REVIEW")).toBe("REVIEW_DOCUMENT");
+    expect(documentReviewNextAction("PENDING_SCAN")).toBe("AWAIT_SCAN");
+    expect(documentReviewNextAction("REJECTED")).toBe("APPLICANT_CORRECTION");
+    expect(documentReviewNextAction("VERIFIED")).toBeNull();
+    expect(documentReviewNextAction("MISSING")).toBeNull();
+    expect(Object.values(documentReviewNextActionLabels)).toHaveLength(5);
   });
   it("builds a read-only officer triage preview ordered by urgency", () => {
     const rows = documentChecklistRows("COMPANY", [
