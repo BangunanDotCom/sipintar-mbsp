@@ -50,6 +50,19 @@ describe("document checklist statuses", () => {
     const row = state([doc(2, "CLEAN", "VERIFIED"), doc(2, "CLEAN", "VERIFIED")]);
     expect(row?.state).toBe("UNSAFE");
   });
+  it("fails closed when different versions remain active simultaneously", () => {
+    const row = state([doc(1, "CLEAN", "VERIFIED"), doc(2, "CLEAN", "VERIFIED")]);
+    expect(row?.current?.version).toBe(2);
+    expect(row?.state).toBe("UNSAFE");
+  });
+  it("accepts a verified replacement after the previous version is superseded", () => {
+    const row = state([
+      doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+      doc(2, "CLEAN", "VERIFIED"),
+    ]);
+    expect(row?.current?.version).toBe(2);
+    expect(row?.state).toBe("VERIFIED");
+  });
   it("ignores invalid version numbers and superseded records", () => {
     expect(state([doc(0, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
     expect(state([doc(-1, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
