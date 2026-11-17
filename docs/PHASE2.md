@@ -437,3 +437,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Salinan defensif kandungan sebelum tulis kuarantin
 
 `storeQuarantinedDocument` kini membuat salinan `Buffer` milik pemanggil selepas pengesahan tandatangan dan sebelum mengira SHA-256 serta memanggil `putQuarantined`. Salinan ini mengurangkan risiko metadata hash tidak sepadan apabila pemanggil mengubah `Buffer` asal semasa operasi storan tak segerak. Ujian regresi memutasi `Buffer` asal dalam adapter dan mengesahkan kandungan kuarantin masih sepadan dengan hash dan MIME yang direkod. Adapter produksi masih perlu menjamin integriti tulis, akses persendirian, enkripsi, dan imbasan malware. Keputusan CI belum disahkan.
+
+## Konsistensi metadata saiz selepas operasi tulis tak segerak
+
+`storeQuarantinedDocument` kini merekod `byteSize` daripada `content.length` pada salinan defensif yang sama digunakan untuk pengiraan SHA-256 dan `putQuarantined`, bukannya membaca semula `input.content.length` selepas `await`. Ujian regresi menggantikan `input.content` semasa adapter menulis dan memastikan metadata yang dipulangkan masih mengesahkan kandungan kuarantin sebenar. Storan produksi belum diaktifkan dan keputusan CI belum disahkan.
