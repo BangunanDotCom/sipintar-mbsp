@@ -144,7 +144,18 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         </table>
       </div>}
       {filtered.length === 0 && (
-        <p>{queue.length === 0 ? "Tiada dokumen yang memerlukan tindakan susulan dalam senarai semasa." : "Tiada rekod sepadan dengan penapis. Kosongkan penapis untuk melihat semua rekod."}</p>
+        <div role="status">
+          <p>{queue.length === 0
+            ? "Tiada dokumen yang memerlukan tindakan susulan dalam senarai semasa."
+            : filtersActive
+              ? "Tiada rekod sepadan dengan penapis. Kosongkan penapis untuk melihat semua rekod."
+              : "Tiada rekod pemantauan untuk dipaparkan."}</p>
+          {queue.length > 0 && filtersActive && (
+            <button className="button secondary small" type="button" onClick={resetFilters}>
+              Paparkan semula semua rekod
+            </button>
+          )}
+        </div>
       )}
       <p><small>Pratonton baca sahaja. Pengesahan dokumen, muat naik dan penghantaran rasmi tidak tersedia melalui komponen ini.</small></p>
     </section>
