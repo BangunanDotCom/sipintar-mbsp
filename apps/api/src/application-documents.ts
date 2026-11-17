@@ -37,6 +37,7 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
       });
       return {
         draftId: id,
+        capacity: draft.capacity,
         documents,
         uploadPolicy: draftDocumentUploadPolicy(draft.capacity),
         uploadEnabled: false,
