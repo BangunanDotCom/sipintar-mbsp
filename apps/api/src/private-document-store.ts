@@ -34,7 +34,9 @@ export async function storeQuarantinedDocument(
   const category = input.storageKey.split("/")[2];
   const parsedCategory = supportingDocumentCategorySchema.parse(category);
   const policy = UPLOAD_CATEGORIES[uploadKindForSupportingDocument(parsedCategory)];
-  if (!input.content.length || input.content.length > policy.ceilingMiB * 1024 * 1024)
+  // Treat caller input as untrusted at runtime, even if TypeScript declares Buffer.
+  if (!Buffer.isBuffer(input.content) || input.content.length < 1 ||
+      input.content.length > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Saiz fail tidak dibenarkan.");
   if (!policy.mime.split(",").includes(input.mimeType))
     throw new Error("Jenis fail tidak dibenarkan bagi kategori dokumen.");
