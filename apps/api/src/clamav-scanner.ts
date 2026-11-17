@@ -31,17 +31,38 @@ export class ClamAvScanner implements DocumentMalwareScanner {
       socket.setTimeout(this.timeoutMs, () => finish(new Error("Pengimbas ClamAV tamat masa.")));
       socket.on("error", (error) => finish(error));
       socket.on("connect", () => {
-        // zINSTREAM uses a NUL-terminated command and length-prefixed chunks.
-        socket.write(Buffer.from("zINSTREAM\0"));
-        for (let offset = 0; offset < bytes.length; offset += 65536) {
-          const chunk = bytes.subarray(offset, Math.min(offset + 65536, bytes.length));
-          const length = Buffer.alloc(4);
-          length.writeUInt32BE(chunk.length);
-          socket.write(length);
-          socket.write(chunk);
-        }
-        // Zero-length chunk ends INSTREAM; keep TCP writable until the reply arrives.
-        socket.write(Buffer.alloc(4));
+        // Respect socket backpressure; do not queue the entire upload in memory.
+        let offset = 0;
+        let phase: "command" | "length" | "chunk" | "end" | "done" = "command";
+        let chunk = Buffer.alloc(0);
+        const pump = () => {
+          while (!settled && phase !== "done") {
+            let frame: Buffer;
+            if (phase === "command") {
+              frame = Buffer.from("zINSTREAM\\0");
+              phase = "length";
+            } else if (phase === "length") {
+              if (offset >= bytes.length) {
+                phase = "end";
+                continue;
+              }
+              chunk = bytes.subarray(offset, Math.min(offset + 65536, bytes.length));
+              frame = Buffer.alloc(4);
+              frame.writeUInt32BE(chunk.length);
+              phase = "chunk";
+            } else if (phase === "chunk") {
+              frame = chunk;
+              offset += chunk.length;
+              phase = "length";
+            } else {
+              frame = Buffer.alloc(4);
+              phase = "done";
+            }
+            if (!socket.write(frame)) return;
+          }
+        };
+        socket.on("drain", pump);
+        pump();
       });
       socket.on("data", (data: Buffer) => {
         response += data.toString("utf8");
