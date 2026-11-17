@@ -309,3 +309,7 @@ Halaman `PremisesSummary` kini memaparkan `PreliminaryDocumentChecklist` dan `Dr
 ## Pembetulan CI daripada anotasi GitHub Actions (17 Nov 2026)
 
 Run #119 menunjukkan kegagalan TypeScript (exit code 2). Pembetulan pada branch pembangunan: `tests/document-scan-lease.test.ts` menambah penukaran melalui `unknown` untuk pemeriksaan argumen mock; `apps/api/src/routes.ts` menyerahkan `Uint8Array` kepada medan Prisma Bytes; `apps/api/src/core.ts` menggunakan `ReturnType<typeof nodemailer.createTransport>` bagi transporter; `apps/api/src/clamav-scanner.ts` menyalin potongan data imbasan ke `Buffer` yang konsisten dengan jenis Node. Amaran GitHub Actions tentang Node.js 20 dan `ubuntu-latest` adalah berasingan daripada ralat TypeScript. **Keputusan run CI selepas pembetulan belum disahkan**; jangan anggap job telah lulus sehingga log baharu diperiksa.
+
+## Penstabilan persekitaran GitHub Actions (17 Nov 2026)
+
+Workflow `staylink-phase1-checks.yml` menggunakan `ubuntu-24.04` (bukan `ubuntu-latest`) dan tindakan `actions/checkout@v5` serta `actions/setup-node@v5` untuk menangani amaran runtime Node.js 20 dan perubahan imej Ubuntu. Versi Node.js aplikasi yang diuji kekal 22. Ini perubahan pada persekitaran CI sahaja, **bukan bukti TypeScript, lint dan ujian telah lulus**. Semak keputusan run selepas commit sebelum menganggap isu CI selesai. Tiada deployment atau merge ke main.
