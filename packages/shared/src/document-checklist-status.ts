@@ -210,3 +210,20 @@ export const documentNextStepLabels: Record<DocumentChecklistRow["state"], strin
   REJECTED: "Semak sebab penolakan dengan pegawai sebelum menyediakan pembetulan",
   VERIFIED: "Tiada tindakan bagi rekod ini; tertakluk kepada semakan permohonan keseluruhan",
 };
+
+/** Read-only display filtering; does not change document verification or submission eligibility. */
+export type DocumentStatusFilter = "ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING";
+export function filterDocumentChecklistRows(
+  rows: readonly DocumentChecklistRow[],
+  filter: DocumentStatusFilter,
+): DocumentChecklistRow[] {
+  return rows.filter((row) => {
+    switch (filter) {
+      case "ATTENTION": return row.state === "CONFLICT" || row.state === "UNSAFE" || row.state === "REJECTED";
+      case "PENDING": return row.state === "PENDING_SCAN" || row.state === "PENDING_REVIEW";
+      case "VERIFIED": return row.state === "VERIFIED";
+      case "MISSING": return row.state === "MISSING";
+      default: return true;
+    }
+  });
+}
