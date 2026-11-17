@@ -186,6 +186,20 @@ describe("document checklist statuses", () => {
     expect(row?.current?.version).toBe(2);
     expect(row?.state).toBe("VERIFIED");
   });
+  it("flags a superseded version newer than or equal to the active version", () => {
+    expect(state([
+      doc(1, "CLEAN", "VERIFIED"),
+      doc(2, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+    ])?.state).toBe("CONFLICT");
+    expect(state([
+      doc(2, "CLEAN", "VERIFIED"),
+      doc(2, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+    ])?.state).toBe("CONFLICT");
+    expect(state([
+      doc(2, "CLEAN", "VERIFIED"),
+      doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+    ])?.state).toBe("VERIFIED");
+  });
   it("ignores invalid version numbers and superseded records", () => {
     expect(state([doc(0, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
     expect(state([doc(-1, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
