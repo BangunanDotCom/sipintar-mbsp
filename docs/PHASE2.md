@@ -401,3 +401,7 @@ Bacaan kuarantin kini mengesahkan nilai pulangan adapter ialah `Buffer` dan panj
 ## Pengukuhan semakan struktur PNG
 
 Pengesahan tandatangan fail PNG kini turut menyemak gabungan `bitDepth`/`colorType` yang dibenarkan oleh format PNG, kaedah pemampatan dan penapisan bernilai sifar, serta kaedah interlace 0 atau 1. Ujian muat naik menolak lima variasi pengepala IHDR tidak sah. Ini kekal semakan struktur awal sahaja: CRC, chunk seterusnya dan kebolehnyahkodan imej penuh belum disahkan; pengimbasan malware tetap diperlukan. Keputusan CI belum disahkan.
+
+## Had dimensi PNG mengikut spesifikasi
+
+Semakan struktur `IHDR` PNG kini menolak lebar atau tinggi melebihi `2^31 - 1`, selain menolak dimensi sifar dan kombinasi jenis warna/kedalaman bit tidak sah. Ujian regresi memeriksa kedua-dua medan lebar dan tinggi dengan nilai `0x80000000`. Pemeriksaan ini tidak mengesahkan CRC, semua chunk PNG atau keselamatan imej secara menyeluruh. Keputusan CI belum disahkan; storan produksi dan muat naik pemohon kekal tidak diaktifkan.
