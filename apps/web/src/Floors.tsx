@@ -32,10 +32,12 @@ function FloorEditor({ draftId }: { draftId: string }) {
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState("");
+  const [mismatches, setMismatches] = React.useState<{ field: string; label: string; declared: number; calculated: number }[]>([]);
   React.useEffect(() => {
     if (query.data && !dirty) {
       setFloors(query.data.floors.length ? query.data.floors : [newFloor()]);
       setVersion(query.data.version);
+      setMismatches(query.data.mismatches || []);
     }
   }, [query.data, dirty]);
   if (query.error instanceof ApiError && query.error.status === 401)
@@ -80,6 +82,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
             version, floors: result.data,
           });
           setVersion(saved.version);
+          setMismatches(saved.mismatches || []);
           setDirty(false);
           setMessage("Maklumat tingkat berjaya disimpan sebagai draf.");
           await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
@@ -132,6 +135,20 @@ function FloorEditor({ draftId }: { draftId: string }) {
             </tbody>
           </table></div>
         ) : <Notice error>Lengkapkan nama tingkat dan semak nilai sebelum menyimpan.</Notice>}
+        {mismatches.length > 0 && (
+          <Notice error>
+            Maklumat agregat premis tidak sepadan dengan butiran tingkat.
+            Semak semula sebelum penghantaran rasmi:
+            <ul>
+              {mismatches.map((item) => (
+                <li key={item.field}>
+                  {item.label}: maklumat premis {item.declared}; jumlah tingkat {item.calculated}
+                </li>
+              ))}
+            </ul>
+            <Link to={`/permohonan/draf/${draftId}/premis`}>Kemaskini maklumat premis</Link>
+          </Notice>
+        )}
         {error && <Notice error>{error}</Notice>}
         {message && <Notice>{message}</Notice>}
         <button className="button" disabled={busy || !totals}>
