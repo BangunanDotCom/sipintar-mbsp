@@ -291,6 +291,19 @@ describe("document checklist statuses", () => {
     expect(documentReviewQueue(rows)).toEqual(queue);
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
   });
+  it("filters officer triage by action owner without changing the queue", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "premises_plan" },
+      { ...doc(1, "PENDING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "REJECTED"), category: "company_authority" },
+    ]);
+    const queue = documentReviewQueue(rows);
+    expect(filterDocumentReviewQueue(queue, "ALL", "ALL", "", "OFFICER").map((item) => item.category)).toEqual(["premises_plan"]);
+    expect(filterDocumentReviewQueue(queue, "ALL", "OPTIONAL", "", "SYSTEM").map((item) => item.category)).toEqual(["fire_safety"]);
+    expect(filterDocumentReviewQueue(queue, "ACTION", "PRIORITY", "kuasa", "APPLICANT").map((item) => item.category)).toEqual(["company_authority"]);
+    expect(filterDocumentReviewQueue(queue, "CRITICAL", "ALL", "", "APPLICANT")).toEqual([]);
+    expect(filterDocumentReviewQueue(queue)).toEqual(queue);
+  });
   it("routes rejected documents to applicant action rather than officer or system", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       doc(1, "CLEAN", "REJECTED"),
