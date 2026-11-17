@@ -1,4 +1,5 @@
 import { premisesRoutes } from "./premises.js";
+import { delegationLimitMiB, validateDelegationPdf } from "./upload-policy.js";
 import { applicationDraftRoutes } from "./application-drafts.js";
 import argon2 from "argon2";
 import { protectIdentification } from "./identity.js";
@@ -181,8 +182,7 @@ export async function routes(app: FastifyInstance) {
   app.get("/api/upload-limits", async (req) => {
     await session(req);
     const setting = await db.systemConfiguration.findUnique({ where: { key: "technical.upload_delegation_mib" } });
-    const configured = Number(setting?.value ?? 10);
-    const maxMiB = Number.isInteger(configured) && configured >= 1 && configured <= 20 ? configured : 10;
+    const maxMiB = delegationLimitMiB(setting?.value);
     return { delegationPdfMiB: maxMiB };
   });
   app.post("/api/companies/:id/documents", async (req) => {
@@ -202,15 +202,13 @@ export async function routes(app: FastifyInstance) {
     if (b.validUntil && new Date(b.validUntil) <= new Date())
       fail(400, "Tarikh sah dokumen mesti pada masa hadapan.");
     const setting = await db.systemConfiguration.findUnique({ where: { key: "technical.upload_delegation_mib" } });
-    const configured = Number(setting?.value ?? 10);
-    const maxMiB = Number.isInteger(configured) && configured >= 1 && configured <= 20 ? configured : 10;
-    const content = Buffer.from(b.content, "base64");
-    if (
-      content.length > maxMiB * 1024 * 1024 ||
-      content.length < 5 ||
-      content.subarray(0, 5).toString() !== "%PDF-"
-    )
-      fail(400, `Hanya PDF maksimum ${maxMiB} MiB dibenarkan.`);
+    const maxMiB = delegationLimitMiB(setting?.value);
+    let content: Buffer;
+    try {
+      content = validateDelegationPdf(b.content, maxMiB);
+    } catch (error) {
+      fail(400, error instanceof Error ? error.message : "Dokumen PDF tidak sah.");
+    }
     const doc = await db.delegationDocument.create({
       data: {
         companyId,
