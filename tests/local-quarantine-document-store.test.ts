@@ -49,6 +49,19 @@ describe("local quarantine development adapter", () => {
     await expect(store.readQuarantined(key)).rejects.toThrow();
     await expect(store.deleteQuarantined(key)).rejects.toThrow();
   });
+  it("rejects symlinked intermediate directories even when targets remain inside root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "staylink-dir-symlink-"));
+    roots.push(root);
+    const store = new LocalQuarantineDocumentStore(root);
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    const [prefix, draft, category] = key.split("/");
+    const target = join(root, "redirected");
+    await mkdir(join(target, draft, category), { recursive: true });
+    await symlink(target, join(root, prefix), "dir");
+    await expect(store.putQuarantined({
+      key, content: Buffer.from("%PDF-1.7\\ntest"), mimeType: "application/pdf",
+    })).rejects.toThrow("symlink");
+  });
   it("rejects path traversal and arbitrary object keys", async () => {
     const store = await setup();
     await expect(store.readQuarantined("../../etc/passwd")).rejects.toThrow("Kunci");
