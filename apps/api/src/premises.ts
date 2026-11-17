@@ -52,6 +52,7 @@ function response(
     id: string;
     version: number;
     status: string;
+    capacity: string;
     applicantSnapshot: Prisma.JsonValue;
   },
   p: ApplicationPremises | null,
@@ -61,6 +62,7 @@ function response(
     draftId: d.id,
     version: d.version,
     status: d.status,
+    capacity: d.capacity,
     applicant: d.applicantSnapshot,
     premises: values,
     complete: completePremisesSchema.safeParse(values).success,
