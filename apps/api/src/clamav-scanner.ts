@@ -40,7 +40,8 @@ export class ClamAvScanner implements DocumentMalwareScanner {
           socket.write(length);
           socket.write(chunk);
         }
-        socket.end(Buffer.alloc(4));
+        // Zero-length chunk ends INSTREAM; keep TCP writable until the reply arrives.
+        socket.write(Buffer.alloc(4));
       });
       socket.on("data", (data: Buffer) => {
         response += data.toString("utf8");
