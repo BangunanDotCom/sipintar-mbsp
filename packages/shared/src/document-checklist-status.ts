@@ -24,10 +24,18 @@ export function isDocumentUploadPolicy(value: unknown): value is DocumentUploadP
 /** Omit ambiguous policy categories rather than choosing an arbitrary duplicate. */
 export function unambiguousDocumentUploadPolicies(value: unknown): DocumentUploadPolicy[] {
   if (!Array.isArray(value)) return [];
-  const valid = value.filter(isDocumentUploadPolicy);
   const counts = new Map<string, number>();
-  for (const row of valid) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
-  return valid.filter((row) => counts.get(row.category) === 1);
+  // Count even malformed entries with a category so that an invalid duplicate
+  // cannot silently leave a seemingly authoritative policy behind.
+  for (const item of value) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+    const category = (item as Record<string, unknown>).category;
+    if (typeof category !== "string" || category.trim().length === 0) continue;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return value.filter((item): item is DocumentUploadPolicy =>
+    isDocumentUploadPolicy(item) && counts.get(item.category) === 1
+  );
 }
 
 export type DocumentStatusRecord = {
