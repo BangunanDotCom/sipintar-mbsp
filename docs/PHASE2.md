@@ -369,3 +369,7 @@ Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kate
 ## Ujian keselamatan storan kuarantin bagi foto
 
 `tests/private-document-store.test.ts` kini menguji penulisan JPEG dengan penanda struktur asas yang diterima dan memastikan fail JPEG tanpa penanda akhir, PNG terpotong, serta PNG berdimensi sifar ditolak sebelum `putQuarantined()` dipanggil. Fixture ini menguji pengawal struktur sahaja, bukan kebolehnyahkodan imej sebenar atau keputusan antivirus. Laluan muat naik dan storan produksi kekal tidak diaktifkan; keputusan CI masih belum disahkan.
+
+## Semakan integriti ketika membaca storan kuarantin
+
+Pembantu dalaman `readVerifiedQuarantinedDocument()` kini memerlukan kunci storan yang sepadan dengan ID draf, metadata SHA-256 64 digit heksadesimal dan saiz bait positif. Selepas membaca daripada adapter kuarantin, ia mengesahkan panjang dan SHA-256 menggunakan perbandingan masa tetap sebelum memulangkan `Buffer` kepada kod dalaman yang memanggilnya. Ujian unit meliputi kandungan sah, hash/saiz tidak sepadan, metadata tidak sah dan kunci silang draf. Pembantu ini **bukan endpoint HTTP** dan tidak menjalankan semakan identiti pemohon; pemanggil mesti terlebih dahulu mengesahkan kebenaran akses. Imbasan malware, storan produksi, muat naik dan penghantaran rasmi masih belum diaktifkan. Keputusan CI belum disahkan.
