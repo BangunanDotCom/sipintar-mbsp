@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { matchesDeclaredFileSignature } from "./document-file-signatures.js";
 import { isPrivateDocumentKeyForDraft } from "./private-document-keys.js";
 import { UPLOAD_CATEGORIES } from "./upload-policy.js";
@@ -52,6 +52,25 @@ export async function storeQuarantinedDocument(
     byteSize: input.content.length,
     mimeType: input.mimeType,
   };
+}
+
+// Internal quarantine integrity check. Call only after authorization for the draft;
+// never return quarantined bytes to an applicant or a public URL.
+export async function readVerifiedQuarantinedDocument(
+  store: PrivateDocumentStore,
+  input: { draftId: string; storageKey: string; expectedSha256: string; expectedByteSize: number },
+): Promise<Buffer> {
+  if (!isPrivateDocumentKeyForDraft(input.storageKey, input.draftId))
+    throw new Error("Kunci dokumen tidak sepadan dengan permohonan.");
+  if (!/^[a-f0-9]{64}$/i.test(input.expectedSha256) ||
+      !Number.isSafeInteger(input.expectedByteSize) || input.expectedByteSize < 1)
+    throw new Error("Metadata integriti dokumen tidak sah.");
+  const content = await store.readQuarantined(input.storageKey);
+  const actual = createHash("sha256").update(content).digest();
+  if (content.length !== input.expectedByteSize ||
+      !timingSafeEqual(actual, Buffer.from(input.expectedSha256, "hex")))
+    throw new Error("Integriti dokumen kuarantin gagal.");
+  return content;
 }
 
 // Explicitly disabled until a private object store and scanner are configured.
