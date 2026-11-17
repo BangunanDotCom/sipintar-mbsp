@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentChecklistSummary, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse } from "../../../packages/shared/src/document-checklist-status";
 
 export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   draftId: string;
@@ -22,14 +22,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const validDocuments = validated !== null;
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
-  const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
-  const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
-  const verifiedPriority = priorityCategories.filter((item) => item.state === "VERIFIED").length;
-  const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
-  const conflictPriority = priorityCategories.filter((item) => item.state === "CONFLICT").length;
-  const pendingReviewPriority = priorityCategories.filter((item) => item.state === "PENDING_REVIEW").length;
-  const rejectedPriority = priorityCategories.filter((item) => item.state === "REJECTED").length;
-  const missingPriority = priorityCategories.filter((item) => !item.current);
+  const summary = documentChecklistSummary(visible);
+  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -58,21 +52,21 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       )}
       {validDocuments && (
         <p role="status">
-          <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
-          <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
-          {pendingSafetyPriority > 0 && <strong> Perlu perhatian keselamatan: {pendingSafetyPriority} kategori.</strong>}{" "}
-          {conflictPriority > 0 && <strong> Konflik versi aktif: {conflictPriority} kategori — rujuk pegawai.</strong>}{" "}
-          {pendingReviewPriority > 0 && <strong> Menunggu pengesahan pegawai: {pendingReviewPriority} kategori.</strong>}{" "}
-          {rejectedPriority > 0 && <strong> Ditolak pegawai: {rejectedPriority} kategori — semak maklum balas.</strong>}{" "}
+          <strong>Rekod kategori persediaan utama: {recorded} daripada {total} kategori.</strong>{" "}
+          <strong> Disahkan pegawai selepas imbasan bersih: {verified} kategori.</strong>{" "}
+          {safetyAttention > 0 && <strong> Perlu perhatian keselamatan: {safetyAttention} kategori.</strong>}{" "}
+          {conflicts > 0 && <strong> Konflik versi aktif: {conflicts} kategori — rujuk pegawai.</strong>}{" "}
+          {pendingReview > 0 && <strong> Menunggu pengesahan pegawai: {pendingReview} kategori.</strong>}{" "}
+          {rejected > 0 && <strong> Ditolak pegawai: {rejected} kategori — semak maklum balas.</strong>}{" "}
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
       )}
-      {validDocuments && missingPriority.length > 0 && (
+      {validDocuments && missing.length > 0 && (
         <div>
           <p>Kategori persediaan utama yang belum mempunyai rekod aktif (belum ditetapkan sebagai syarat wajib rasmi):</p>
           <ul>
-            {missingPriority.map((item) => <li key={item.category}>{item.label}</li>)}
+            {missing.map((item) => <li key={item.category}>{item.label}</li>)}
           </ul>
         </div>
       )}
