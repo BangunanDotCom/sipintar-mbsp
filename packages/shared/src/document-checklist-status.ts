@@ -173,11 +173,12 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     recorded: priority.filter((row) => row.current !== null).length,
     verified: priority.filter((row) => row.state === "VERIFIED").length,
     safetyAttention: priority.filter((row) => row.state === "UNSAFE" || row.state === "PENDING_SCAN").length,
+    pendingScanRows: rows.filter((row) => row.state === "PENDING_SCAN"),
     conflicts: priority.filter((row) => row.state === "CONFLICT").length,
     pendingReview: priority.filter((row) => row.state === "PENDING_REVIEW").length,
     pendingReviewRows: priority.filter((row) => row.state === "PENDING_REVIEW"),
     rejected: priority.filter((row) => row.state === "REJECTED").length,
-    attentionRows: priority.filter((row) => ["CONFLICT", "UNSAFE", "PENDING_SCAN", "REJECTED"].includes(row.state)),
+    attentionRows: priority.filter((row) => ["CONFLICT", "UNSAFE", "REJECTED"].includes(row.state)),
     missing: priority.filter((row) => row.state === "MISSING"),
     // Optional documents are visible for preparation but excluded from priority counts.
     optionalTotal: rows.filter((row) => row.applicability === "IF_AVAILABLE").length,
