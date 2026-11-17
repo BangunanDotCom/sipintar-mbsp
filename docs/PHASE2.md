@@ -197,3 +197,7 @@ Adapter setempat kini menggunakan `dirname` dan `relative` untuk memeriksa direk
 ## Had saiz objek kuarantin setempat
 
 Adapter setempat kini mengenakan had pertahanan 100 MiB bagi `putQuarantined` dan `readQuarantined`, termasuk panggilan terus yang tidak melalui validasi kategori muat naik. Bacaan memeriksa `FileHandle.stat()` terlebih dahulu dan menolak objek kosong, bukan fail biasa atau melebihi had sebelum `readFile()`. Had kategori yang lebih rendah dalam `storeQuarantinedDocument` tetap berkuat kuasa. Ujian menambah kes fail kosong, fail lebih 100 MiB dan fail sparse bersaiz berlebihan. Ini belum bermaksud storan produksi atau laluan upload telah diaktifkan; keputusan CI belum disahkan.
+
+## Ujian regresi protokol ClamAV dan symlink
+
+Ujian `clamav-framing-regression.test.ts` kini merekod panjang bingkai INSTREAM dan baki bait dalam callback TCP, kemudian membuat assertion selepas `scan()` berjaya. Header tidak sah dibalas sebagai ralat protokol, bukannya `socket.destroy(new Error(...))` yang boleh mencetuskan ralat socket tidak dikendalikan. Ujian storan kuarantin kini turut memastikan penolakan direktori symlink tidak menghasilkan fail pada lokasi sasaran yang dialihkan. Perubahan telah dikomitkan tetapi CI masih belum disahkan.
