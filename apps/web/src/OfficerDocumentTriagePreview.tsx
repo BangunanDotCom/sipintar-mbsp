@@ -47,6 +47,13 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const summary = documentReviewQueueSummary(queue);
   const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner, status);
   const filteredSummary = documentReviewQueueSummary(filtered);
+  const visibleStatusCounts = {
+    CONFLICT: filtered.filter((item) => item.state === "CONFLICT").length,
+    UNSAFE: filtered.filter((item) => item.state === "UNSAFE").length,
+    REJECTED: filtered.filter((item) => item.state === "REJECTED").length,
+    PENDING_SCAN: filtered.filter((item) => item.state === "PENDING_SCAN").length,
+    PENDING_REVIEW: filtered.filter((item) => item.state === "PENDING_REVIEW").length,
+  };
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
   const hiddenCritical = hiddenCriticalDocumentCount(queue, filtered);
@@ -121,6 +128,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.
         {" "}Dalam hasil semasa: {filteredSummary.critical} kritikal, {filteredSummary.action} perlu tindakan dan {filteredSummary.waiting} menunggu proses.
         {" "}Mengikut pihak: {filteredSummary.officerTasks} pegawai, {filteredSummary.applicantTasks} pemohon dan {filteredSummary.systemTasks} sistem.
+        {" "}Mengikut status: {visibleStatusCounts.CONFLICT} konflik, {visibleStatusCounts.UNSAFE} isu keselamatan, {visibleStatusCounts.REJECTED} ditolak, {visibleStatusCounts.PENDING_SCAN} menunggu imbasan dan {visibleStatusCounts.PENDING_REVIEW} menunggu pengesahan.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table>
