@@ -68,6 +68,31 @@ describe("document scan worker state transition", () => {
       where: expect.objectContaining({ byteSize: bytes.length, sha256: document.sha256 }),
     }));
   });
+  it("does not scan when another worker owns the lease", async () => {
+    const s = setup({ scanStatus: "SCANNING" });
+    s.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("SKIPPED");
+    expect(s.scan).not.toHaveBeenCalled();
+    expect(s.updateMany).toHaveBeenCalledTimes(1);
+  });
+  it("does not report CLEAN when its lease expires before completion", async () => {
+    const s = setup();
+    s.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("SKIPPED");
+    expect(s.scan).toHaveBeenCalledOnce();
+    expect(s.updateMany).toHaveBeenCalledTimes(2);
+  });
+  it("persists FAILED when the scanner returns an invalid result", async () => {
+    const s = setup();
+    s.scan.mockResolvedValueOnce({ status: "CLEAN", engine: "" });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("FAILED");
+    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { scanStatus: "FAILED", scanLeaseToken: null, scanLeaseExpiresAt: null },
+    }));
+  });
   it("does not claim success if another worker already changed the row", async () => {
     const s = setup();
     s.updateMany.mockResolvedValueOnce({ count: 0 });
