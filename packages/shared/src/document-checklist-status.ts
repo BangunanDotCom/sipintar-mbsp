@@ -176,6 +176,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     conflicts: priority.filter((row) => row.state === "CONFLICT").length,
     pendingReview: priority.filter((row) => row.state === "PENDING_REVIEW").length,
     rejected: priority.filter((row) => row.state === "REJECTED").length,
+    attentionRows: priority.filter((row) => ["CONFLICT", "UNSAFE", "PENDING_SCAN", "REJECTED"].includes(row.state)),
     missing: priority.filter((row) => row.state === "MISSING"),
     // Optional documents are visible for preparation but excluded from priority counts.
     optionalTotal: rows.filter((row) => row.applicability === "IF_AVAILABLE").length,
@@ -188,7 +189,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
 export const documentStatusLabels: Record<DocumentChecklistRow["state"], string> = {
   MISSING: "Tiada rekod dokumen",
   PENDING_SCAN: "Menunggu imbasan keselamatan",
-  CONFLICT: "Konflik versi dokumen aktif — perlu semakan pegawai",
+  CONFLICT: "Konflik sejarah atau versi dokumen — perlu semakan pegawai",
   UNSAFE: "Tidak selamat / imbasan gagal",
   PENDING_REVIEW: "Menunggu pengesahan pegawai",
   REJECTED: "Ditolak pegawai",
@@ -199,7 +200,7 @@ export const documentStatusLabels: Record<DocumentChecklistRow["state"], string>
 export const documentNextStepLabels: Record<DocumentChecklistRow["state"], string> = {
   MISSING: "Sediakan dokumen jika berkaitan; semak keperluan rasmi dengan MBSP",
   PENDING_SCAN: "Tunggu keputusan imbasan keselamatan",
-  CONFLICT: "Hubungi pegawai untuk menyelesaikan konflik versi aktif",
+  CONFLICT: "Hubungi pegawai untuk menyelesaikan konflik sejarah atau versi dokumen",
   UNSAFE: "Hubungi pegawai; dokumen tidak boleh dianggap selamat",
   PENDING_REVIEW: "Tunggu semakan dan pengesahan pegawai",
   REJECTED: "Semak sebab penolakan dengan pegawai sebelum menyediakan pembetulan",
