@@ -304,6 +304,16 @@ describe("document checklist statuses", () => {
     expect(filterDocumentReviewQueue(queue, "CRITICAL", "ALL", "", "APPLICANT")).toEqual([]);
     expect(filterDocumentReviewQueue(queue)).toEqual(queue);
   });
+  it("omits an unmapped status instead of creating a triage task with no action", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "UNVERIFIED"),
+    ]);
+    const malformed = rows.map((row) => row.category === "premises_plan"
+      ? { ...row, state: "FUTURE_STATE" as typeof row.state }
+      : row);
+    expect(documentReviewQueue(malformed)).toEqual([]);
+    expect(rows.find((row) => row.category === "premises_plan")?.state).toBe("PENDING_REVIEW");
+  });
   it("routes rejected documents to applicant action rather than officer or system", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       doc(1, "CLEAN", "REJECTED"),
