@@ -71,7 +71,7 @@ function Steps({
     </nav>
   );
 }
-function PremisesSummary({ record }: { record: any }) {
+function PremisesSummary({ record, userId }: { record: any; userId: string }) {
   const p: PremisesFields = record.premises;
   if (!record.complete)
     return (
@@ -181,7 +181,7 @@ function PremisesSummary({ record }: { record: any }) {
         </section>
       </div>
       <FloorReview draftId={record.draftId} premises={p} />
-      <PreliminaryDocumentChecklist draftId={record.draftId} capacity={record.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL"} />
+      <PreliminaryDocumentChecklist draftId={record.draftId} userId={userId} capacity={record.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL"} />
       <div className="premises-actions">
         <Link
           className="button secondary"
@@ -542,7 +542,7 @@ function PremisesEditor({ record }: { record: any }) {
     </>
   );
 }
-function PremisesWorkspace({ draft, review }: { draft: any; review: boolean }) {
+function PremisesWorkspace({ draft, review, userId }: { draft: any; review: boolean; userId: string }) {
   const q = useQuery({
     queryKey: ["premises", draft.id],
     queryFn: () => api(`/application-drafts/${draft.id}/premises`),
@@ -565,7 +565,7 @@ function PremisesWorkspace({ draft, review }: { draft: any; review: boolean }) {
       </>
     );
   return review ? (
-    <PremisesSummary record={q.data} />
+    <PremisesSummary record={q.data} userId={userId} />
   ) : (
     <PremisesEditor key={draft.id} record={q.data} />
   );
@@ -573,7 +573,7 @@ function PremisesWorkspace({ draft, review }: { draft: any; review: boolean }) {
 export default function Premises({ review = false }: { review?: boolean }) {
   return (
     <ApplicantDraftWorkspace>
-      {({ draft }) => <PremisesWorkspace draft={draft} review={review} />}
+      {({ context, draft }) => <PremisesWorkspace draft={draft} review={review} userId={context.initiatedBy.userId} />}
     </ApplicantDraftWorkspace>
   );
 }
