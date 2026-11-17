@@ -265,3 +265,7 @@ Semakan `documentSubmissionReadiness` kini menghalang penghantaran apabila terda
 ## Panduan Bahasa Melayu untuk pemohon berdasarkan readiness
 
 `GET /api/application-drafts/:id/submission-readiness` kini turut mengembalikan `guidance` dengan `headline`, `message`, `issues[]` (kategori, label dokumen dan mesej tindakan) serta `integrityWarning`. Panduan dihasilkan daripada `documentReadinessGuidance` menggunakan senarai semak sedia ada dan status keselamatan; mesej imbasan tertangguh dibezakan daripada isu dokumen lain. Isu kategori tidak dijangka hanya memaparkan amaran umum tanpa butiran fail. Panduan ini untuk persembahan sahaja, **bukan keputusan kelulusan atau autorisasi penghantaran**. `submissionEnabled:false` kekal dan endpoint penghantaran sebenar masih ditutup. Ujian unit panduan telah ditambah, tetapi CI dan ujian integrasi belum disahkan.
+
+## Panduan readiness tidak boleh bercanggah dengan amaran integriti
+
+`documentReadinessGuidance` kini menggunakan kedua-dua `ready` dan `unexpectedActiveDocuments` sebelum memaparkan tajuk dan mesej kejayaan. Walaupun data tidak konsisten menyatakan `ready=true`, amaran integriti memaksa panduan tindakan dan bukannya mesej lengkap. Ujian regresi bagi keadaan bercanggah ditambah. Ini hanya perlindungan persembahan; penghantaran rasmi masih ditutup. CI dan ujian integrasi belum disahkan.
