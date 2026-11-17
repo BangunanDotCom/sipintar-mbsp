@@ -127,6 +127,7 @@ describe("document checklist statuses", () => {
     expect(summary.verified).toBe(1);
     expect(summary.rejected).toBe(1);
     expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
+    expect(summary.pendingReviewRows).toEqual([]);
     expect(summary.total).toBe(empty.total);
     expect(summary.missing).toHaveLength(empty.total - 2);
     expect(summary.optionalTotal).toBeGreaterThan(0);
@@ -142,6 +143,17 @@ describe("document checklist statuses", () => {
     expect(unsafeOptional.optionalAttentionRows.map((row) => row.category)).toEqual(["building_certificate", "fire_safety"]);
     expect(summary.optionalAttentionRows).toEqual([]);
     expect(unsafeOptional.safetyAttention).toBe(0);
+  });
+  it("separates documents awaiting officer review from corrective action", () => {
+    const summary = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "UNVERIFIED"),
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "REJECTED"), category: "floor_layout" },
+    ]));
+    expect(summary.pendingReviewRows.map((row) => row.category)).toEqual(["premises_plan"]);
+    expect(summary.optionalPendingReviewRows.map((row) => row.category)).toEqual(["fire_safety"]);
+    expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
+    expect(summary.optionalAttentionRows).toEqual([]);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
