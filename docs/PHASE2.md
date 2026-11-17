@@ -131,3 +131,7 @@ Komponen `PreliminaryDocumentChecklist` kini memanggil `GET /api/application-dra
 ## Pengukuhan protokol ClamAV INSTREAM
 
 Adapter ClamAV tidak lagi menutup bahagian tulis soket sejurus selepas penghantaran penanda chunk sifar; ia menunggu respons daemon sebelum menutup sambungan. `tests/clamav-instream.test.ts` menambah ujian integrasi protokol TCP setempat dengan daemon simulasi untuk respons `stream: OK`, `FOUND` dan `ERROR`. Ujian ini tidak menggantikan ujian terhadap clamd sebenar dan belum disahkan dijalankan dalam CI. Storan objek persendirian dan endpoint muat naik kekal belum disambungkan; tiada pengaktifan produksi.
+
+## Rekod keputusan imbasan ke pangkalan data (servis dalaman)
+
+`apps/api/src/document-scan-worker.ts` menambah `processPendingDocumentScan` yang mengambil metadata dokumen `PENDING`, membaca objek kuarantin, menyemak SHA-256 dan memanggil pengimbas, kemudian menulis `CLEAN`/`INFECTED`/`FAILED` menggunakan `updateMany` bersyarat (id, draftId, storageKey, sha256, PENDING dan belum superseded). Kegagalan storan, integriti, sambungan atau pengimbas ditanda `FAILED`, bukan `CLEAN`. Dokumen sudah diproses atau diganti dilangkau. `tests/document-scan-worker.test.ts` menyediakan ujian kejayaan, kegagalan pengimbas, rekod superseded dan konflik kemas kini. **Servis ini belum dipanggil oleh job runner atau endpoint**, dan storan sebenar belum dikonfigurasi. Pengaktifan muat naik dan semakan pegawai masih ditangguh. Ujian/CI belum disahkan.
