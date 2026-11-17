@@ -14,7 +14,7 @@ const document = {
   sha256: createHash("sha256").update(bytes).digest("hex"),
   scanStatus: "PENDING", supersededAt: null,
 };
-function setup(overrides: Partial<typeof document> = {}) {
+function setup(overrides: { scanStatus?: string; supersededAt?: string | null } = {}) {
   const findUnique = vi.fn(async () => ({ ...document, ...overrides }));
   const updateMany = vi.fn(async () => ({ count: 1 }));
   const db = { applicationDocument: { findUnique, updateMany } } as unknown as PrismaClient;
