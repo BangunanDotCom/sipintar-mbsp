@@ -42,18 +42,18 @@ describe("document checklist statuses", () => {
   it("selects latest active version but flags an older active version as a conflict", () => {
     const row = state([doc(1, "CLEAN", "VERIFIED"), doc(2, "PENDING", "UNVERIFIED")]);
     expect(row?.current?.version).toBe(2);
-    expect(row?.state).toBe("UNSAFE");
+    expect(row?.state).toBe("CONFLICT");
     const superseded = state([doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z")]);
     expect(superseded?.state).toBe("MISSING");
   });
   it("does not treat duplicate active versions as verified", () => {
     const row = state([doc(2, "CLEAN", "VERIFIED"), doc(2, "CLEAN", "VERIFIED")]);
-    expect(row?.state).toBe("UNSAFE");
+    expect(row?.state).toBe("CONFLICT");
   });
   it("fails closed when different versions remain active simultaneously", () => {
     const row = state([doc(1, "CLEAN", "VERIFIED"), doc(2, "CLEAN", "VERIFIED")]);
     expect(row?.current?.version).toBe(2);
-    expect(row?.state).toBe("UNSAFE");
+    expect(row?.state).toBe("CONFLICT");
   });
   it("accepts a verified replacement after the previous version is superseded", () => {
     const row = state([
