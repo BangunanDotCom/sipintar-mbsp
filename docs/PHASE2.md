@@ -365,3 +365,7 @@ Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kate
 ## Pengekodan Base64 kanonik untuk fail draf
 
 `validateDraftUpload()` kini memerlukan hasil pengekodan semula `Buffer` kepada Base64 sepadan tepat dengan input asal selepas semakan saiz dan sintaks. Ini menolak pengekodan yang mempunyai bit pelapik bukan sifar walaupun decoder Node.js masih boleh menghasilkan bait yang sama. Ujian unit menambah kes input tidak kanonik. Kawalan ini tidak menggantikan pengimbasan malware atau pengesahan format penuh, dan tidak mengaktifkan endpoint muat naik. Keputusan CI masih belum disahkan.
+
+## Ujian keselamatan storan kuarantin bagi foto
+
+`tests/private-document-store.test.ts` kini menguji penulisan JPEG dengan penanda struktur asas yang diterima dan memastikan fail JPEG tanpa penanda akhir, PNG terpotong, serta PNG berdimensi sifar ditolak sebelum `putQuarantined()` dipanggil. Fixture ini menguji pengawal struktur sahaja, bukan kebolehnyahkodan imej sebenar atau keputusan antivirus. Laluan muat naik dan storan produksi kekal tidak diaktifkan; keputusan CI masih belum disahkan.
