@@ -23,7 +23,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const summary = documentChecklistSummary(visible);
-  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, attentionRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows } = summary;
+  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -70,6 +70,16 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <ul>
             {attentionRows.map((item) => (
               <li key={item.category}>{item.label}: {documentStatusLabels[item.state]}. {documentNextStepLabels[item.state]}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {validDocuments && (pendingReviewRows.length > 0 || optionalPendingReviewRows.length > 0) && (
+        <div role="status">
+          <p>Dokumen yang sedang menunggu pengesahan pegawai (tiada tindakan pembetulan diperlukan setakat ini):</p>
+          <ul>
+            {[...pendingReviewRows, ...optionalPendingReviewRows].map((item) => (
+              <li key={item.category}>{item.label}{item.applicability === "IF_AVAILABLE" ? " (jika berkaitan)" : ""}: {documentNextStepLabels[item.state]}</li>
             ))}
           </ul>
         </div>
