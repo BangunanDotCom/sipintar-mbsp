@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftDocumentUploadPolicy } from "../apps/api/src/draft-document-upload-policy.js";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels, documentReviewActionOwner } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels, documentReviewActionOwner, hiddenCriticalDocumentCount } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -290,6 +290,18 @@ describe("document checklist statuses", () => {
     expect(queue.some((item) => item.category === "premises_photos")).toBe(false);
     expect(documentReviewQueue(rows)).toEqual(queue);
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
+  });
+  it("counts critical categories hidden by active filters", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "premises_plan" },
+    ]);
+    const queue = documentReviewQueue(rows);
+    expect(hiddenCriticalDocumentCount(queue, queue)).toBe(0);
+    const onlyActions = filterDocumentReviewQueue(queue, "ACTION");
+    expect(hiddenCriticalDocumentCount(queue, onlyActions)).toBe(1);
+    expect(hiddenCriticalDocumentCount(queue, [])).toBe(1);
+    expect(documentReviewQueueSummary(queue).critical).toBe(1);
   });
   it("filters officer triage by action owner without changing the queue", () => {
     const rows = documentChecklistRows("COMPANY", [
