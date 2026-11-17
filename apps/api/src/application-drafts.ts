@@ -225,6 +225,10 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
         where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
       });
       if (!d) fail(404, "Draf tidak ditemui.");
+      // Reject corrupted persisted applicant context before allowing any mutation.
+      if (!isDraftApplicantCapacity(d.capacity) || !validDraftApplicantContext(
+        d.capacity, d.companyId, d.officialApplicantUserId, d.initiatedByUserId,
+      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       // Changing capacity must not bypass revoked authority on the original company draft.
       if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
       const data = await snapshots(tx, s, input);
