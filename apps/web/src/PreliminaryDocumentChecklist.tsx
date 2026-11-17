@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, isDocumentUploadPolicy, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, unambiguousDocumentUploadPolicies, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
 
 type DocumentRecord = DocumentStatusRecord & {
   uploadedAt: string;
@@ -40,9 +40,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const conflictPriority = priorityCategories.filter((item) => item.state === "CONFLICT").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   // Reject malformed upload guidance from the API.
-  const uploadPolicy = query.isSuccess && Array.isArray(query.data?.uploadPolicy)
-    ? query.data.uploadPolicy.filter(isDocumentUploadPolicy)
-    : [];
+  const uploadPolicy = unambiguousDocumentUploadPolicies(query.isSuccess ? query.data?.uploadPolicy : null);
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
   const mimeLabel = (mime: string) => mime === "application/pdf" ? "PDF" :
     mime === "image/jpeg" ? "JPEG" : mime === "image/png" ? "PNG" : mime;
