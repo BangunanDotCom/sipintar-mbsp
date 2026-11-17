@@ -38,6 +38,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const verifiedPriority = priorityCategories.filter((item) => item.state === "VERIFIED").length;
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const conflictPriority = priorityCategories.filter((item) => item.state === "CONFLICT").length;
+  const pendingReviewPriority = priorityCategories.filter((item) => item.state === "PENDING_REVIEW").length;
+  const rejectedPriority = priorityCategories.filter((item) => item.state === "REJECTED").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   // Reject malformed upload guidance from the API.
   const uploadPolicy = unambiguousDocumentUploadPolicies(query.isSuccess ? query.data?.uploadPolicy : null);
@@ -71,6 +73,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
           {pendingSafetyPriority > 0 && <strong> Perlu perhatian keselamatan: {pendingSafetyPriority} kategori.</strong>}{" "}
           {conflictPriority > 0 && <strong> Konflik versi aktif: {conflictPriority} kategori — rujuk pegawai.</strong>}{" "}
+          {pendingReviewPriority > 0 && <strong> Menunggu pengesahan pegawai: {pendingReviewPriority} kategori.</strong>}{" "}
+          {rejectedPriority > 0 && <strong> Ditolak pegawai: {rejectedPriority} kategori — semak maklum balas.</strong>}{" "}
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
