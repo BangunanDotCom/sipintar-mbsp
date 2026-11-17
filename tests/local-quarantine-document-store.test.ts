@@ -1,0 +1,44 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { createPrivateDocumentKey } from "../apps/api/src/private-document-keys.js";
+import { LocalQuarantineDocumentStore } from "../apps/api/src/local-quarantine-document-store.js";
+import { storeQuarantinedDocument } from "../apps/api/src/private-document-store.js";
+
+const draftId = "550e8400-e29b-41d4-a716-446655440000";
+const roots: string[] = [];
+async function setup() {
+  const root = await mkdtemp(join(tmpdir(), "staylink-quarantine-"));
+  roots.push(root);
+  return new LocalQuarantineDocumentStore(root);
+}
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+describe("local quarantine development adapter", () => {
+  it("stores, reads and deletes private PDF bytes", async () => {
+    const store = await setup();
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    const bytes = Buffer.from("%PDF-1.7\nlocal test");
+    const saved = await storeQuarantinedDocument(store, {
+      draftId, storageKey: key, content: bytes, mimeType: "application/pdf",
+    });
+    expect(saved.byteSize).toBe(bytes.length);
+    expect(await store.readQuarantined(key)).toEqual(bytes);
+    await store.deleteQuarantined(key);
+    await expect(store.readQuarantined(key)).rejects.toThrow();
+  });
+  it("rejects duplicate keys rather than overwriting documents", async () => {
+    const store = await setup();
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    const input = { draftId, storageKey: key, content: Buffer.from("%PDF-1.7\nfile"), mimeType: "application/pdf" };
+    await storeQuarantinedDocument(store, input);
+    await expect(storeQuarantinedDocument(store, input)).rejects.toThrow();
+  });
+  it("rejects path traversal and arbitrary object keys", async () => {
+    const store = await setup();
+    await expect(store.readQuarantined("../../etc/passwd")).rejects.toThrow("Kunci");
+    await expect(store.deleteQuarantined("application-documents/not-a-uuid/plan/file")).rejects.toThrow("Kunci");
+  });
+});
