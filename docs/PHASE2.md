@@ -333,3 +333,7 @@ Disahkan terdapat dua workflow yang bertindih: `.github/workflows/staylink-phase
 ## Ujian integrasi API berasingan (17 Nov 2026)
 
 Workflow baharu `.github/workflows/staylink-api-integration.yml` menggunakan `workflow_dispatch` sahaja (manual), PostgreSQL 16 dengan pangkalan data sementara `staylink_ci_test` dan Mailpit, serta menjalankan migrasi ujian dan `tests/api.test.ts`. Ia tidak menggunakan pangkalan data produksi. Skrip `scripts/migrate.ts --test` kini mengesahkan URL PostgreSQL dan nama pangkalan data berakhir dengan `_test` sebelum sambungan. Kredensial dalam workflow ialah nilai ujian sementara sahaja, bukan kredensial produksi. Workflow biasa kekal untuk typecheck/lint/ujian tanpa pangkalan data/build web. **Workflow integrasi ini belum dilaksanakan atau disahkan lulus**; sebelum pengeluaran produksi, semak hasil run dan betulkan sebarang isu konfigurasi atau ujian. Tidak ada merge atau deployment.
+
+## Pra-pemeriksaan perkhidmatan ujian integrasi
+
+Workflow manual `staylink-api-integration.yml` kini melakukan pra-pemeriksaan selepas memasang dependencies: sambungan PostgreSQL menggunakan `TEST_DATABASE_URL`, pengesahan nama pangkalan data `staylink_ci_test`, serta kesediaan API Mailpit dengan cubaan semula terhad sebelum menjalankan migrasi. Kegagalan persediaan perkhidmatan akan menghentikan job dengan mesej jelas dan mengelakkan ujian API dijalankan pada persekitaran yang tidak lengkap. Workflow masih manual; keputusan pelaksanaan sebenar belum disahkan. Tiada perubahan pada produksi atau branch main.
