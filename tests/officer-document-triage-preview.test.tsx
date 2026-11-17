@@ -45,6 +45,19 @@ describe("officer document triage preview", () => {
     expect(markup).not.toContain("type=\"file\"");
   });
 
+  it("flags conflicting superseded-only history without claiming an active version", () => {
+    const historical = {
+      ...record("premises_plan", "CLEAN", "VERIFIED"),
+      supersededAt: "2026-11-17T00:00:00Z",
+    };
+    const rows = documentChecklistRows("INDIVIDUAL", [historical, { ...historical }]);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Terdapat 1 rekod dokumen kritikal");
+    expect(markup).toContain("Tiada versi aktif");
+    expect(markup).toContain("Semak percanggahan versi dan sejarah dokumen");
+    expect(markup).not.toContain("Paparan fokus menunjukkan semua");
+  });
+
   it("keeps critical warnings visible when filters are available", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       record("floor_layout", "INFECTED", "UNVERIFIED"),
