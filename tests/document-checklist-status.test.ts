@@ -39,6 +39,16 @@ describe("document checklist statuses", () => {
     const superseded = state([doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z")]);
     expect(superseded?.state).toBe("MISSING");
   });
+  it("does not treat duplicate active versions as verified", () => {
+    const row = state([doc(2, "CLEAN", "VERIFIED"), doc(2, "CLEAN", "VERIFIED")]);
+    expect(row?.state).toBe("UNSAFE");
+  });
+  it("ignores invalid version numbers and superseded records", () => {
+    expect(state([doc(0, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
+    expect(state([doc(-1, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
+    expect(state([doc(1.5, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
+    expect(state([doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z")])?.state).toBe("MISSING");
+  });
   it("hides company authority category for individual applicants", () => {
     expect(documentChecklistRows("INDIVIDUAL", []).some((row) => row.category === "company_authority")).toBe(false);
     expect(documentChecklistRows("COMPANY", []).some((row) => row.category === "company_authority")).toBe(true);
