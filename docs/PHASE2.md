@@ -107,3 +107,7 @@ Halaman tingkat kini menyediakan tindakan `Simpan draf tingkat` dan `Simpan dan 
 ## Paparan status dokumen draf
 
 Komponen `PreliminaryDocumentChecklist` kini memanggil `GET /api/application-drafts/:id/documents` menggunakan identiti sesi pemohon, memaparkan metadata versi dokumen semasa dan status `scanStatus`/`verificationStatus` apabila ada. Paparan kegagalan API tidak menganggap dokumen lengkap. Respons premis turut memulangkan `capacity` bagi memaparkan item surat kuasa syarikat hanya apabila permohonan dibuat sebagai syarikat. Rekod metadata tidak membuktikan dokumen telah diimbas atau disahkan; tiada muat naik, URL fail, muat turun, deklarasi atau penghantaran diaktifkan. Build, migrasi PostgreSQL dan ujian integrasi belum disahkan.
+
+## Status dokumen selamat dan berversi
+
+`packages/shared/src/document-checklist-status.ts` mengelaskan dokumen mengikut versi aktif tertinggi, dengan aturan gagal-selamat: status `VERIFIED` hanya dipaparkan apabila `scanStatus=CLEAN` dan `verificationStatus=VERIFIED`. Rekod `INFECTED`/`FAILED` tidak boleh disahkan; `PENDING` dan status tidak dikenali dipaparkan sebagai menunggu imbasan. Versi yang `supersededAt` terisi diabaikan. UI Semakan Draf kini memaparkan label status yang mudah difahami. `tests/document-checklist-status.test.ts` meliputi tujuh senario termasuk pemakaian pemohon syarikat. Ini ialah logik paparan metadata, **bukan pengimbasan malware sebenar** dan bukan gerbang kelulusan. Ujian automatik belum disahkan dijalankan.
