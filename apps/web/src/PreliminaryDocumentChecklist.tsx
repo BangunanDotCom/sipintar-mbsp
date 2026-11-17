@@ -1,4 +1,3 @@
-import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { documentChecklistRows, documentStatusLabels, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
@@ -14,19 +13,22 @@ type DocumentResponse = {
   submissionEnabled: boolean;
 };
 
-export function PreliminaryDocumentChecklist({ draftId, capacity }: {
+export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   draftId: string;
   capacity: "INDIVIDUAL" | "COMPANY";
+  userId: string;
 }) {
   const query = useQuery<DocumentResponse>({
-    queryKey: ["application-documents", draftId],
+    queryKey: ["application-documents", userId, draftId, capacity],
     queryFn: () => api(`/application-drafts/${draftId}/documents`),
     retry: false,
     staleTime: 0,
     refetchOnMount: "always",
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: "always",
+    gcTime: 0,
   });
-  const documents = query.data?.documents ?? [];
+  // Never show a cached document list after a failed authorization or refresh.
+  const documents = query.isSuccess ? query.data.documents : [];
   const visible = documentChecklistRows(capacity, documents);
   return (
     <section className="panel" aria-labelledby="supporting-documents-heading">
@@ -34,7 +36,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity }: {
       <p>Senarai persediaan awal, tertakluk kepada pengesahan MBSP. Muat naik dokumen permohonan belum diaktifkan.</p>
       {query.isPending && <p role="status">Memuatkan status dokumen...</p>}
       {query.isError && <p role="alert">Status dokumen tidak dapat diperoleh. Tiada dokumen dianggap lengkap.</p>}
-      <div style={{ overflowX: "auto" }}>
+      {!query.isError && <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Rekod sistem</th></tr></thead>
           <tbody>
@@ -51,7 +53,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity }: {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
       <p><small>Rekod fail bukan bukti penerimaan atau pengesahan. Penghantaran rasmi dan muat naik kekal tidak tersedia.</small></p>
     </section>
   );
