@@ -91,6 +91,21 @@ describe("officer document triage preview", () => {
     expect(markup).not.toContain('type="submit"');
   });
 
+  it("escapes untrusted advisory notes and verified-document labels", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      record("premises_plan", "CLEAN", "VERIFIED"),
+    ]).map((row) => row.category === "floor_layout"
+      ? { ...row, note: '<svg onload=alert(1)>' }
+      : row.category === "premises_plan"
+        ? { ...row, label: '<img src=x onerror=alert(1)>' }
+        : row);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("&lt;svg onload=alert(1)&gt;");
+    expect(markup).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(markup).not.toContain("<svg onload=alert(1)>");
+    expect(markup).not.toContain("<img src=x onerror=alert(1)>");
+  });
+
   it("shows a clear empty state and no critical alert when nothing needs triage", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
       record("premises_plan", "CLEAN", "VERIFIED"),
