@@ -29,8 +29,9 @@ export function documentReadinessGuidance(
     ? "Rekod dokumen tidak sepadan dengan jenis pemohon. Sila hubungi pentadbir sistem."
     : null;
   return {
-    headline: readiness.ready ? "Semakan awal dokumen lengkap" : "Tindakan diperlukan pada dokumen",
-    message: readiness.ready
+    headline: readiness.ready && !readiness.unexpectedActiveDocuments
+      ? "Semakan awal dokumen lengkap" : "Tindakan diperlukan pada dokumen",
+    message: readiness.ready && !readiness.unexpectedActiveDocuments
       ? "Dokumen memenuhi semakan awal. Penghantaran rasmi masih belum dibuka."
       : "Sila selesaikan isu dokumen sebelum permohonan boleh dipertimbangkan untuk penghantaran.",
     issues,
