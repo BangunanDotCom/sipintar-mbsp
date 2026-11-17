@@ -85,7 +85,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         <details>
           <summary>Lihat {missingRows.length} kategori tanpa rekod aktif (panduan persediaan sahaja)</summary>
           <p>Persediaan utama: {missingPriorityCount} kategori. Dokumen tambahan jika berkaitan: {missingOptionalCount} kategori.</p>
-          <ul>{missingRows.map((row) => <li key={row.category}>{row.label} — {row.applicability === "IF_AVAILABLE" ? "jika berkaitan" : row.applicability === "COMPANY" ? "pemohon syarikat" : "semua pemohon"}</li>)}</ul>
+          <ul>{missingRows.map((row) => <li key={row.category}>{row.label} — {row.applicability === "IF_AVAILABLE" ? "jika berkaitan" : row.applicability === "COMPANY" ? "pemohon syarikat" : "semua pemohon"}{row.note ? ` — ${row.note}` : ""}</li>)}</ul>
           <p>Senarai ini bukan penetapan syarat wajib atau keputusan kelulusan MBSP.</p>
         </details>
       )}
