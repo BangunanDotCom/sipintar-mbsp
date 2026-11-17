@@ -55,6 +55,25 @@ describe("document scan worker state transition", () => {
       .resolves.toBe("FAILED");
     expect(s.scan).not.toHaveBeenCalled();
   });
+  it("persists INFECTED and never promotes a detected threat to CLEAN", async () => {
+    const s = setup();
+    s.scan.mockResolvedValueOnce({ status: "INFECTED", engine: "test" });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("INFECTED");
+    expect(s.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: { scanStatus: "INFECTED", scanLeaseToken: null, scanLeaseExpiresAt: null },
+    }));
+  });
+  it("does not scan if the persisted MIME changes while claiming a lease", async () => {
+    const s = setup();
+    s.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("SKIPPED");
+    expect(s.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ mimeType: "application/pdf" }),
+    }));
+    expect(s.scan).not.toHaveBeenCalled();
+  });
   it("persists FAILED if scanner cannot run", async () => {
     const s = setup();
     s.scan.mockRejectedValueOnce(new Error("daemon offline"));
