@@ -57,6 +57,23 @@ export function isDocumentStatusRecord(value: unknown): value is DocumentStatusR
     && typeof record.verificationStatus === "string" && record.verificationStatus.trim().length > 0
     && (record.supersededAt === null || typeof record.supersededAt === "string");
 }
+/** Parse the documents endpoint as untrusted data before showing any status. */
+export function validatedDocumentResponse(value: unknown): {
+  documents: DocumentStatusRecord[];
+  uploadPolicy: DocumentUploadPolicy[];
+} | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const response = value as Record<string, unknown>;
+  if (!Array.isArray(response.documents) || !response.documents.every(isDocumentStatusRecord)) return null;
+  if (!Array.isArray(response.uploadPolicy)) return null;
+  // Feature flags must be explicit. Never infer permission to upload or submit.
+  if (typeof response.uploadEnabled !== "boolean" || typeof response.submissionEnabled !== "boolean") return null;
+  return {
+    documents: response.documents,
+    uploadPolicy: unambiguousDocumentUploadPolicies(response.uploadPolicy),
+  };
+}
+
 export type DocumentChecklistRow = {
   category: string;
   label: string;
