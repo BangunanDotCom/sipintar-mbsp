@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import {
   documentReviewQueue,
+  criticalDocumentReviewQueue,
   documentReviewQueueSummary,
   filterDocumentReviewQueue,
   documentReviewNextActionLabels,
@@ -49,6 +50,9 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
   const hiddenCritical = hiddenCriticalDocumentCount(queue, filtered);
+  const allCritical = criticalDocumentReviewQueue(queue);
+  const criticalFocusActive = priority === "CRITICAL" && owner === "ALL" && scope === "ALL" && status === "ALL" && search.trim() === "";
+  const criticalFocusComplete = criticalFocusActive && filtered.length === allCritical.length && hiddenCritical === 0;
   const showCriticalOnly = () => {
     setPriority("CRITICAL");
     setOwner("ALL");
@@ -78,9 +82,10 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         <div role="alert">
           <p>Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} kategori kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
           {hiddenCritical > 0 && <button className="button secondary small" type="button" onClick={resetFilters}>Paparkan semua termasuk isu kritikal</button>}
-          <button className="button secondary small" type="button" disabled={priority === "CRITICAL" && owner === "ALL" && scope === "ALL" && status === "ALL" && search.trim() === ""} onClick={showCriticalOnly}>Fokus isu kritikal</button>
+          <button className="button secondary small" type="button" disabled={criticalFocusActive} aria-pressed={criticalFocusActive} onClick={showCriticalOnly}>Fokus isu kritikal</button>
         </div>
       )}
+      {criticalFocusComplete && <p role="status">Paparan fokus menunjukkan semua {allCritical.length} kategori kritikal yang dikenal pasti.</p>}
       <label htmlFor={priorityId}>Keutamaan</label>
       <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
         <option value="ALL">Semua keutamaan</option>
