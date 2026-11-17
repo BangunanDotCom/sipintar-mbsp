@@ -311,6 +311,11 @@ export function hiddenCriticalDocumentCount(
   return critical.size;
 }
 
+/** Reusable, explicit critical view; never inherits a hidden owner/status/search filter. */
+export function criticalDocumentReviewQueue(queue: readonly DocumentReviewQueueItem[]): DocumentReviewQueueItem[] {
+  return filterDocumentReviewQueue(queue, "CRITICAL", "ALL", "", "ALL", "ALL");
+}
+
 /** Officer triage preview filters only; access control must be enforced by the API. */
 export type DocumentReviewPriorityFilter = "ALL" | DocumentReviewQueueItem["priority"];
 export type DocumentReviewOwnerFilter = "ALL" | DocumentReviewQueueItem["actionOwner"];
