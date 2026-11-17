@@ -257,3 +257,7 @@ Ditambah `validDraftApplicantContext` untuk menyekat draf yang mempunyai kapasit
 ## Kategori dokumen aktif di luar senarai pemohon
 
 `documentSubmissionReadiness` kini mengesan dokumen aktif dengan kategori yang tidak terdapat dalam `preliminaryDocumentChecklist(capacity)`. Ini termasuk kategori tidak dikenali dan dokumen `company_authority` pada draf individu. Jika dikesan, `ready=false` dan `unexpectedActiveDocuments=true`; butiran fail atau kategori luar jangka tidak didedahkan dalam penanda ini. Rekod `supersededAt` tidak dikira. Respons readiness kini mempunyai medan boolean tambahan `unexpectedActiveDocuments` dan ujian kontrak dikemas kini. Sebelum paparan pengguna dibina, medan baharu perlu dikendalikan sebagai isu integriti rekod yang memerlukan pembetulan. Endpoint penghantaran rasmi masih ditutup; CI dan ujian integrasi belum disahkan.
+
+## Integriti satu versi aktif bagi setiap kategori dokumen
+
+Semakan `documentSubmissionReadiness` kini menghalang penghantaran apabila terdapat **lebih daripada satu versi aktif** dalam kategori yang sama, walaupun nombor versi berbeza dan versi terkini bersih. Ini mengelakkan pemilihan versi tertinggi menutup status `INFECTED` pada versi lama yang belum `supersededAt`. Jika versi lama sudah ditandakan superseded dan hanya satu versi aktif yang `CLEAN`, semakan boleh lulus tertakluk kepada syarat lain. Ujian regresi baharu meliputi kedua-dua keadaan. Tiada perubahan kepada endpoint penghantaran rasmi; CI belum disahkan.
