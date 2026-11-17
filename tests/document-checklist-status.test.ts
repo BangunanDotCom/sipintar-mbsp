@@ -218,6 +218,21 @@ describe("document checklist statuses", () => {
     expect(filterDocumentChecklistRows(rows, "PENDING", "kuasa", "PRIORITY").map((row) => row.category)).toEqual(["company_authority"]);
     expect(filterDocumentChecklistRows(rows, "VERIFIED", "", "OPTIONAL")).toEqual([]);
   });
+  it("keeps status option counts consistent with scope and keyword results", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "premises_plan" },
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "company_authority" },
+    ]);
+    const count = (status: "ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING", search: string, scope: "ALL" | "PRIORITY" | "OPTIONAL") =>
+      filterDocumentChecklistRows(rows, status, search, scope).length;
+    expect(count("ALL", "", "OPTIONAL")).toBe(2);
+    expect(count("ATTENTION", "", "OPTIONAL")).toBe(1);
+    expect(count("VERIFIED", "", "OPTIONAL")).toBe(0);
+    expect(count("ALL", "kuasa", "PRIORITY")).toBe(1);
+    expect(count("PENDING", "kuasa", "PRIORITY")).toBe(1);
+    expect(count("ATTENTION", "kuasa", "PRIORITY")).toBe(0);
+  });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
   });
