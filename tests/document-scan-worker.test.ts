@@ -95,6 +95,20 @@ describe("document scan worker state transition", () => {
       where: expect.objectContaining({ byteSize: bytes.length, sha256: document.sha256 }),
     }));
   });
+  it("allows an expired scan lease to be reclaimed at the exact boundary", async () => {
+    const s = setup({ scanStatus: "SCANNING" });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("CLEAN");
+    const claim = s.updateMany.mock.calls[0]?.[0];
+    expect(claim).toEqual(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { scanStatus: "SCANNING", scanLeaseExpiresAt: { lte: expect.any(Date) } },
+        ]),
+      }),
+    }));
+    expect(s.scan).toHaveBeenCalledOnce();
+  });
   it("does not scan when another worker owns the lease", async () => {
     const s = setup({ scanStatus: "SCANNING" });
     s.updateMany.mockResolvedValueOnce({ count: 0 });
