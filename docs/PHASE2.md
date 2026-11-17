@@ -313,3 +313,7 @@ Run #119 menunjukkan kegagalan TypeScript (exit code 2). Pembetulan pada branch 
 ## Penstabilan persekitaran GitHub Actions (17 Nov 2026)
 
 Workflow `staylink-phase1-checks.yml` menggunakan `ubuntu-24.04` (bukan `ubuntu-latest`) dan tindakan `actions/checkout@v5` serta `actions/setup-node@v5` untuk menangani amaran runtime Node.js 20 dan perubahan imej Ubuntu. Versi Node.js aplikasi yang diuji kekal 22. Ini perubahan pada persekitaran CI sahaja, **bukan bukti TypeScript, lint dan ujian telah lulus**. Semak keputusan run selepas commit sebelum menganggap isu CI selesai. Tiada deployment atau merge ke main.
+
+## Perlindungan paparan draf pemohon (17 Nov 2026)
+
+Endpoint `GET /api/application-drafts` dan `GET /api/application-drafts/:id` kini menetapkan `Cache-Control: private, no-store, max-age=0` serta `Pragma: no-cache` kerana respons mengandungi snapshot maklumat pemohon. Endpoint buka semula draf turut mengesahkan `capacity` yang disokong dan konsistensi `officialApplicantUserId`, `initiatedByUserId`, serta `companyId` sebelum memulangkan draf; semakan autoriti wakil syarikat dikekalkan. Semakan ini tidak menggantikan autentikasi atau autorisasi sedia ada. CI/typecheck/lint/test selepas perubahan belum disahkan lulus; muat naik dokumen dan penghantaran rasmi masih dinyahaktifkan.
