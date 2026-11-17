@@ -1,16 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentApiRecord } from "../../../packages/shared/src/document-checklist-status";
 
-type DocumentRecord = DocumentStatusRecord & {
-  uploadedAt: string;
-  byteSize: number;
-  mimeType: string;
-};
 type DocumentResponse = {
   uploadPolicy: DocumentUploadPolicy[];
-  documents: DocumentRecord[];
+  documents: DocumentApiRecord[];
   uploadEnabled: boolean;
   submissionEnabled: boolean;
 };
