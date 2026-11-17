@@ -37,8 +37,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
     gcTime: 0,
   });
   // Never show a cached document list after a failed authorization or refresh.
-  const validDocuments = query.isSuccess && Array.isArray(query.data.documents) && query.data.documents.every(isDocumentStatusRecord);
-  const documents = validDocuments ? query.data.documents : [];
+  const validDocuments = query.isSuccess && Array.isArray(query.data?.documents) && query.data.documents.every(isDocumentStatusRecord);
+  const documents = validDocuments ? query.data!.documents : [];
   const visible = documentChecklistRows(capacity, documents);
   const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
@@ -46,12 +46,15 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   // API policy is untrusted: malformed entries must not crash the checklist.
-  const uploadPolicy = query.isSuccess && Array.isArray(query.data.uploadPolicy)
-    ? query.data.uploadPolicy.filter((row): row is UploadPolicyRow =>
+  const uploadPolicy = query.isSuccess && Array.isArray(query.data?.uploadPolicy)
+    ? query.data!.uploadPolicy.filter((row): row is UploadPolicyRow =>
       typeof row === "object" && row !== null &&
-      typeof row.category === "string" &&
+      typeof row.category === "string" && row.category.length > 0 &&
+      typeof row.label === "string" &&
       Array.isArray(row.mimeTypes) && row.mimeTypes.every((mime) => typeof mime === "string") &&
-      typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0
+      typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0 &&
+      typeof row.hardCeilingMiB === "number" && Number.isFinite(row.hardCeilingMiB) &&
+      row.hardCeilingMiB >= row.defaultMaxMiB
     )
     : [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
