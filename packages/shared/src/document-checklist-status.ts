@@ -64,13 +64,20 @@ export type DocumentApiRecord = DocumentStatusRecord & {
   mimeType: string;
 };
 
+/** Require a real, timezone-qualified ISO timestamp from the API. */
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed);
+}
+
 /** Validate document metadata as well as scan and officer status. */
 export function isDocumentApiRecord(value: unknown): value is DocumentApiRecord {
   if (!isDocumentStatusRecord(value)) return false;
   const record = value as unknown as Record<string, unknown>;
-  return typeof record.uploadedAt === "string" && record.uploadedAt.trim().length > 0
-    && typeof record.byteSize === "number" && Number.isSafeInteger(record.byteSize) && record.byteSize >= 0
-    && typeof record.mimeType === "string" && record.mimeType.trim().length > 0;
+  return isIsoTimestamp(record.uploadedAt)
+    && typeof record.byteSize === "number" && Number.isSafeInteger(record.byteSize) && record.byteSize > 0
+    && typeof record.mimeType === "string" && /^[a-z0-9!#typeof record.mimeType === "string" && record.mimeType.trim().length > 0^_.+-]+\\/[a-z0-9!#typeof record.mimeType === "string" && record.mimeType.trim().length > 0^_.+-]+$/.test(record.mimeType);
 }
 
 /** Parse the documents endpoint as untrusted data before showing any status. */
