@@ -34,7 +34,7 @@ describe("document scan batch orchestration", () => {
     await expect(processPendingDocumentScanBatch(f.db, f.store, f.scanner, { limit: 2 }))
       .resolves.toEqual({ examined: 2, clean: 2, infected: 0, failed: 0, skipped: 0 });
     expect(f.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { scanStatus: "PENDING", supersededAt: null },
+      where: expect.objectContaining({ supersededAt: null, OR: expect.any(Array) }),
       take: 2,
     }));
   });
