@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isPrivateDocumentKeyForDraft } from "./private-document-keys.js";
 import { UPLOAD_CATEGORIES } from "./upload-policy.js";
+import { uploadKindForSupportingDocument } from "./draft-document-upload-policy.js";
 import { supportingDocumentCategorySchema } from "../../../packages/shared/src/supporting-documents.js";
 
 // Storage adapter contract. No public URLs or applicant-supplied storage keys.
@@ -30,10 +31,8 @@ export async function storeQuarantinedDocument(
   if (!isPrivateDocumentKeyForDraft(input.storageKey, input.draftId))
     throw new Error("Kunci dokumen tidak sepadan dengan permohonan.");
   const category = input.storageKey.split("/")[2];
-  supportingDocumentCategorySchema.parse(category);
-  const policy = category === "premises_photos" ? UPLOAD_CATEGORIES.photo :
-    category === "premises_plan" || category === "floor_layout" ? UPLOAD_CATEGORIES.plan :
-    UPLOAD_CATEGORIES.supporting;
+  const parsedCategory = supportingDocumentCategorySchema.parse(category);
+  const policy = UPLOAD_CATEGORIES[uploadKindForSupportingDocument(parsedCategory)];
   if (!input.content.length || input.content.length > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Saiz fail tidak dibenarkan.");
   if (!policy.mime.split(",").includes(input.mimeType))
