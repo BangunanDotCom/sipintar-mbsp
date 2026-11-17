@@ -1481,6 +1481,7 @@ function Config({ scope }: { scope: string }) {
           }
         </ResourceState>
       </section>
+      {scope === "technical" && (<section className="panel"><h3>Had muat naik PDF surat kuasa</h3><Notice>Pentadbir ICT boleh menetapkan had antara 1 hingga 20 MiB. Had lalai ialah 10 MiB. Perubahan direkodkan dan berkuat kuasa untuk muat naik seterusnya.</Notice><Form fields={[{ name: "maxMiB", label: "Saiz maksimum (MiB), 1 hingga 20" }, { name: "reason", label: "Sebab perubahan", type: "textarea" }]} onSubmit={async (b) => { const maxMiB = Number(b.maxMiB); if (!Number.isInteger(maxMiB) || maxMiB < 1 || maxMiB > 20) throw Error("Masukkan nombor bulat antara 1 hingga 20 MiB."); await api("/config/technical", "POST", { key: "upload_delegation_mib", value: maxMiB, reason: b.reason }); refresh(); }} /></section>)}
       <section className="panel">
         <h3>Simpan konfigurasi berversi</h3>
         <Form
