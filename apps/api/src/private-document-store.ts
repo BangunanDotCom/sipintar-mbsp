@@ -72,9 +72,13 @@ export async function readVerifiedQuarantinedDocument(
       !policy.mime.split(",").includes(input.expectedMimeType))
     throw new Error("Metadata MIME dokumen tidak sah.");
   const content = await store.readQuarantined(input.storageKey);
+  // A storage adapter is a trust boundary: reject unexpected or oversized bytes
+  // before computing a digest, even when the recorded metadata was valid.
+  if (!Buffer.isBuffer(content) || content.length !== input.expectedByteSize ||
+      content.length > policy.ceilingMiB * 1024 * 1024)
+    throw new Error("Integriti dokumen kuarantin gagal.");
   const actual = createHash("sha256").update(content).digest();
-  if (content.length !== input.expectedByteSize ||
-      !timingSafeEqual(actual, Buffer.from(input.expectedSha256, "hex")))
+  if (!timingSafeEqual(actual, Buffer.from(input.expectedSha256, "hex")))
     throw new Error("Integriti dokumen kuarantin gagal.");
   if (input.expectedMimeType !== undefined &&
       !matchesDeclaredFileSignature(content, input.expectedMimeType))
