@@ -299,6 +299,17 @@ export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueIt
   };
 }
 
+/** Counts the visible triage records by state; missing and verified records are not queued. */
+export function documentReviewStatusSummary(queue: readonly DocumentReviewQueueItem[]) {
+  return {
+    CONFLICT: queue.filter((item) => item.state === "CONFLICT").length,
+    UNSAFE: queue.filter((item) => item.state === "UNSAFE").length,
+    REJECTED: queue.filter((item) => item.state === "REJECTED").length,
+    PENDING_SCAN: queue.filter((item) => item.state === "PENDING_SCAN").length,
+    PENDING_REVIEW: queue.filter((item) => item.state === "PENDING_REVIEW").length,
+  };
+}
+
 /** Warn about critical issues hidden by filters without mutating the source queue. */
 export function hiddenCriticalDocumentCount(
   all: readonly DocumentReviewQueueItem[],
