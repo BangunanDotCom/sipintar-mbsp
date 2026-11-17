@@ -33,6 +33,12 @@ describe("document checklist statuses", () => {
       policy, { ...policy, defaultMaxMiB: 5 },
     ])).toEqual([]);
     expect(unambiguousDocumentUploadPolicies([
+      policy, { ...policy, defaultMaxMiB: -1 },
+    ])).toEqual([]);
+    expect(unambiguousDocumentUploadPolicies([
+      policy, { category: "premises_plan", mimeTypes: null },
+    ])).toEqual([]);
+    expect(unambiguousDocumentUploadPolicies([
       policy, { ...policy, category: "company_authority" }, null,
     ])).toHaveLength(2);
   });
