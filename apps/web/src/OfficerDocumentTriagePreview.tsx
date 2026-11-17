@@ -80,12 +80,12 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       </p>
       {criticalUnfiltered && (
         <div role="alert">
-          <p>Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} kategori kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
+          <p>Terdapat {summary.critical} rekod dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} rekod kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
           {hiddenCritical > 0 && <button className="button secondary small" type="button" onClick={resetFilters}>Paparkan semua termasuk isu kritikal</button>}
           <button className="button secondary small" type="button" disabled={criticalFocusActive} aria-pressed={criticalFocusActive} onClick={showCriticalOnly}>Fokus isu kritikal</button>
         </div>
       )}
-      {criticalFocusComplete && <p role="status">Paparan fokus menunjukkan semua {allCritical.length} kategori kritikal yang dikenal pasti.</p>}
+      {criticalFocusComplete && <p role="status">Paparan fokus menunjukkan semua {allCritical.length} rekod kritikal yang dikenal pasti.</p>}
       <label htmlFor={priorityId}>Keutamaan</label>
       <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
         <option value="ALL">Semua keutamaan</option>
