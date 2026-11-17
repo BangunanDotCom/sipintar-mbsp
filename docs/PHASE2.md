@@ -201,3 +201,7 @@ Adapter setempat kini mengenakan had pertahanan 100 MiB bagi `putQuarantined` da
 ## Ujian regresi protokol ClamAV dan symlink
 
 Ujian `clamav-framing-regression.test.ts` kini merekod panjang bingkai INSTREAM dan baki bait dalam callback TCP, kemudian membuat assertion selepas `scan()` berjaya. Header tidak sah dibalas sebagai ralat protokol, bukannya `socket.destroy(new Error(...))` yang boleh mencetuskan ralat socket tidak dikendalikan. Ujian storan kuarantin kini turut memastikan penolakan direktori symlink tidak menghasilkan fail pada lokasi sasaran yang dialihkan. Perubahan telah dikomitkan tetapi CI masih belum disahkan.
+
+## Had masa keseluruhan imbasan ClamAV
+
+`ClamAvScanner` kini mengenakan had masa dinding (*wall-clock deadline*) di samping had masa sambungan tidak aktif. Pemasa dibersihkan apabila imbasan selesai atau gagal. Ini memastikan respons pelayan yang dihantar sedikit demi sedikit tidak boleh mengekalkan sambungan tanpa had. Ujian regresi `tests/clamav-instream.test.ts` meniru daemon yang menghantar bait secara berkala dan mengesahkan imbasan ditolak apabila tempoh keseluruhan tamat. Kod telah dikomitkan, tetapi keputusan CI belum disahkan.
