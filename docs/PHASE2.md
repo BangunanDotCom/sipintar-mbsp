@@ -477,3 +477,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Pengasingan memori dokumen yang telah disahkan
 
 `readVerifiedQuarantinedDocument` kini membuat salinan `Buffer.from(content)` selepas menyemak jenis dan saiz data adapter. SHA-256 serta tandatangan MIME diperiksa pada salinan tersebut, dan fungsi memulangkan salinan yang dimiliki sendiri, bukannya rujukan `Buffer` adapter. Ujian regresi mengubah `Buffer` asal adapter selepas bacaan dan memastikan hasil yang telah disahkan kekal utuh. Ini bukan pengganti storan persendirian sebenar atau pengimbas malware; CI belum disahkan.
+
+## Pengasingan memori semasa penulisan ke storan kuarantin
+
+`storeQuarantinedDocument` kini menyerahkan `Buffer.from(content)` kepada `putQuarantined`, berasingan daripada salinan yang digunakan untuk mengira SHA-256 dan `byteSize`. Adapter penulisan yang mengubah `Buffer` diterima tidak lagi boleh mengubah metadata yang dipulangkan oleh fungsi. Ujian regresi mensimulasikan adapter yang mengosongkan kandungan `Buffer` ketika penulisan. Adapter produksi masih wajib memastikan kandungan yang benar-benar disimpan kekal utuh; semakan integriti semasa bacaan tetap diperlukan. CI belum disahkan dan muat naik produksi belum diaktifkan.
