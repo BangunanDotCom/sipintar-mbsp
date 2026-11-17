@@ -49,7 +49,9 @@ export async function storeQuarantinedDocument(
   // Keep identity and MIME metadata stable across the asynchronous storage call.
   const storageKey = input.storageKey;
   const mimeType = input.mimeType;
-  await store.putQuarantined({ key: storageKey, content, mimeType });
+  // The adapter owns its write buffer; do not let it mutate the snapshot
+  // used for the returned digest and byte-size metadata.
+  await store.putQuarantined({ key: storageKey, content: Buffer.from(content), mimeType });
   return { storageKey, sha256, byteSize: content.length, mimeType };
 }
 
