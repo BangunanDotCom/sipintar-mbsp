@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftDocumentUploadPolicy } from "../apps/api/src/draft-document-upload-policy.js";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels, documentReviewActionOwner } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -313,6 +313,19 @@ describe("document checklist statuses", () => {
       : row);
     expect(documentReviewQueue(malformed)).toEqual([]);
     expect(rows.find((row) => row.category === "premises_plan")?.state).toBe("PENDING_REVIEW");
+  });
+  it("derives triage ownership consistently from every recommended action", () => {
+    expect(documentReviewActionOwner("APPLICANT_CORRECTION")).toBe("APPLICANT");
+    expect(documentReviewActionOwner("AWAIT_SCAN")).toBe("SYSTEM");
+    for (const action of ["RESOLVE_CONFLICT", "SECURITY_REVIEW", "REVIEW_DOCUMENT"] as const) {
+      expect(documentReviewActionOwner(action)).toBe("OFFICER");
+    }
+    const queue = documentReviewQueue(documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "REJECTED"),
+      { ...doc(1, "PENDING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+    ]));
+    expect(queue.every((item) => item.actionOwner === documentReviewActionOwner(item.nextAction))).toBe(true);
   });
   it("routes rejected documents to applicant action rather than officer or system", () => {
     const rows = documentChecklistRows("INDIVIDUAL", [
