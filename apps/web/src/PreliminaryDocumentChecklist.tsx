@@ -24,7 +24,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("ALL");
-  const filteredRows = filterDocumentChecklistRows(visible, statusFilter);
+  const [documentSearch, setDocumentSearch] = useState("");
+  const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch);
   const summary = documentChecklistSummary(visible);
   const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
@@ -127,6 +128,10 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
             <option value="VERIFIED">Telah disahkan pegawai</option>
             <option value="MISSING">Tiada rekod aktif</option>
           </select>
+          <label htmlFor="document-keyword-search">Cari kategori dokumen</label>{" "}
+          <input id="document-keyword-search" type="search" value={documentSearch}
+            onChange={(event) => setDocumentSearch(event.target.value)}
+            placeholder="Contoh: pelan, kebakaran, surat kuasa" />
           <p role="status">Memaparkan {filteredRows.length} daripada {visible.length} kategori dokumen.</p>
         </div>
       )}
