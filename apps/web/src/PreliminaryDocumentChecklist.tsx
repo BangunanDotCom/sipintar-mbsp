@@ -41,6 +41,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const visible = documentChecklistRows(capacity, documents);
   const mandatory = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedMandatory = mandatory.filter((item) => Boolean(item.current)).length;
+  const missingMandatory = mandatory.filter((item) => !item.current);
   const policyByCategory = new Map(
     (query.isSuccess ? query.data.uploadPolicy ?? [] : []).map((row) => [row.category, row]),
   );
@@ -70,6 +71,14 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           Angka ini hanya menunjukkan kewujudan rekod fail, bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
+      )}
+      {query.isSuccess && missingMandatory.length > 0 && (
+        <div>
+          <p>Kategori dokumen wajib yang belum mempunyai rekod aktif:</p>
+          <ul>
+            {missingMandatory.map((item) => <li key={item.category}>{item.label}</li>)}
+          </ul>
+        </div>
       )}
       {query.isSuccess && <div style={{ overflowX: "auto" }}>
         <table>
