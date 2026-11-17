@@ -176,7 +176,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     conflicts: priority.filter((row) => row.state === "CONFLICT").length,
     pendingReview: priority.filter((row) => row.state === "PENDING_REVIEW").length,
     rejected: priority.filter((row) => row.state === "REJECTED").length,
-    missing: priority.filter((row) => row.current === null),
+    missing: priority.filter((row) => row.state === "MISSING"),
     // Optional documents are visible for preparation but excluded from priority counts.
     optionalTotal: rows.filter((row) => row.applicability === "IF_AVAILABLE").length,
     optionalRecorded: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.current !== null).length,
