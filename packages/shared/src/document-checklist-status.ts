@@ -148,6 +148,21 @@ export function documentChecklistRows(
     return { ...requirement, current, state };
   });
 }
+/** Advisory counts only: these never determine submission eligibility. */
+export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) {
+  const priority = rows.filter((row) => row.applicability === "ALL" || row.applicability === "COMPANY");
+  return {
+    total: priority.length,
+    recorded: priority.filter((row) => row.current !== null).length,
+    verified: priority.filter((row) => row.state === "VERIFIED").length,
+    safetyAttention: priority.filter((row) => row.state === "UNSAFE" || row.state === "PENDING_SCAN").length,
+    conflicts: priority.filter((row) => row.state === "CONFLICT").length,
+    pendingReview: priority.filter((row) => row.state === "PENDING_REVIEW").length,
+    rejected: priority.filter((row) => row.state === "REJECTED").length,
+    missing: priority.filter((row) => row.current === null),
+  };
+}
+
 export const documentStatusLabels: Record<DocumentChecklistRow["state"], string> = {
   MISSING: "Tiada rekod dokumen",
   PENDING_SCAN: "Menunggu imbasan keselamatan",
