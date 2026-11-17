@@ -19,6 +19,12 @@ describe("document checklist statuses", () => {
     expect(state([doc(1, "INFECTED", "VERIFIED")])?.state).toBe("UNSAFE");
     expect(state([doc(1, "FAILED", "VERIFIED")])?.state).toBe("UNSAFE");
   });
+  it("fails closed on unknown or malformed scan statuses", () => {
+    expect(state([doc(1, "UNKNOWN", "VERIFIED")])?.state).toBe("UNSAFE");
+    expect(state([doc(1, "", "VERIFIED")])?.state).toBe("UNSAFE");
+    expect(state([doc(1, "clean", "VERIFIED")])?.state).toBe("UNSAFE");
+    expect(state([doc(1, "SCANNING", "VERIFIED")])?.state).toBe("PENDING_SCAN");
+  });
   it("distinguishes clean but unverified and rejected records", () => {
     expect(state([doc(1, "CLEAN", "UNVERIFIED")])?.state).toBe("PENDING_REVIEW");
     expect(state([doc(1, "CLEAN", "REJECTED")])?.state).toBe("REJECTED");
