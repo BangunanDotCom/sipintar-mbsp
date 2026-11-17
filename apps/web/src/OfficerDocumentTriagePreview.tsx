@@ -120,6 +120,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       <button className="button secondary small" type="button" disabled={!filtersActive} onClick={resetFilters}>Kosongkan penapis</button>
       <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.
         {" "}Dalam hasil semasa: {filteredSummary.critical} kritikal, {filteredSummary.action} perlu tindakan dan {filteredSummary.waiting} menunggu proses.
+        {" "}Mengikut pihak: {filteredSummary.officerTasks} pegawai, {filteredSummary.applicantTasks} pemohon dan {filteredSummary.systemTasks} sistem.
       </p>
       <div style={{ overflowX: "auto" }}>
         <table>
