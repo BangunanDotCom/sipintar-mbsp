@@ -184,7 +184,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     optionalTotal: rows.filter((row) => row.applicability === "IF_AVAILABLE").length,
     optionalRecorded: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.current !== null).length,
     optionalAttention: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "CONFLICT", "REJECTED"].includes(row.state)).length,
-    optionalAttentionRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "PENDING_SCAN", "CONFLICT", "REJECTED"].includes(row.state)),
+    optionalAttentionRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "CONFLICT", "REJECTED"].includes(row.state)),
     optionalPendingReviewRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.state === "PENDING_REVIEW"),
   };
 }
