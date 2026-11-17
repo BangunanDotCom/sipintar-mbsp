@@ -17,6 +17,13 @@ describe("draft upload validation", () => {
     expect(() => validateDraftUpload(pdf.toString("base64"), "photo", "application/pdf", 1))
       .toThrow();
   });
+  it("rejects PDF magic prefixes with malformed version numbers", () => {
+    for (const header of ["%PDF-x.7", "%PDF-1x7", "%PDF-1.x", "%PDF-"]) {
+      const malformed = Buffer.from(header + "\\nexample");
+      expect(() => validateDraftUpload(malformed.toString("base64"), "supporting", "application/pdf", 1))
+        .toThrow("Jenis fail");
+    }
+  });
   it("rejects mismatched MIME claims and invalid base64", () => {
     expect(() => validateDraftUpload(pdf.toString("base64"), "supporting", "image/png", 1)).toThrow();
     expect(() => validateDraftUpload("%%%", "supporting", "application/pdf", 1)).toThrow();
