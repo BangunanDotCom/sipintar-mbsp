@@ -273,3 +273,7 @@ Semakan `documentSubmissionReadiness` kini menghalang penghantaran apabila terda
 ## Paparan semakan awal dokumen dalam draf pemohon
 
 Komponen `apps/web/src/DraftDocumentReadiness.tsx` kini menggunakan TanStack Query untuk membaca `GET /api/application-drafts/:id/submission-readiness` bagi draf tersimpan, memaparkan tajuk/mesej Bahasa Melayu, senarai dokumen yang menghalang, amaran integriti, status muat turun dan butang `Semak semula status dokumen`. Komponen dipasang pada bahagian sisi `apps/web/src/ApplicationDraft.tsx` apabila `draft.id` wujud. Ia tidak mengaktifkan muat naik atau penghantaran; butang hantar rasmi kekal disabled. Ralat API dipaparkan secara umum tanpa mendedahkan butiran dalaman. Semakan awal tidak boleh dianggap kelulusan MBSP. Pengujian UI/browser dan CI belum disahkan.
+
+## Penyegerakan status dokumen selepas simpan draf
+
+Cache TanStack Query bagi `DraftDocumentReadiness` kini menggunakan kunci `["draft-document-readiness", userId, draftId]` untuk memisahkan hasil antara identiti pemohon. Selepas draf disimpan, cache draf semasa diselaraskan dengan respons API dan query readiness draf tersebut dinyah-sah supaya data terkini dibaca semula. Jika pengguna mengubah kapasiti individu/syarikat atau syarikat yang diwakili tanpa menyimpan, panel readiness disembunyikan dan mesej supaya menyimpan dahulu dipaparkan. Langkah ini mengurangkan risiko status senarai semak lama dipersembahkan seolah-olah milik kapasiti baharu. Tiada penghantaran rasmi diaktifkan. Ujian CI, integrasi dan pelayar masih belum disahkan.
