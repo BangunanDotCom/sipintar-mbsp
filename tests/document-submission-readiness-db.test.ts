@@ -49,7 +49,7 @@ describe("database-backed document readiness snapshot", () => {
       .resolves.toEqual({
         ready: false,
         blockingCategories: ["floor_layout", "company_authority"],
-        pendingScanCategories: ["floor_layout"],
+        pendingScanCategories: ["floor_layout"], unexpectedActiveDocuments: false,
       });
   });
 });
