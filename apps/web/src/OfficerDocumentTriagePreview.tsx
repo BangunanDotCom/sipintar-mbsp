@@ -5,6 +5,7 @@ import {
   filterDocumentReviewQueue,
   documentReviewNextActionLabels,
   documentStatusLabels,
+  hiddenCriticalDocumentCount,
   type DocumentChecklistRow,
   type DocumentReviewPriorityFilter,
   type DocumentReviewOwnerFilter,
@@ -47,7 +48,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const filteredSummary = documentReviewQueueSummary(filtered);
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
-  const hiddenCritical = Math.max(0, summary.critical - filteredSummary.critical);
+  const hiddenCritical = hiddenCriticalDocumentCount(queue, filtered);
 
 
   return (
