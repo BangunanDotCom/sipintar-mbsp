@@ -417,3 +417,7 @@ Laluan keserasian `validateDelegationPdf` kini menguatkuasakan had pentadbir int
 ## Ujian regresi keputusan imbasan dan pemilikan lease
 
 Ujian pekerja imbasan ditambah bagi memastikan status `INFECTED` disimpan tanpa dipromosikan kepada `CLEAN`, metadata MIME disertakan ketika tuntutan lease, dan keputusan imbasan daripada pekerja yang kehilangan lease tidak dilaporkan sebagai keputusan muktamad (`SKIPPED`). Ini menguji perlindungan sedia ada, bukan pengaktifan pengimbas malware produksi. Keputusan CI belum dapat disahkan.
+
+## Pengesahan metadata keputusan pengimbas
+
+Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan rentetan atau hanya ruang kosong walaupun pengimbas memulangkan `status: CLEAN`. Ujian regresi meliputi `null`, nombor, objek dan teks kosong serta memastikan status `FAILED` yang sah kekal `FAILED`. Perubahan ini mengukuhkan penolakan gagal-selamat; ia tidak mengaktifkan pengimbas produksi. Keputusan CI belum disahkan.
