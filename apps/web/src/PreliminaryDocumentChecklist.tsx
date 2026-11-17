@@ -37,7 +37,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
     gcTime: 0,
   });
   // Never show a cached document list after a failed authorization or refresh.
-  const documents = query.isSuccess ? query.data.documents : [];
+  const documents = query.isSuccess && Array.isArray(query.data.documents) ? query.data.documents : [];
   const visible = documentChecklistRows(capacity, documents);
   const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
@@ -45,7 +45,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   const policyByCategory = new Map(
-    (query.isSuccess ? query.data.uploadPolicy ?? [] : []).map((row) => [row.category, row]),
+    (query.isSuccess && Array.isArray(query.data.uploadPolicy) ? query.data.uploadPolicy : []).map((row) => [row.category, row]),
   );
   const mimeLabel = (mime: string) => mime === "application/pdf" ? "PDF" :
     mime === "image/jpeg" ? "JPEG" : mime === "image/png" ? "PNG" : mime;
@@ -67,7 +67,10 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           )}
         </div>
       )}
-      {query.isSuccess && (
+      {query.isSuccess && !Array.isArray(query.data.documents) && (
+        <p role="alert">Respons status dokumen tidak lengkap. Sila semak semula kemudian.</p>
+      )}
+      {query.isSuccess && Array.isArray(query.data.documents) && (
         <p role="status">
           <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
@@ -76,7 +79,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
       )}
-      {query.isSuccess && missingPriority.length > 0 && (
+      {query.isSuccess && Array.isArray(query.data.documents) && missingPriority.length > 0 && (
         <div>
           <p>Kategori persediaan utama yang belum mempunyai rekod aktif (belum ditetapkan sebagai syarat wajib rasmi):</p>
           <ul>
@@ -84,7 +87,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           </ul>
         </div>
       )}
-      {query.isSuccess && <div style={{ overflowX: "auto" }}>
+      {query.isSuccess && Array.isArray(query.data.documents) && <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Format & saiz fail (panduan)</th><th scope="col">Rekod sistem</th></tr></thead>
           <tbody>
