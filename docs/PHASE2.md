@@ -421,3 +421,7 @@ Ujian pekerja imbasan ditambah bagi memastikan status `INFECTED` disimpan tanpa 
 ## Pengesahan metadata keputusan pengimbas
 
 Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan rentetan atau hanya ruang kosong walaupun pengimbas memulangkan `status: CLEAN`. Ujian regresi meliputi `null`, nombor, objek dan teks kosong serta memastikan status `FAILED` yang sah kekal `FAILED`. Perubahan ini mengukuhkan penolakan gagal-selamat; ia tidak mengaktifkan pengimbas produksi. Keputusan CI belum disahkan.
+
+## Pengoptimuman pengiraan SHA-256 pengimbasan
+
+`scanQuarantinedDocument` kini menggunakan semula SHA-256 metadata yang telah disahkan secara pemadanan masa tetap oleh `readVerifiedQuarantinedDocument`, dan mengembalikannya dalam bentuk heksadesimal huruf kecil. Ini mengelakkan pengiraan SHA-256 kali kedua pada dokumen besar tanpa memintas pengesahan saiz, kandungan dan MIME yang tersedia. Ujian regresi ditambah bagi SHA-256 metadata huruf besar. CI belum disahkan; pengimbas dan storan produksi masih belum diaktifkan.
