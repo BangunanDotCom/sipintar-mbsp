@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
@@ -26,6 +26,12 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("ALL");
   const [documentSearch, setDocumentSearch] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("ALL");
+  // A reused component must not carry filters from a previous draft or account.
+  useEffect(() => {
+    setStatusFilter("ALL");
+    setDocumentSearch("");
+    setScopeFilter("ALL");
+  }, [draftId, capacity, userId]);
   const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch, scopeFilter);
   // Counts reflect the selected scope and keyword, but not the selected
   // status, so users can compare available statuses without resetting filters.
