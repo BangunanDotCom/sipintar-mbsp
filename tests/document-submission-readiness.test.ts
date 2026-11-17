@@ -21,6 +21,22 @@ describe("preliminary document submission readiness", () => {
       ready: true, blockingCategories: [], pendingScanCategories: [],
     });
   });
+  it("blocks uploaded optional attachments until safe, while allowing them to be absent", () => {
+    expect(documentSubmissionReadiness("INDIVIDUAL", readyDocs).ready).toBe(true);
+    const pending = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("fire_safety", { scanStatus: "PENDING" }),
+    ]);
+    expect(pending.blockingCategories).toEqual(["fire_safety"]);
+    expect(pending.pendingScanCategories).toEqual(["fire_safety"]);
+    const infected = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("building_certificate", { scanStatus: "INFECTED" }),
+    ]);
+    expect(infected.blockingCategories).toEqual(["building_certificate"]);
+    const clean = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("building_certificate"),
+    ]);
+    expect(clean.ready).toBe(true);
+  });
   it("requires company authority only for company submissions", () => {
     const result = documentSubmissionReadiness("COMPANY", readyDocs);
     expect(result.ready).toBe(false);
