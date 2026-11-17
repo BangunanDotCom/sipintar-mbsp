@@ -41,6 +41,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const visible = documentChecklistRows(capacity, documents);
   const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
+  const verifiedPriority = priorityCategories.filter((item) => item.state === "VERIFIED").length;
+  const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   const policyByCategory = new Map(
     (query.isSuccess ? query.data.uploadPolicy ?? [] : []).map((row) => [row.category, row]),
@@ -68,7 +70,9 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       {query.isSuccess && (
         <p role="status">
           <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
-          Angka ini hanya menunjukkan kewujudan rekod fail, bukan pengesahan keselamatan,
+          <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
+          {pendingSafetyPriority > 0 && <strong> Perlu perhatian keselamatan: {pendingSafetyPriority} kategori.</strong>}{" "}
+          Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
       )}
