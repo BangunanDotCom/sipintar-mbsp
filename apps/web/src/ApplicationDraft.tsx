@@ -166,6 +166,9 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               setSavedAt(saved.updatedAt);
               setMessage("Draf berjaya disimpan. Belum dihantar kepada MBSP.");
               await qc.invalidateQueries({ queryKey: ["application-drafts"] });
+              await qc.invalidateQueries({
+                queryKey: ["draft-document-readiness", context.initiatedBy.userId, saved.id],
+              });
               if (next) nav(`/permohonan/draf/${saved.id}/premis`);
               else if (!draft)
                 nav(`/permohonan/draf/${saved.id}`, { replace: true });
@@ -354,7 +357,18 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               </span>
             </section>
           )}
-          {draft && <DraftDocumentReadiness draftId={draft.id} />}
+          {draft && capacity === draft.capacity &&
+            (capacity !== "COMPANY" || companyId === draft.companyId) ? (
+              <DraftDocumentReadiness
+                draftId={draft.id}
+                userId={context.initiatedBy.userId}
+              />
+            ) : draft ? (
+              <section className="panel">
+                <h2>Semakan awal dokumen sokongan</h2>
+                <p role="status">Simpan perubahan kapasiti pemohon dahulu untuk melihat semakan dokumen yang terkini.</p>
+              </section>
+            ) : null}
           <section className="panel">
             <h2>
               <FileText size={21} /> Langkah seterusnya
