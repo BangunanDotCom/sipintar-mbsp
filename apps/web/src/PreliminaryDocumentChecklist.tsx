@@ -26,6 +26,12 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("ALL");
   const [documentSearch, setDocumentSearch] = useState("");
   const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch);
+  const filterCounts = {
+    attention: filterDocumentChecklistRows(visible, "ATTENTION").length,
+    pending: filterDocumentChecklistRows(visible, "PENDING").length,
+    verified: filterDocumentChecklistRows(visible, "VERIFIED").length,
+    missing: filterDocumentChecklistRows(visible, "MISSING").length,
+  };
   const summary = documentChecklistSummary(visible);
   const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
@@ -123,15 +129,21 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <select id="document-status-filter" value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as DocumentStatusFilter)}>
             <option value="ALL">Semua dokumen</option>
-            <option value="ATTENTION">Perlu perhatian atau pembetulan</option>
-            <option value="PENDING">Menunggu imbasan atau pengesahan</option>
-            <option value="VERIFIED">Telah disahkan pegawai</option>
-            <option value="MISSING">Tiada rekod aktif</option>
+            <option value="ATTENTION">Perlu perhatian atau pembetulan ({filterCounts.attention})</option>
+            <option value="PENDING">Menunggu imbasan atau pengesahan ({filterCounts.pending})</option>
+            <option value="VERIFIED">Telah disahkan pegawai ({filterCounts.verified})</option>
+            <option value="MISSING">Tiada rekod aktif ({filterCounts.missing})</option>
           </select>
           <label htmlFor="document-keyword-search">Cari kategori dokumen</label>{" "}
           <input id="document-keyword-search" type="search" value={documentSearch}
             onChange={(event) => setDocumentSearch(event.target.value)}
             placeholder="Contoh: pelan, kebakaran, surat kuasa" />
+          {(statusFilter !== "ALL" || documentSearch.trim() !== "") && (
+            <button className="button secondary small" type="button"
+              onClick={() => { setStatusFilter("ALL"); setDocumentSearch(""); }}>
+              Kosongkan penapis dan carian
+            </button>
+          )}
           <p role="status">Memaparkan {filteredRows.length} daripada {visible.length} kategori dokumen.</p>
         </div>
       )}
