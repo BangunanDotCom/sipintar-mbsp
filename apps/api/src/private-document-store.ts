@@ -82,13 +82,16 @@ export async function readVerifiedQuarantinedDocument(
   if (!Buffer.isBuffer(content) || content.length !== expectedByteSize ||
       content.length > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Integriti dokumen kuarantin gagal.");
-  const actual = createHash("sha256").update(content).digest();
+  // Verify and return an owned snapshot: the adapter must not be able to
+  // mutate verified bytes after this function has returned.
+  const verifiedContent = Buffer.from(content);
+  const actual = createHash("sha256").update(verifiedContent).digest();
   if (!timingSafeEqual(actual, Buffer.from(expectedSha256, "hex")))
     throw new Error("Integriti dokumen kuarantin gagal.");
   if (expectedMimeType !== undefined &&
-      !matchesDeclaredFileSignature(content, expectedMimeType))
+      !matchesDeclaredFileSignature(verifiedContent, expectedMimeType))
     throw new Error("Kandungan fail kuarantin tidak sepadan dengan MIME.");
-  return content;
+  return verifiedContent;
 }
 
 // Explicitly disabled until a private object store and scanner are configured.
