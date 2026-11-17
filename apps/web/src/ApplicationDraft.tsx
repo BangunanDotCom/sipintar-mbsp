@@ -166,6 +166,9 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               setSavedAt(saved.updatedAt);
               setMessage("Draf berjaya disimpan. Belum dihantar kepada MBSP.");
               await qc.invalidateQueries({ queryKey: ["application-drafts"] });
+              if (draft) {
+                qc.setQueryData(["application-draft", context.initiatedBy.userId, saved.id], saved);
+              }
               await qc.invalidateQueries({
                 queryKey: ["draft-document-readiness", context.initiatedBy.userId, saved.id],
               });
