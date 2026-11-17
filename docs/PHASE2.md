@@ -151,3 +151,7 @@ Migrasi `202611170003_document_scan_lease` menambah `scanLeaseToken`, `scanLease
 ## Adapter storan kuarantin setempat untuk ujian pembangunan
 
 `apps/api/src/local-quarantine-document-store.ts` menambah `LocalQuarantineDocumentStore` yang melaksanakan kontrak `PrivateDocumentStore` menggunakan direktori setempat, kunci fail berformat UUID terikat draf, penciptaan fail eksklusif (`wx`) dan mod fail 0600. `tests/local-quarantine-document-store.test.ts` meliputi simpan/baca/padam PDF, larangan overwrite dan penolakan path traversal. **Adapter ini hanya untuk pembangunan/ujian**, bukan storan objek produksi: ia tidak menguatkuasakan semua kawalan terhadap symlink, encryption-at-rest, retensi atau pengasingan multi-instance. Gunakan direktori yang dikawal sepenuhnya oleh proses aplikasi dan tidak boleh ditulis oleh pengguna lain. Tiada endpoint muat naik diaktifkan, tiada integrasi storan bucket sebenar, dan ujian belum disahkan lulus.
+
+## Ujian integrasi storan kuarantin dan scan worker
+
+`tests/document-quarantine-integration.test.ts` menggunakan direktori sementara sebenar melalui `LocalQuarantineDocumentStore` bersama mock Prisma dan mock pengimbas. Ujian memeriksa aliran simpan -> baca -> SHA-256 -> imbas -> keputusan CLEAN, pengesanan kandungan yang berubah (FAILED tanpa memanggil pengimbas), dan fail kuarantin hilang (FAILED). Ini **bukan** ujian pangkalan data PostgreSQL sebenar, ClamAV sebenar atau storan objek produksi. Tiada endpoint muat naik diaktifkan dan CI belum disahkan.
