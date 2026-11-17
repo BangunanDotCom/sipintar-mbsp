@@ -104,8 +104,10 @@ export function validatedDocumentResponse(value: unknown, expectedDraftId?: stri
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const response = value as Record<string, unknown>;
   // Prevent showing metadata from a different draft if a response is mismatched.
-  if (expectedDraftId !== undefined && (typeof response.draftId !== "string" || response.draftId !== expectedDraftId)) return null;
-  // A mismatched applicant context must not silently show another checklist.
+  if (typeof response.draftId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(response.draftId)) return null;
+  if (expectedDraftId !== undefined && response.draftId !== expectedDraftId) return null;
+  // A missing, invalid or mismatched applicant context must not show another checklist.
+  if (response.capacity !== "INDIVIDUAL" && response.capacity !== "COMPANY") return null;
   if (expectedCapacity !== undefined && response.capacity !== expectedCapacity) return null;
   if (!Array.isArray(response.documents) || !response.documents.every(isDocumentApiRecord)) return null;
   if (!Array.isArray(response.uploadPolicy)) return null;
