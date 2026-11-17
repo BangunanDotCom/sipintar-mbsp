@@ -229,3 +229,7 @@ Ditambah `apps/api/src/document-submission-readiness.ts` untuk mengira kategori 
 ## Integriti versi dokumen sebelum penghantaran
 
 Semakan awal `documentSubmissionReadiness` kini menolak kategori wajib jika terdapat versi aktif yang tidak sah (bukan integer selamat positif) atau dua rekod aktif dengan nombor versi sama. Ini mengelakkan pilihan rekod secara tidak tentu apabila rekod bercanggah, termasuk keadaan satu rekod bersih dan satu dijangkiti. Versi terdahulu yang telah diganti (`supersededAt`) tidak dikira. Ujian regresi disediakan. Semakan ini masih modul dalaman dan belum disambungkan kepada endpoint penghantaran; keputusan CI belum disahkan.
+
+## Kawalan status pengesahan dokumen tidak dikenali
+
+`documentChecklistRows` kini menganggap hanya `UNVERIFIED` sebagai menunggu semakan pegawai selepas imbasan `CLEAN`; `VERIFIED` kekal disahkan dan `REJECTED` kekal ditolak. Nilai pengesahan lain yang tidak dikenali dipetakan kepada `UNSAFE` (sekatan konservatif) dan tidak boleh melepasi `documentSubmissionReadiness`. Ujian regresi meliputi nilai status yang tidak dikenali. Ini ialah kawalan dalaman; endpoint penghantaran sebenar masih belum diaktifkan dan keputusan CI belum disahkan.
