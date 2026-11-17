@@ -155,6 +155,19 @@ describe("document checklist statuses", () => {
     expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
     expect(summary.optionalAttentionRows).toEqual([]);
   });
+  it("separates pending security scans from corrections and officer review", () => {
+    const summary = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", [
+      doc(1, "PENDING", "VERIFIED"),
+      { ...doc(1, "SCANNING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "INFECTED", "VERIFIED"), category: "floor_layout" },
+    ]));
+    expect(summary.pendingScanRows.map((row) => row.category)).toEqual(["premises_plan", "fire_safety"]);
+    expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
+    expect(summary.optionalAttentionRows).toEqual([]);
+    expect(summary.pendingReviewRows).toEqual([]);
+    expect(summary.verified).toBe(0);
+    expect(summary.safetyAttention).toBe(2);
+  });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
   });
