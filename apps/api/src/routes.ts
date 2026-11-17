@@ -231,7 +231,7 @@ export async function routes(app: FastifyInstance) {
         uploadedBy: s.userId,
         fileName: b.fileName,
         mimeType: "application/pdf",
-        content,
+        content: new Uint8Array(content),
         sha256: hash(content.toString("base64")),
         validUntil: b.validUntil ? new Date(b.validUntil) : null,
       },
