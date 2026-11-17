@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -173,6 +173,24 @@ describe("document checklist statuses", () => {
     expect(summary.verified).toBe(0);
     expect(summary.pendingScan).toBe(1);
     expect(summary.unsafe).toBe(1);
+  });
+  it("filters document statuses without changing the underlying advisory checklist", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "VERIFIED"),
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "SCANNING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "premises_photos" },
+      { ...doc(1, "CLEAN", "REJECTED"), category: "building_certificate" },
+    ]);
+    const categories = (filter: "ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING") =>
+      filterDocumentChecklistRows(rows, filter).map((row) => row.category);
+    expect(categories("ALL")).toHaveLength(rows.length);
+    expect(categories("ATTENTION")).toEqual(["floor_layout", "building_certificate"]);
+    expect(categories("PENDING")).toEqual(["fire_safety", "premises_photos"]);
+    expect(categories("VERIFIED")).toEqual(["premises_plan"]);
+    expect(categories("MISSING")).toEqual(["ownership_or_tenancy"]);
+    expect(documentChecklistSummary(rows).verified).toBe(1);
+    expect(rows).toHaveLength(categories("ALL").length);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
