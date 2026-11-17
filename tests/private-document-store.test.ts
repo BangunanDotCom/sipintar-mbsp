@@ -46,6 +46,23 @@ describe("private document quarantine adapter", () => {
       draftId, storageKey, expectedSha256: prepared.sha256, expectedByteSize: prepared.byteSize + 1,
     })).rejects.toThrow("Integriti dokumen");
   });
+  it("rejects non-buffer adapter output instead of trusting the storage boundary", async () => {
+    const { adapter } = store();
+    adapter.readQuarantined = async () => "unexpected" as unknown as Buffer;
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const sha256 = "0".repeat(64);
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: sha256, expectedByteSize: bytes.length,
+    })).rejects.toThrow("Integriti dokumen");
+  });
+  it("rejects stored content larger than the recorded size", async () => {
+    const { adapter } = store();
+    adapter.readQuarantined = async () => Buffer.concat([bytes, Buffer.alloc(1)]);
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: "0".repeat(64), expectedByteSize: bytes.length,
+    })).rejects.toThrow("Integriti dokumen");
+  });
   it("rejects invalid metadata and cross-draft reads before accessing storage", async () => {
     const readQuarantined = vi.fn(async () => bytes);
     const adapter: PrivateDocumentStore = {
