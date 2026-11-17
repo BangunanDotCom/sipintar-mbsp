@@ -127,3 +127,7 @@ Komponen `PreliminaryDocumentChecklist` kini memanggil `GET /api/application-dra
 ## Adapter ClamAV (belum diaktifkan)
 
 `apps/api/src/clamav-scanner.ts` menyediakan adapter ClamAV TCP INSTREAM (chunk 64 KiB, respons CLEAN/INFECTED, masa tamat dan ralat fail-closed). `apps/api/src/malware-scanner-config.ts` hanya membina adapter apabila `STAYLINK_CLAMAV_ENABLED=true` dan `STAYLINK_CLAMAV_HOST` sah; port pilihan `STAYLINK_CLAMAV_PORT` (lalai 3310). Tanpa opt-in, `DisabledMalwareScanner` digunakan. Perkhidmatan clamd mesti berada pada rangkaian dalaman yang dikawal firewall; TCP clamd tidak menyediakan autentikasi atau TLS dengan sendirinya. Konfigurasi ini belum dipanggil oleh endpoint pemohon; **tiada imbasan sebenar telah dijalankan**. Ujian unit konfigurasi disediakan, tetapi ujian integrasi clamd, sambungan storan objek dan CI belum disahkan. Jangan aktifkan muat naik sehingga storan persendirian, pengimbasan dan pengesahan pegawai disambungkan secara selamat.
+
+## Pengukuhan protokol ClamAV INSTREAM
+
+Adapter ClamAV tidak lagi menutup bahagian tulis soket sejurus selepas penghantaran penanda chunk sifar; ia menunggu respons daemon sebelum menutup sambungan. `tests/clamav-instream.test.ts` menambah ujian integrasi protokol TCP setempat dengan daemon simulasi untuk respons `stream: OK`, `FOUND` dan `ERROR`. Ujian ini tidak menggantikan ujian terhadap clamd sebenar dan belum disahkan dijalankan dalam CI. Storan objek persendirian dan endpoint muat naik kekal belum disambungkan; tiada pengaktifan produksi.
