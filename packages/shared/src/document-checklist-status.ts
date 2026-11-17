@@ -252,6 +252,7 @@ export type DocumentReviewQueueItem = {
   state: DocumentChecklistRow["state"];
   version: number | null;
   priority: "CRITICAL" | "ACTION" | "WAITING";
+  nextAction: DocumentReviewNextAction;
 };
 export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): DocumentReviewQueueItem[] {
   const priorityByState: Partial<Record<DocumentChecklistRow["state"], DocumentReviewQueueItem["priority"]>> = {
@@ -271,6 +272,7 @@ export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): Docu
       state: row.state,
       version: row.current?.version ?? null,
       priority,
+      nextAction: documentReviewNextAction(row.state)!,
     }] : [];
   }).sort((a, b) => rank[a.priority] - rank[b.priority]
     || a.category.localeCompare(b.category));
