@@ -441,3 +441,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Konsistensi metadata saiz selepas operasi tulis tak segerak
 
 `storeQuarantinedDocument` kini merekod `byteSize` daripada `content.length` pada salinan defensif yang sama digunakan untuk pengiraan SHA-256 dan `putQuarantined`, bukannya membaca semula `input.content.length` selepas `await`. Ujian regresi menggantikan `input.content` semasa adapter menulis dan memastikan metadata yang dipulangkan masih mengesahkan kandungan kuarantin sebenar. Storan produksi belum diaktifkan dan keputusan CI belum disahkan.
+
+## Identiti dokumen kekal semasa operasi storan tak segerak
+
+`storeQuarantinedDocument` kini menyimpan `storageKey` dan `mimeType` yang telah disahkan dalam pemboleh ubah setempat sebelum `await putQuarantined`. Metadata pulangan menggunakan nilai yang sama dengan nilai dihantar ke adapter, walaupun objek `input` diubah oleh pemanggil semasa operasi storan. Ujian regresi menukar kunci dan MIME pemanggil di dalam adapter dan mengesahkan metadata pulangan kekal sepadan dengan objek disimpan. Ujian CI belum disahkan dan storan produksi belum diaktifkan.
