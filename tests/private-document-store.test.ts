@@ -52,6 +52,28 @@ describe("private document quarantine adapter", () => {
       expectedByteSize: prepared.byteSize, expectedMimeType: "application/pdf",
     })).resolves.toEqual(bytes);
   });
+  it("records the snapshotted byte size even if the caller replaces its input during write", async () => {
+    const input = {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
+      content: Buffer.from(bytes), mimeType: "application/pdf",
+    };
+    let stored: Buffer | undefined;
+    const adapter: PrivateDocumentStore = {
+      putQuarantined: async ({ content }) => {
+        stored = content;
+        input.content = Buffer.from("%PDF-1.7\\nreplacement with different length");
+      },
+      readQuarantined: async () => stored ?? Buffer.alloc(0),
+      deleteQuarantined: async () => undefined,
+    };
+    const prepared = await storeQuarantinedDocument(adapter, input);
+    expect(prepared.byteSize).toBe(bytes.length);
+    expect(prepared.byteSize).not.toBe(input.content.length);
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey: input.storageKey, expectedSha256: prepared.sha256,
+      expectedByteSize: prepared.byteSize, expectedMimeType: prepared.mimeType,
+    })).resolves.toEqual(bytes);
+  });
   it("verifies stored quarantine content against the recorded digest and size", async () => {
     const { adapter } = store();
     const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
