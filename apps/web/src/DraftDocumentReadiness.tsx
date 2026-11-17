@@ -14,9 +14,9 @@ type ReadinessResponse = {
 };
 
 // Read-only applicant guidance; this component never initiates submission.
-export function DraftDocumentReadiness({ draftId }: { draftId: string }) {
+export function DraftDocumentReadiness({ draftId, userId }: { draftId: string; userId: string }) {
   const q = useQuery<ReadinessResponse>({
-    queryKey: ["draft-document-readiness", draftId],
+    queryKey: ["draft-document-readiness", userId, draftId],
     queryFn: () => api(`/application-drafts/${encodeURIComponent(draftId)}/submission-readiness`),
     retry: false,
     staleTime: 0,
