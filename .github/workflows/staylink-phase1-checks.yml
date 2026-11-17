@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     name: Typecheck, lint and unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NODE_ENV: test
@@ -24,7 +24,7 @@ jobs:
       STAYLINK_CLAMAV_ENABLED: "false"
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
