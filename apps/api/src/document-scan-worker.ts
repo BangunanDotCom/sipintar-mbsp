@@ -18,7 +18,8 @@ export async function processPendingDocumentScan(
       scanStatus: true, supersededAt: true,
     },
   });
-  if (!document || document.supersededAt) return "SKIPPED";
+  if (!document || document.supersededAt ||
+      !["PENDING", "SCANNING"].includes(document.scanStatus)) return "SKIPPED";
   const token = randomUUID();
   const now = new Date();
   const claimed = await db.applicationDocument.updateMany({
