@@ -481,3 +481,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Pengasingan memori semasa penulisan ke storan kuarantin
 
 `storeQuarantinedDocument` kini menyerahkan `Buffer.from(content)` kepada `putQuarantined`, berasingan daripada salinan yang digunakan untuk mengira SHA-256 dan `byteSize`. Adapter penulisan yang mengubah `Buffer` diterima tidak lagi boleh mengubah metadata yang dipulangkan oleh fungsi. Ujian regresi mensimulasikan adapter yang mengosongkan kandungan `Buffer` ketika penulisan. Adapter produksi masih wajib memastikan kandungan yang benar-benar disimpan kekal utuh; semakan integriti semasa bacaan tetap diperlukan. CI belum disahkan dan muat naik produksi belum diaktifkan.
+
+## Sempadan tamat tempoh pajakan pengimbasan
+
+`processPendingDocumentScan` kini menggunakan `scanLeaseExpiresAt: { lte: now }` apabila mengambil alih rekod `SCANNING` yang telah tamat tempoh. Pajakan boleh dituntut semula tepat pada masa tamat tempoh, tanpa menunggu masa berikutnya. Penulisan keputusan masih dilindungi oleh token pajakan dan semakan masa tamat, jadi pekerja lama tidak boleh menimpa keputusan pekerja baharu selepas pengambilalihan. Ujian regresi memeriksa syarat inklusif ini. CI belum disahkan; tiada pengaktifan pengimbas atau storan produksi.
