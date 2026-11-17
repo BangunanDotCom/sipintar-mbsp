@@ -44,6 +44,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
   const verifiedPriority = priorityCategories.filter((item) => item.state === "VERIFIED").length;
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
+  const conflictPriority = priorityCategories.filter((item) => item.state === "CONFLICT").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
   // API policy is untrusted: malformed entries must not crash the checklist.
   const uploadPolicy = query.isSuccess && Array.isArray(query.data?.uploadPolicy)
@@ -86,6 +87,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
           {pendingSafetyPriority > 0 && <strong> Perlu perhatian keselamatan: {pendingSafetyPriority} kategori.</strong>}{" "}
+          {conflictPriority > 0 && <strong> Konflik versi aktif: {conflictPriority} kategori — rujuk pegawai.</strong>}{" "}
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
