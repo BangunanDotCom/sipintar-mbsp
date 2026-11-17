@@ -1,4 +1,5 @@
 import { UPLOAD_CATEGORIES, type UploadCategory } from "./upload-policy.js";
+import { matchesDeclaredFileSignature } from "./document-file-signatures.js";
 
 export type DraftUploadKind = Exclude<UploadCategory, "delegation">;
 export type ValidatedDraftUpload = {
@@ -29,13 +30,8 @@ export function validateDraftUpload(
     throw new Error("Fail kosong atau melebihi had saiz.");
   const bytes = Buffer.from(encoded, "base64");
   if (bytes.length !== length) throw new Error("Pengekodan fail tidak konsisten.");
-  const pdf = bytes.subarray(0, 5).toString("ascii") === "%PDF-";
-  const jpeg = bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
-    bytes[2] === 0xff && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
-  const png = bytes.length >= 24 &&
-    bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
-    bytes.subarray(12, 16).toString("ascii") === "IHDR";
-  const detected = pdf ? "application/pdf" : jpeg ? "image/jpeg" : png ? "image/png" : null;
+  const detected = (["application/pdf", "image/jpeg", "image/png"] as const)
+    .find((mime) => matchesDeclaredFileSignature(bytes, mime));
   if (!detected || detected !== claimedMime || !policy.mime.split(",").includes(detected))
     throw new Error("Jenis fail tidak sepadan dengan kandungan yang dibenarkan.");
   // Signatures do not prove safety. Scanning, isolation, permissions and
