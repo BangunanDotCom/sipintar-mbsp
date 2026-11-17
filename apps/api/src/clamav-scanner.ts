@@ -51,7 +51,7 @@ export class ClamAvScanner implements DocumentMalwareScanner {
                 phase = "end";
                 continue;
               }
-              chunk = bytes.subarray(offset, Math.min(offset + 65536, bytes.length));
+              chunk = Buffer.from(bytes.subarray(offset, Math.min(offset + 65536, bytes.length)));
               frame = Buffer.alloc(4);
               frame.writeUInt32BE(chunk.length);
               phase = "chunk";
