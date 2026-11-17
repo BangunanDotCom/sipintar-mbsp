@@ -269,3 +269,15 @@ export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): Docu
   }).sort((a, b) => rank[a.priority] - rank[b.priority]
     || a.category.localeCompare(b.category));
 }
+
+/** Queue summary for future authorized officer dashboards; read-only and advisory. */
+export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueItem[]) {
+  return {
+    total: queue.length,
+    critical: queue.filter((item) => item.priority === "CRITICAL").length,
+    action: queue.filter((item) => item.priority === "ACTION").length,
+    waiting: queue.filter((item) => item.priority === "WAITING").length,
+    main: queue.filter((item) => item.applicability !== "IF_AVAILABLE").length,
+    optional: queue.filter((item) => item.applicability === "IF_AVAILABLE").length,
+  };
+}
