@@ -40,6 +40,14 @@ describe("draft readiness", () => {
     expect(result.readyForNextStage).toBe(true);
     expect(result.issues).toEqual([]);
   });
+  it("rejects duplicate floor labels even when totals match", () => {
+    const result = evaluateDraftReadiness({
+      premises: { ...premises, involvedFloors: 2, totalRooms: 4, proposedWorkers: 8, floorAreaSqm: 200 },
+      floors: [...floors, { ...floors[0], floorLabel: "tingkat bawah" }],
+    });
+    expect(result.readyForNextStage).toBe(false);
+    expect(result.floorsComplete).toBe(false);
+  });
   it("reports discrepancies without approving the draft", () => {
     const result = evaluateDraftReadiness({
       premises: { ...premises, proposedWorkers: 6 }, floors,
