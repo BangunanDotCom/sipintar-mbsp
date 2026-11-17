@@ -11,6 +11,8 @@ afterEach(async () => {
 describe("ClamAV INSTREAM framing regression", () => {
   it("sends the exact NUL-terminated command and 64KiB length-prefixed frames", async () => {
     const bytes = Buffer.alloc(150000, 0x41);
+    let observedLengths: number[] = [];
+    let observedTrailingBytes = -1;
     const server = createServer((socket) => {
       let received = Buffer.alloc(0);
       socket.on("data", (part: Buffer) => {
@@ -18,7 +20,7 @@ describe("ClamAV INSTREAM framing regression", () => {
         const header = Buffer.from("zINSTREAM\0");
         if (received.length < header.length) return;
         if (!received.subarray(0, header.length).equals(header)) {
-          socket.destroy(new Error("Invalid INSTREAM command"));
+          socket.end("stream: invalid ERROR\0");
           return;
         }
         let offset = header.length;
@@ -29,8 +31,8 @@ describe("ClamAV INSTREAM framing regression", () => {
           lengths.push(length);
           offset += 4 + length;
           if (length === 0) {
-            expect(lengths).toEqual([65536, 65536, 18928, 0]);
-            expect(offset).toBe(received.length);
+            observedLengths = lengths;
+            observedTrailingBytes = received.length - offset;
             socket.end("stream: OK\0");
             return;
           }
@@ -43,5 +45,7 @@ describe("ClamAV INSTREAM framing regression", () => {
     if (!address || typeof address === "string") throw new Error("Missing test port");
     await expect(new ClamAvScanner("127.0.0.1", address.port, 3000).scan(bytes))
       .resolves.toEqual({ status: "CLEAN", engine: "ClamAV" });
+    expect(observedLengths).toEqual([65536, 65536, 18928, 0]);
+    expect(observedTrailingBytes).toBe(0);
   });
 });
