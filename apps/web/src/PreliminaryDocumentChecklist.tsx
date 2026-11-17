@@ -71,7 +71,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       {query.isSuccess && !validDocuments && (
         <p role="alert">Respons status dokumen tidak lengkap. Sila semak semula kemudian.</p>
       )}
-      {query.isSuccess && Array.isArray(query.data.documents) && (
+      {validDocuments && (
         <p role="status">
           <strong>Rekod kategori persediaan utama: {recordedPriority} daripada {priorityCategories.length} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verifiedPriority} kategori.</strong>{" "}
@@ -80,7 +80,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
       )}
-      {query.isSuccess && Array.isArray(query.data.documents) && missingPriority.length > 0 && (
+      {validDocuments && missingPriority.length > 0 && (
         <div>
           <p>Kategori persediaan utama yang belum mempunyai rekod aktif (belum ditetapkan sebagai syarat wajib rasmi):</p>
           <ul>
@@ -88,7 +88,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           </ul>
         </div>
       )}
-      {query.isSuccess && Array.isArray(query.data.documents) && <div style={{ overflowX: "auto" }}>
+      {validDocuments && <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Format & saiz fail (panduan)</th><th scope="col">Rekod sistem</th></tr></thead>
           <tbody>
