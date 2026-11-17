@@ -7,7 +7,6 @@ import { createPrivateDocumentKey } from "../apps/api/src/private-document-keys.
 import { LocalQuarantineDocumentStore } from "../apps/api/src/local-quarantine-document-store.js";
 import { storeQuarantinedDocument } from "../apps/api/src/private-document-store.js";
 import { processPendingDocumentScan } from "../apps/api/src/document-scan-worker.js";
-import type { DocumentMalwareScanner } from "../apps/api/src/document-malware-scanner.js";
 
 const draftId = "550e8400-e29b-41d4-a716-446655440000";
 const documentId = "550e8400-e29b-41d4-a716-446655440001";
@@ -30,7 +29,6 @@ async function fixture() {
   const updateMany = vi.fn(async (_input: unknown) => ({ count: 1 }));
   const db = { applicationDocument: { findUnique, updateMany } } as unknown as PrismaClient;
   const scan = vi.fn(async (_bytes: Buffer) => ({ status: "CLEAN" as const, engine: "fixture" }));
-  const scanner: DocumentMalwareScanner = { scan };
   return { store, db, scan, updateMany, bytes, storageKey, document };
 }
 afterEach(async () => {
