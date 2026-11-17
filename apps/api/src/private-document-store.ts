@@ -42,10 +42,13 @@ export async function storeQuarantinedDocument(
     throw new Error("Jenis fail tidak dibenarkan bagi kategori dokumen.");
   if (!matchesDeclaredFileSignature(input.content, input.mimeType))
     throw new Error("Kandungan fail tidak sepadan dengan MIME.");
-  const sha256 = createHash("sha256").update(input.content).digest("hex");
+  // Snapshot caller-owned bytes so later caller mutations cannot alter the object
+  // being written after its integrity digest has been calculated.
+  const content = Buffer.from(input.content);
+  const sha256 = createHash("sha256").update(content).digest("hex");
   await store.putQuarantined({
     key: input.storageKey,
-    content: input.content,
+    content,
     mimeType: input.mimeType,
   });
   return {
