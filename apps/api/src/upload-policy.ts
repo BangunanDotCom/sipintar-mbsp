@@ -1,3 +1,5 @@
+import { matchesDeclaredFileSignature } from "./document-file-signatures.js";
+
 /** Central upload policy. Values are MiB and may be configured by ICT admin.
  * Hard ceilings are transport/security limits, not MBSP operational approvals.
  */
@@ -28,14 +30,20 @@ export function delegationLimitMiB(value: unknown): number {
   return uploadLimitMiB("delegation", value);
 }
 export function validateDelegationPdf(encoded: string, maxMiB: number): Buffer {
+  if (!Number.isInteger(maxMiB) || maxMiB < 1 || maxMiB > DELEGATION_MAX_MIB)
+    throw new Error("Had saiz dokumen tidak sah.");
+  if (encoded.length > Math.ceil(maxMiB * 1024 * 1024 / 3) * 4 + 4)
+    throw new Error(`Saiz PDF melebihi had ${maxMiB} MiB.`);
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))
     throw new Error("Pengekodan dokumen tidak sah.");
-  const bytes = Math.floor(encoded.length * 3 / 4) -
-    (encoded.endsWith("==") ? 1 : 0) - (encoded.endsWith("=") ? 1 : 0);
-  if (bytes > maxMiB * 1024 * 1024)
+  const length = (encoded.length / 4) * 3 -
+    (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
+  if (length < 1 || length > maxMiB * 1024 * 1024)
     throw new Error(`Saiz PDF melebihi had ${maxMiB} MiB.`);
   const buffer = Buffer.from(encoded, "base64");
-  if (buffer.length < 8 || buffer.subarray(0, 5).toString("ascii") !== "%PDF-")
+  if (buffer.length !== length || buffer.toString("base64") !== encoded)
+    throw new Error("Pengekodan dokumen tidak kanonik.");
+  if (!matchesDeclaredFileSignature(buffer, "application/pdf"))
     throw new Error("Fail bukan dokumen PDF yang sah.");
   // Signature alone does not establish PDF safety; malware scanning is still required.
   return buffer;
