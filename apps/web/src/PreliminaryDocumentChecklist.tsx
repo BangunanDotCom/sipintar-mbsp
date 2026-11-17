@@ -19,7 +19,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
     gcTime: 0,
   });
   // Never show a cached document list after a failed authorization or refresh.
-  const validated = query.isSuccess ? validatedDocumentResponse(query.data) : null;
+  const validated = query.isSuccess ? validatedDocumentResponse(query.data, draftId) : null;
   const validDocuments = validated !== null;
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
