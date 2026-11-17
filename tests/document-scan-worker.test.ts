@@ -30,6 +30,16 @@ function setup(overrides: { scanStatus?: string; supersededAt?: string | null } 
   return { db, store, scanner, findUnique, updateMany, scan };
 }
 describe("document scan worker state transition", () => {
+  it("skips malformed queue identifiers without accessing the database or scanner", async () => {
+    for (const id of ["", "not-a-uuid", "550e8400-e29b-41d4-a716-44665544000Z", "../draft", "550e8400-e29b-01d4-a716-446655440002"]) {
+      const s = setup();
+      await expect(processPendingDocumentScan(s.db, s.store, s.scanner, id))
+        .resolves.toBe("SKIPPED");
+      expect(s.findUnique).not.toHaveBeenCalled();
+      expect(s.updateMany).not.toHaveBeenCalled();
+      expect(s.scan).not.toHaveBeenCalled();
+    }
+  });
   it("persists CLEAN only after a successful scan", async () => {
     const s = setup();
     await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("CLEAN");
