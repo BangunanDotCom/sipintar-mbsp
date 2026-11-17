@@ -46,6 +46,14 @@ describe("draft upload validation", () => {
     zeroWidth.writeUInt32BE(0, 16);
     expect(() => validateDraftUpload(zeroWidth.toString("base64"), "photo", "image/png", 1)).toThrow();
   });
+  it("rejects PNG dimensions outside the 31-bit specification limit", () => {
+    for (const offset of [16, 20]) {
+      const malformed = Buffer.from(png);
+      malformed.writeUInt32BE(0x80000000, offset);
+      expect(() => validateDraftUpload(malformed.toString("base64"), "photo", "image/png", 1))
+        .toThrow("Jenis fail");
+    }
+  });
   it("rejects unsupported PNG IHDR bit depth, color type and compression settings", () => {
     const cases: Array<[number, number]> = [
       [24, 4],  // Truecolor cannot use four-bit samples.
