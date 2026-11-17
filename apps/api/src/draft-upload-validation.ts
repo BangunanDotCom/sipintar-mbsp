@@ -29,7 +29,8 @@ export function validateDraftUpload(
   if (length === 0 || length > maxMiB * 1024 * 1024)
     throw new Error("Fail kosong atau melebihi had saiz.");
   const bytes = Buffer.from(encoded, "base64");
-  if (bytes.length !== length) throw new Error("Pengekodan fail tidak konsisten.");
+  if (bytes.length !== length || bytes.toString("base64") !== encoded)
+    throw new Error("Pengekodan fail tidak kanonik atau tidak konsisten.");
   const detected = (["application/pdf", "image/jpeg", "image/png"] as const)
     .find((mime) => matchesDeclaredFileSignature(bytes, mime));
   if (!detected || detected !== claimedMime || !policy.mime.split(",").includes(detected))
