@@ -49,6 +49,13 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
   const hiddenCritical = hiddenCriticalDocumentCount(queue, filtered);
+  const resetFilters = () => {
+    setPriority("ALL");
+    setOwner("ALL");
+    setScope("ALL");
+    setStatus("ALL");
+    setSearch("");
+  };
 
 
   return (
@@ -61,7 +68,10 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         {" "}Proses sistem: {summary.systemTasks}.
       </p>
       {criticalUnfiltered && (
-        <p role="alert">Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} kategori kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
+        <div role="alert">
+          <p>Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} kategori kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
+          {hiddenCritical > 0 && <button className="button secondary small" type="button" onClick={resetFilters}>Paparkan semua termasuk isu kritikal</button>}
+        </div>
       )}
       <label htmlFor={priorityId}>Keutamaan</label>
       <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
@@ -94,9 +104,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       </select>
       <label htmlFor={searchId}>Cari dokumen</label>
       <input id={searchId} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nama atau kategori dokumen" />
-      <button className="button secondary small" type="button" disabled={!filtersActive} onClick={() => {
-        setPriority("ALL"); setOwner("ALL"); setScope("ALL"); setStatus("ALL"); setSearch("");
-      }}>Kosongkan penapis</button>
+      <button className="button secondary small" type="button" disabled={!filtersActive} onClick={resetFilters}>Kosongkan penapis</button>
       <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.
         {" "}Dalam hasil semasa: {filteredSummary.critical} kritikal, {filteredSummary.action} perlu tindakan dan {filteredSummary.waiting} menunggu proses.
       </p>
