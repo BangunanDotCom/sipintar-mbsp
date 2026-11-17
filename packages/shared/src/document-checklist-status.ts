@@ -299,6 +299,18 @@ export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueIt
   };
 }
 
+/** Warn about critical issues hidden by filters without mutating the source queue. */
+export function hiddenCriticalDocumentCount(
+  all: readonly DocumentReviewQueueItem[],
+  visible: readonly DocumentReviewQueueItem[],
+): number {
+  const critical = new Set(all.filter((item) => item.priority === "CRITICAL").map((item) => item.category));
+  for (const item of visible) {
+    if (item.priority === "CRITICAL") critical.delete(item.category);
+  }
+  return critical.size;
+}
+
 /** Officer triage preview filters only; access control must be enforced by the API. */
 export type DocumentReviewPriorityFilter = "ALL" | DocumentReviewQueueItem["priority"];
 export type DocumentReviewOwnerFilter = "ALL" | DocumentReviewQueueItem["actionOwner"];
