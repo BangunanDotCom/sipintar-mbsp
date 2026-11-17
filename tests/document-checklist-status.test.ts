@@ -116,6 +116,8 @@ describe("document checklist statuses", () => {
     expect(empty.total).toBeGreaterThan(0);
     expect(empty.recorded).toBe(0);
     expect(empty.verified).toBe(0);
+    expect(empty.pendingScan).toBe(0);
+    expect(empty.unsafe).toBe(0);
     expect(empty.missing).toHaveLength(empty.total);
     const records = [
       doc(1, "CLEAN", "VERIFIED"),
@@ -168,7 +170,8 @@ describe("document checklist statuses", () => {
     expect(summary.optionalAttentionRows.some((row) => row.state === "PENDING_SCAN")).toBe(false);
     expect(summary.pendingReviewRows).toEqual([]);
     expect(summary.verified).toBe(0);
-    expect(summary.safetyAttention).toBe(2);
+    expect(summary.pendingScan).toBe(1);
+    expect(summary.unsafe).toBe(1);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
