@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -9,6 +9,19 @@ const state = (documents: ReturnType<typeof doc>[]) =>
   documentChecklistRows("INDIVIDUAL", documents).find((row) => row.category === "premises_plan");
 
 describe("document checklist statuses", () => {
+  it("validates upload policy rows before displaying file guidance", () => {
+    const policy = {
+      category: "premises_plan", label: "Pelan premis",
+      mimeTypes: ["application/pdf"], defaultMaxMiB: 10, hardCeilingMiB: 25,
+    };
+    expect(isDocumentUploadPolicy(policy)).toBe(true);
+    expect(isDocumentUploadPolicy(null)).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [] })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, mimeTypes: [null] })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, label: "  " })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, defaultMaxMiB: Infinity })).toBe(false);
+    expect(isDocumentUploadPolicy({ ...policy, hardCeilingMiB: 5 })).toBe(false);
+  });
   it("rejects malformed API document records", () => {
     expect(isDocumentStatusRecord(doc(1, "CLEAN", "VERIFIED"))).toBe(true);
     expect(isDocumentStatusRecord(null)).toBe(false);
