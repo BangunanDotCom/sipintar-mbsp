@@ -281,3 +281,7 @@ Cache TanStack Query bagi `DraftDocumentReadiness` kini menggunakan kunci `["dra
 ## Kitar hayat cache status dokumen pemohon
 
 Panel `DraftDocumentReadiness` kini menetapkan `refetchOnMount: "always"`, `refetchOnWindowFocus: "always"` dan `gcTime: 0` supaya status diperoleh semula apabila panel dibuka atau tetingkap kembali aktif, dan cache tidak disimpan selepas tiada pengguna query. Ini melengkapkan pengasingan query key mengikut userId dan draftId. Jika API mengembalikan HTTP 401, pautan log masuk semula dipaparkan dengan laluan kembali kepada draf yang sedang dibuka. **Cache frontend bukan kawalan akses**; autorisasi pemilikan draf dan wakil syarikat kekal wajib pada API. Perubahan ini belum disahkan melalui ujian browser, CI atau integrasi pangkalan data.
+
+## Pengasingan cache dokumen pada halaman Semakan Draf
+
+`PreliminaryDocumentChecklist` kini menggunakan kunci cache `["application-documents", userId, draftId, capacity]`, `gcTime:0`, dan refetch apabila tetingkap kembali aktif. Jika bacaan API gagal, senarai metadata terdahulu tidak dipaparkan sebagai status terkini. `PremisesSummary` menerima `userId` daripada konteks pemohon yang telah disahkan dan menyerahkannya kepada senarai semak. Kawalan ini tidak menggantikan autorisasi pemilikan draf pada API. Tiada muat naik atau penghantaran rasmi diaktifkan. Build, ujian pelayar dan CI belum disahkan.
