@@ -88,13 +88,16 @@ let applicant: Actor,
   pic: Actor;
 let companyId: string, areaId: string, templateId: string;
 beforeAll(async () => {
-  if (
-    !process.env.TEST_DATABASE_URL ||
-    !new URL(process.env.TEST_DATABASE_URL).pathname.endsWith("_test")
-  )
-    throw Error(
-      "TEST_DATABASE_URL mesti pangkalan data khusus berakhir _test.",
-    );
+  const testUrl = process.env.TEST_DATABASE_URL;
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!testUrl || !databaseUrl)
+    throw Error("TEST_DATABASE_URL dan DATABASE_URL diperlukan untuk ujian integrasi.");
+  const testDb = new URL(testUrl);
+  const activeDb = new URL(databaseUrl);
+  if (!["postgres:", "postgresql:"].includes(testDb.protocol) ||
+      !testDb.pathname.endsWith("_test") ||
+      activeDb.href !== testDb.href)
+    throw Error("DATABASE_URL mesti sepadan dengan TEST_DATABASE_URL PostgreSQL khusus berakhir _test.");
   await seed();
   app = await buildApp();
   applicant = await actor("PEMOHON");
