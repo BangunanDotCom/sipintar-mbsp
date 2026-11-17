@@ -205,3 +205,7 @@ Ujian `clamav-framing-regression.test.ts` kini merekod panjang bingkai INSTREAM 
 ## Had masa keseluruhan imbasan ClamAV
 
 `ClamAvScanner` kini mengenakan had masa dinding (*wall-clock deadline*) di samping had masa sambungan tidak aktif. Pemasa dibersihkan apabila imbasan selesai atau gagal. Ini memastikan respons pelayan yang dihantar sedikit demi sedikit tidak boleh mengekalkan sambungan tanpa had. Ujian regresi `tests/clamav-instream.test.ts` meniru daemon yang menghantar bait secara berkala dan mengesahkan imbasan ditolak apabila tempoh keseluruhan tamat. Kod telah dikomitkan, tetapi keputusan CI belum disahkan.
+
+## Pelaksana kelompok imbasan dokumen (opt-in)
+
+Ditambah `apps/api/src/document-scan-runner.ts`, arahan sekali jalan `scripts/scan-documents.ts` dan skrip npm `npm run documents:scan`. Proses hanya dibenarkan apabila `STAYLINK_DOCUMENT_SCAN_BATCH_ENABLED=true`, storan dokumen diaktifkan secara jelas dan `STAYLINK_CLAMAV_ENABLED=true`. Had `STAYLINK_DOCUMENT_SCAN_BATCH_LIMIT` lalai 10, maksimum 50. Proses menggunakan lease atomik dan semakan integriti SHA-256 yang telah dibangunkan, kemudian mengeluarkan ringkasan jumlah dokumen diperiksa, bersih, dijangkiti, gagal dan dilangkau. Ujian ditambah untuk opt-in, konfigurasi, had dan kelompok kosong. Pada masa ini adapter `local` masih terhad kepada `development`/`test`; **jangan jalankan arahan ini pada produksi**. Tiada scheduler automatik, storan produksi atau laluan muat naik diaktifkan. Keputusan CI belum disahkan.
