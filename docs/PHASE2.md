@@ -305,3 +305,7 @@ Halaman `PremisesSummary` kini memaparkan `PreliminaryDocumentChecklist` dan `Dr
 ## Pengendalian ralat semakan metadata dokumen pada portal
 
 `PreliminaryDocumentChecklist` kini menyediakan pautan `Log masuk semula` apabila GET dokumen memulangkan HTTP 401; pautan mengekalkan laluan kembali ke `/permohonan/draf/:id/semakan`. HTTP 409 (konteks pemohon tidak konsisten) dipaparkan sebagai arahan menyemak semula maklumat draf tanpa mendedahkan maklumat dalaman. Jadual metadata kekal tersembunyi semasa ralat. Tiada pengaktifan muat naik atau penghantaran rasmi. CI, ujian pelayar dan integrasi belum disahkan.
+
+## Pembetulan CI daripada anotasi GitHub Actions (17 Nov 2026)
+
+Run #119 menunjukkan kegagalan TypeScript (exit code 2). Pembetulan pada branch pembangunan: `tests/document-scan-lease.test.ts` menambah penukaran melalui `unknown` untuk pemeriksaan argumen mock; `apps/api/src/routes.ts` menyerahkan `Uint8Array` kepada medan Prisma Bytes; `apps/api/src/core.ts` menggunakan `ReturnType<typeof nodemailer.createTransport>` bagi transporter; `apps/api/src/clamav-scanner.ts` menyalin potongan data imbasan ke `Buffer` yang konsisten dengan jenis Node. Amaran GitHub Actions tentang Node.js 20 dan `ubuntu-latest` adalah berasingan daripada ralat TypeScript. **Keputusan run CI selepas pembetulan belum disahkan**; jangan anggap job telah lulus sehingga log baharu diperiksa.
