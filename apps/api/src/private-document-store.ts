@@ -46,17 +46,11 @@ export async function storeQuarantinedDocument(
   // being written after its integrity digest has been calculated.
   const content = Buffer.from(input.content);
   const sha256 = createHash("sha256").update(content).digest("hex");
-  await store.putQuarantined({
-    key: input.storageKey,
-    content,
-    mimeType: input.mimeType,
-  });
-  return {
-    storageKey: input.storageKey,
-    sha256,
-    byteSize: content.length,
-    mimeType: input.mimeType,
-  };
+  // Keep identity and MIME metadata stable across the asynchronous storage call.
+  const storageKey = input.storageKey;
+  const mimeType = input.mimeType;
+  await store.putQuarantined({ key: storageKey, content, mimeType });
+  return { storageKey, sha256, byteSize: content.length, mimeType };
 }
 
 // Internal quarantine integrity check. Call only after authorization for the draft;
