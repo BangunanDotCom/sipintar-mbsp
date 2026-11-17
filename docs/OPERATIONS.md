@@ -79,3 +79,7 @@ Migrasi `202610290004_premises` diperlukan pada semua persekitaran. Rangkaian/CS
 ## Had muat naik mengikut kategori (pembangunan)
 
 Pentadbir ICT boleh menetapkan had dalam Konfigurasi Teknikal: `upload_delegation_mib` (lalai 10, maksimum 20), `upload_supporting_mib` (lalai 20, maksimum 50), `upload_plan_mib` (lalai 50, maksimum 100), dan `upload_photo_mib` (lalai 10, maksimum 20). Semua nilai ialah MiB dan minimum 1. Konfigurasi mempunyai sejarah versi dan sebab perubahan. Endpoint `/api/upload-limits` mengembalikan had aktif kepada pengguna yang telah log masuk. **Hanya muat naik surat kuasa sedia ada dikuatkuasakan pada peringkat ini.** Laluan penyimpanan, imbasan keselamatan, kawalan akses dan muat naik berperingkat untuk kategori lain mesti dibangunkan dan diuji sebelum diaktifkan. Jangan menganggap konfigurasi ini sebagai modul muat naik PPTT yang siap.
+
+## Pemeriksaan automatik cabang pembangunan
+
+Workflow `.github/workflows/staylink-phase1.yml` disediakan untuk `push` dan `pull_request` pada cabang `staylink-mbsp-phase1`. Ia menjalankan `npm ci`, `npm run db:generate`, `npm run typecheck`, `npm test` dan `npm run build`. Ia **tidak** menjalankan migrasi produksi, membuat deployment atau mengubah Cloudflare Worker. Kejayaan sebenar perlu disahkan melalui status GitHub Actions; kewujudan fail workflow sahaja bukan bukti ujian lulus. Migrasi PostgreSQL dan ujian integrasi masih memerlukan persekitaran ujian yang berasingan.
