@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Typecheck, lint and unit tests
+    name: Typecheck, lint and database-free tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -38,5 +38,7 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Run unit and local integration tests
-        run: npm test
+      # Database integration tests require an isolated PostgreSQL _test database
+      # and Mailpit; never run them against a production or unspecified database.
+      - name: Run database-free tests
+        run: npx vitest run --exclude tests/api.test.ts
