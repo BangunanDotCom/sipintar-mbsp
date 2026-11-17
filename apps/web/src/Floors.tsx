@@ -32,6 +32,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const [error, setError] = React.useState("");
+  const [conflict, setConflict] = React.useState(false);
   const [mismatches, setMismatches] = React.useState<{ field: string; label: string; declared: number; calculated: number }[]>([]);
   React.useEffect(() => {
     if (query.data && !dirty) {
@@ -70,7 +71,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
       <Notice>Maklumat masih berstatus draf. Penghantaran rasmi kepada MBSP belum diaktifkan.</Notice>
       <form className="panel" onSubmit={async (event) => {
         event.preventDefault();
-        setError(""); setMessage("");
+        setError(""); setMessage(""); setConflict(false);
         const result = premiseFloorsSchema.safeParse(floors);
         if (!result.success) {
           setError(result.error.issues.map((issue) => issue.message).join(" "));
@@ -88,6 +89,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
           await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
           await qc.invalidateQueries({ queryKey: ["application-drafts"] });
         } catch (cause: any) {
+          setConflict(cause instanceof ApiError && cause.status === 409);
           setError(cause.message || "Maklumat gagal disimpan.");
         } finally { setBusy(false); }
       }}>
@@ -150,6 +152,10 @@ function FloorEditor({ draftId }: { draftId: string }) {
           </Notice>
         )}
         {error && <Notice error>{error}</Notice>}
+        {conflict && <button type="button" className="button secondary" disabled={busy} onClick={async () => {
+          setDirty(false); setConflict(false); setError(""); setMessage("");
+          await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
+        }}>Muat semula draf terkini (perubahan belum disimpan akan hilang)</button>}
         {message && <Notice>{message}</Notice>}
         <button className="button" disabled={busy || !totals}>
           {busy ? "Menyimpan…" : "Simpan butiran tingkat"}
