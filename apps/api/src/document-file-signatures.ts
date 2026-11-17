@@ -1,7 +1,10 @@
 // Structural checks only; they do not replace antivirus scanning or file parsing.
 export function matchesDeclaredFileSignature(content: Buffer, mimeType: string): boolean {
   if (mimeType === "application/pdf")
-    return content.length >= 8 && content.subarray(0, 5).toString("ascii") === "%PDF-";
+    // Require a syntactically valid PDF version header, not just the magic prefix.
+    return content.length >= 8 && content.subarray(0, 5).toString("ascii") === "%PDF-" &&
+      content[5] >= 0x30 && content[5] <= 0x39 && content[6] === 0x2e &&
+      content[7] >= 0x30 && content[7] <= 0x39;
   if (mimeType === "image/jpeg")
     return content.length >= 4 && content[0] === 0xff && content[1] === 0xd8 &&
       content[2] === 0xff && content[content.length - 2] === 0xff &&
