@@ -385,3 +385,7 @@ Ujian `document-scan-worker.test.ts` dikemas kini dengan medan `byteSize` yang d
 ## Kawalan tambahan bacaan kuarantin dan ujian lease pengimbas
 
 `readVerifiedQuarantinedDocument()` kini menolak metadata saiz melebihi 100 MiB (had siling terbesar bagi kategori dokumen) sebelum adapter storan dibaca. Ujian regresi memastikan bacaan storan tidak berlaku untuk metadata tidak sah. Ujian `document-scan-worker.test.ts` turut meliputi perebutan lease antara pekerja, kehilangan lease sebelum keputusan disimpan, dan keputusan pengimbas dengan nama enjin kosong. Ujian ini ditambah dalam kod tetapi keputusan CI belum disahkan; ia tidak mengaktifkan storan atau muat naik produksi.
+
+## Had bacaan kuarantin mengikut kategori dokumen
+
+Semakan `readVerifiedQuarantinedDocument()` tidak lagi menggunakan had umum 100 MiB untuk semua kategori. Ia mengekstrak kategori daripada kunci storan yang telah disahkan milik draf, memadankannya kepada polisi muat naik pusat, lalu menolak `expectedByteSize` melebihi siling kategori sebelum mengakses storan. Ujian regresi meliputi foto melebihi 20 MiB dan dokumen sokongan melebihi 50 MiB. Had ini ialah kawalan keselamatan, bukan kelulusan fail; pengimbasan malware dan kawalan akses masih diperlukan. CI belum disahkan.
