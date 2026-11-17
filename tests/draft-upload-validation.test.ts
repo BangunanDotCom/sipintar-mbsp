@@ -6,7 +6,8 @@ const png = Buffer.concat([
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
   Buffer.from([0, 0, 0, 13]),
   Buffer.from("IHDR"),
-  Buffer.alloc(13),
+  Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0]),
+  Buffer.alloc(4), // IHDR CRC placeholder: signature-only fixture, not a decoded image.
 ]);
 
 describe("draft upload validation", () => {
@@ -24,6 +25,13 @@ describe("draft upload validation", () => {
     expect(validateDraftUpload(png.toString("base64"), "photo", "image/png", 1).mimeType)
       .toBe("image/png");
     expect(() => validateDraftUpload(png.toString("base64"), "plan", "image/png", 1)).toThrow();
+  });
+  it("rejects truncated PNG headers and zero image dimensions", () => {
+    const truncated = png.subarray(0, 24);
+    expect(() => validateDraftUpload(truncated.toString("base64"), "photo", "image/png", 1)).toThrow();
+    const zeroWidth = Buffer.from(png);
+    zeroWidth.writeUInt32BE(0, 16);
+    expect(() => validateDraftUpload(zeroWidth.toString("base64"), "photo", "image/png", 1)).toThrow();
   });
   it("rejects empty files and oversized content", () => {
     expect(() => validateDraftUpload("", "supporting", "application/pdf", 1)).toThrow();
