@@ -20,6 +20,7 @@ import {
 import PremisesMap from "./PremisesMap";
 import { FloorReview } from "./FloorReview";
 import { PreliminaryDocumentChecklist } from "./PreliminaryDocumentChecklist";
+import { DraftDocumentReadiness } from "./DraftDocumentReadiness";
 import "./premises.css";
 const textFields = [
   { name: "address", label: "Alamat penuh premis", max: 1000, area: true },
@@ -182,6 +183,7 @@ function PremisesSummary({ record, userId }: { record: any; userId: string }) {
       </div>
       <FloorReview draftId={record.draftId} premises={p} />
       <PreliminaryDocumentChecklist draftId={record.draftId} userId={userId} capacity={record.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL"} />
+      <DraftDocumentReadiness draftId={record.draftId} userId={userId} />
       <div className="premises-actions">
         <Link
           className="button secondary"
