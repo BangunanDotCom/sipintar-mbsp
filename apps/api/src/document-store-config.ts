@@ -9,8 +9,9 @@ export function configuredDocumentStore(
   const mode = env.STAYLINK_DOCUMENT_STORE ?? "disabled";
   if (mode === "disabled") return new DisabledDocumentStore();
   if (mode !== "local") throw new Error("Jenis storan dokumen tidak disokong.");
-  if (env.NODE_ENV === "production")
-    throw new Error("Storan dokumen setempat tidak dibenarkan dalam produksi.");
+  // Explicit allowlist: an unset, misspelled or unexpected environment must fail closed.
+  if (env.NODE_ENV !== "development" && env.NODE_ENV !== "test")
+    throw new Error("Storan dokumen setempat hanya dibenarkan untuk pembangunan atau ujian.");
   if (env.STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED !== "true")
     throw new Error("Storan dokumen setempat memerlukan pengaktifan khusus.");
   const root = env.STAYLINK_LOCAL_DOCUMENT_ROOT;
