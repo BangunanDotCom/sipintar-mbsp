@@ -31,8 +31,8 @@ describe("document scan lease ownership", () => {
     const f = setup();
     await expect(processPendingDocumentScan(f.db, f.store, f.scanner, id)).resolves.toBe("CLEAN");
     expect(f.updateMany).toHaveBeenCalledTimes(2);
-    const claim = f.updateMany.mock.calls[0][0] as { where: { OR: unknown }; data: { scanStatus: string; scanLeaseToken: string } };
-    const complete = f.updateMany.mock.calls[1][0] as { where: { scanLeaseToken: string; scanLeaseExpiresAt: unknown } };
+    const claim = f.updateMany.mock.calls[0][0] as unknown as { where: { OR: unknown }; data: { scanStatus: string; scanLeaseToken: string } };
+    const complete = f.updateMany.mock.calls[1][0] as unknown as { where: { scanLeaseToken: string; scanLeaseExpiresAt: unknown } };
     expect(claim.where.OR).toEqual([
       { scanStatus: "PENDING" },
       { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: expect.any(Date) } },
