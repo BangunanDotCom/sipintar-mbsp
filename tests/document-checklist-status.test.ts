@@ -128,6 +128,14 @@ describe("document checklist statuses", () => {
     expect(summary.optionalTotal).toBeGreaterThan(0);
     expect(summary.optionalRecorded).toBe(1);
     expect(empty.optionalRecorded).toBe(0);
+    expect(summary.optionalAttention).toBe(0);
+    const unsafeOptional = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", [
+      { ...doc(1, "INFECTED", "VERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "REJECTED"), category: "building_certificate" },
+    ]));
+    expect(unsafeOptional.optionalRecorded).toBe(2);
+    expect(unsafeOptional.optionalAttention).toBe(2);
+    expect(unsafeOptional.safetyAttention).toBe(0);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
