@@ -113,6 +113,7 @@ describe("officer document triage preview", () => {
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
     expect(markup).toContain("Kategori dengan dokumen disahkan: 1");
     expect(markup).toContain("Lihat 1 kategori dengan dokumen disahkan pegawai");
+    expect(markup).toContain("Persediaan utama disahkan: 1 kategori. Dokumen tambahan disahkan jika berkaitan: 0 kategori.");
     expect(markup).toContain("Pelan lokasi dan premis — Versi 1");
     expect(markup).toContain("Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
     expect(markup).toContain("Kategori tanpa rekod aktif: 5");
@@ -126,6 +127,16 @@ describe("officer document triage preview", () => {
     expect(markup).not.toContain("role=\"alert\"");
     expect(markup).not.toContain("Fokus isu kritikal");
     expect(markup).toContain("disabled");
+  });
+
+  it("separates verified optional categories from verified primary categories", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      record("premises_plan", "CLEAN", "VERIFIED"),
+      record("fire_safety", "CLEAN", "VERIFIED"),
+    ]);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Lihat 2 kategori dengan dokumen disahkan pegawai");
+    expect(markup).toContain("Persediaan utama disahkan: 1 kategori. Dokumen tambahan disahkan jika berkaitan: 1 kategori.");
   });
 
   it("uses distinct accessible field IDs for two instances on the same page", () => {
