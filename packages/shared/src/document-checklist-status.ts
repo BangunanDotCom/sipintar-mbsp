@@ -22,9 +22,9 @@ export function documentChecklistRows(
 ): DocumentChecklistRow[] {
   return preliminaryDocumentChecklist(capacity).map((requirement) => {
     const current = documents
-      .filter((d) => d.category === requirement.category && !d.supersededAt)
+      .filter((d) => d.category === requirement.category && d.supersededAt === null && Number.isSafeInteger(d.version) && d.version > 0)
       .sort((a, b) => b.version - a.version)[0] ?? null;
-    let state: DocumentChecklistRow["state"] = "MISSING";
+    // Conflicting active records at the same version must never appear verified.\n    const duplicateVersion = current !== null && documents.filter((d) =>\n      d.category === requirement.category && d.supersededAt === null && d.version === current.version\n    ).length > 1;\n    let state: DocumentChecklistRow["state"] = "MISSING";
     if (current) {
       if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
