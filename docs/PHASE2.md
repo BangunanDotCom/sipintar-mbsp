@@ -317,3 +317,7 @@ Workflow `staylink-phase1-checks.yml` menggunakan `ubuntu-24.04` (bukan `ubuntu-
 ## Perlindungan paparan draf pemohon (17 Nov 2026)
 
 Endpoint `GET /api/application-drafts` dan `GET /api/application-drafts/:id` kini menetapkan `Cache-Control: private, no-store, max-age=0` serta `Pragma: no-cache` kerana respons mengandungi snapshot maklumat pemohon. Endpoint buka semula draf turut mengesahkan `capacity` yang disokong dan konsistensi `officialApplicantUserId`, `initiatedByUserId`, serta `companyId` sebelum memulangkan draf; semakan autoriti wakil syarikat dikekalkan. Semakan ini tidak menggantikan autentikasi atau autorisasi sedia ada. CI/typecheck/lint/test selepas perubahan belum disahkan lulus; muat naik dokumen dan penghantaran rasmi masih dinyahaktifkan.
+
+## Kawalan integriti semasa mengemas kini draf
+
+Endpoint `PATCH /api/application-drafts/:id` kini mengesahkan nilai kapasiti pemohon dan konsistensi identiti tersimpan (`officialApplicantUserId`, `initiatedByUserId`, `companyId`) sebelum mengambil snapshot baharu atau menjalankan `updateMany`. Rekod tidak konsisten menerima HTTP 409 dan tidak ditulis semula. Autorisasi wakil syarikat asal, semakan versi optimistik dan audit simpanan kekal. CI, typecheck, lint dan ujian integrasi selepas commit belum disahkan; penghantaran rasmi dan muat naik masih tidak diaktifkan.
