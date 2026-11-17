@@ -362,5 +362,6 @@ model ApplicationDocument {
  supersededAt DateTime?
  @@unique([draftId, category, version])
  @@index([draftId, category, uploadedAt])
+ @@index([scanStatus, scanLeaseExpiresAt])
  @@map("application_documents")
 }
