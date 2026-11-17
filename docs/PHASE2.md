@@ -321,3 +321,7 @@ Endpoint `GET /api/application-drafts` dan `GET /api/application-drafts/:id` kin
 ## Kawalan integriti semasa mengemas kini draf
 
 Endpoint `PATCH /api/application-drafts/:id` kini mengesahkan nilai kapasiti pemohon dan konsistensi identiti tersimpan (`officialApplicantUserId`, `initiatedByUserId`, `companyId`) sebelum mengambil snapshot baharu atau menjalankan `updateMany`. Rekod tidak konsisten menerima HTTP 409 dan tidak ditulis semula. Autorisasi wakil syarikat asal, semakan versi optimistik dan audit simpanan kekal. CI, typecheck, lint dan ujian integrasi selepas commit belum disahkan; penghantaran rasmi dan muat naik masih tidak diaktifkan.
+
+## Pengasingan ujian CI dan pembetulan laporan 17 Nov 2026
+
+Ujian `document-submission-readiness-db.test.ts` kini menjangkakan medan `unexpectedActiveDocuments: false` pada respons selamat. `tests/api.test.ts` tidak lagi memanggil `app.close()` apabila `beforeAll` gagal sebelum aplikasi diwujudkan; pengesahan `TEST_DATABASE_URL` yang mesti berakhir dengan `_test` dikekalkan. Workflow push kini menjalankan `npx vitest run --exclude tests/api.test.ts` selepas typecheck/lint, dan nama job menerangkan bahawa ia hanya menjalankan ujian tanpa pangkalan data. **Ujian integrasi API sebenar belum dijalankan oleh CI ini**: ia memerlukan PostgreSQL ujian khusus, migrasi dan Mailpit; ini kerja susulan wajib sebelum release. Jangan tafsir status hijau job ini sebagai bukti ujian integrasi atau kesiapsiagaan produksi. Keputusan run baharu masih belum disahkan.
