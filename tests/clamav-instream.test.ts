@@ -47,6 +47,23 @@ describe("ClamAV INSTREAM TCP protocol", () => {
       Buffer.from("malicious test"),
     )).resolves.toEqual({ status: "INFECTED", engine: "ClamAV" });
   });
+  it("enforces a total deadline when the daemon trickles bytes", async () => {
+    const server = createServer((socket) => {
+      socket.on("data", () => undefined);
+      const interval = setInterval(() => {
+        if (!socket.destroyed) socket.write(" ");
+      }, 100);
+      socket.on("close", () => clearInterval(interval));
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No test port");
+    const started = Date.now();
+    await expect(new ClamAvScanner("127.0.0.1", address.port, 1000)
+      .scan(Buffer.from("test"))).rejects.toThrow("tamat masa");
+    expect(Date.now() - started).toBeLessThan(2500);
+  });
   it("fails closed when daemon reports an error", async () => {
     const port = await mockClamd("stream: INSTREAM size limit exceeded. ERROR");
     await expect(new ClamAvScanner("127.0.0.1", port, 2000).scan(
