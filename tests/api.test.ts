@@ -65,16 +65,28 @@ async function emailToken(email: string, type: string) {
     orderBy: { createdAt: "desc" },
   });
   if (log.status === "SENT") {
-    const msgs: any = await fetch("http://localhost:8025/api/v1/messages").then(
-      (r) => r.json(),
-    );
-    const m = msgs.messages.find((m: any) =>
-      m.To?.some((to: any) => to.Address === email),
-    );
-    const detail: any = await fetch(
-      `http://localhost:8025/api/v1/message/${m.ID}`,
-    ).then((r) => r.json());
-    return new URL(detail.Text.trim()).searchParams.get("token")!;
+    // SMTP delivery and Mailpit indexing may complete at different times.
+    // Bound retries to avoid hiding a broken integration environment.
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const response = await fetch("http://localhost:8025/api/v1/messages");
+      if (!response.ok) throw Error("Mailpit message listing unavailable.");
+      const msgs: any = await response.json();
+      const message = msgs.messages?.find((item: any) =>
+        item.To?.some((to: any) => to.Address === email),
+      );
+      if (message) {
+        const detailResponse = await fetch(
+          `http://localhost:8025/api/v1/message/${encodeURIComponent(message.ID)}`,
+        );
+        if (!detailResponse.ok) throw Error("Mailpit message detail unavailable.");
+        const detail: any = await detailResponse.json();
+        const value = new URL(detail.Text.trim()).searchParams.get("token");
+        if (!value) throw Error("Mailpit verification token missing.");
+        return value;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw Error("Expected test email not found in Mailpit within 3 seconds.");
   }
   return new URL(
     JSON.parse(decrypt(log.encryptedPayload)).text.trim(),
