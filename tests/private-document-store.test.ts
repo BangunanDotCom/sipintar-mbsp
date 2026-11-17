@@ -64,6 +64,14 @@ describe("private document quarantine adapter", () => {
       draftId, storageKey, expectedSha256: "0".repeat(64),
       expectedByteSize: 101 * 1024 * 1024,
     })).rejects.toThrow("Metadata integriti");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      expectedSha256: "0".repeat(64), expectedByteSize: 21 * 1024 * 1024,
+    })).rejects.toThrow("Metadata integriti");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "ownership_or_tenancy"),
+      expectedSha256: "0".repeat(64), expectedByteSize: 51 * 1024 * 1024,
+    })).rejects.toThrow("Metadata integriti");
     expect(readQuarantined).not.toHaveBeenCalled();
   });
   it("rejects cross-draft keys before storage access", async () => {
