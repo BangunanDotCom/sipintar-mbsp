@@ -1,4 +1,5 @@
 import { premisesRoutes } from "./premises.js";
+import { premiseFloorRoutes } from "./premise-floors.js";
 import { delegationLimitMiB, validateDelegationPdf, UPLOAD_CATEGORIES, uploadLimitMiB, uploadPolicyKey, uploadCategoryForKey } from "./upload-policy.js";
 import { applicationDraftRoutes } from "./application-drafts.js";
 import argon2 from "argon2";
@@ -47,6 +48,7 @@ export async function routes(app: FastifyInstance) {
   await companyInvitationRoutes(app);
   await applicationDraftRoutes(app);
   await premisesRoutes(app);
+  await premiseFloorRoutes(app);
   app.post("/api/profile/identification", async (req) => {
     const s = await session(req);
     if (s.user.kind !== "APPLICANT") fail(403, "Akaun pemohon diperlukan.");
