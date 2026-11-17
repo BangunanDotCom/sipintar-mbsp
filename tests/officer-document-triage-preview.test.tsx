@@ -63,5 +63,10 @@ describe("officer document triage preview", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.length).toBe(10);
     expect((markup.match(/aria-labelledby=/g) ?? []).length).toBe(2);
+    const labels = [...markup.matchAll(/\\bfor="([^"]+)"/g)].map((match) => match[1]);
+    expect(labels).toHaveLength(8);
+    expect(labels.every((id) => ids.includes(id))).toBe(true);
+    const headingRefs = [...markup.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
+    expect(headingRefs.every((id) => ids.includes(id))).toBe(true);
   });
 });
