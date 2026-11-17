@@ -4,6 +4,7 @@ import {
   documentReviewQueueSummary,
   filterDocumentReviewQueue,
   documentReviewNextActionLabels,
+  documentStatusLabels,
   type DocumentChecklistRow,
   type DocumentReviewPriorityFilter,
   type DocumentReviewOwnerFilter,
@@ -88,11 +89,12 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       <div style={{ overflowX: "auto" }}>
         <table>
           <caption>Senarai tindakan susulan dokumen mengikut keutamaan dan pihak bertanggungjawab</caption>
-          <thead><tr><th scope="col">Dokumen</th><th scope="col">Keutamaan</th><th scope="col">Pihak</th><th scope="col">Versi</th><th scope="col">Panduan tindakan</th></tr></thead>
+          <thead><tr><th scope="col">Dokumen</th><th scope="col">Status dokumen</th><th scope="col">Keutamaan</th><th scope="col">Pihak</th><th scope="col">Versi</th><th scope="col">Panduan tindakan</th></tr></thead>
           <tbody>
             {filtered.map((item) => (
               <tr key={item.category}>
                 <th scope="row">{item.label}</th>
+                <td>{documentStatusLabels[item.state]}</td>
                 <td>{priorityLabels[item.priority]}</td>
                 <td>{ownerLabels[item.actionOwner]}</td>
                 <td>{item.version ?? "Tiada versi aktif"}</td>
