@@ -1,0 +1,58 @@
+import { createHash } from "node:crypto";
+import type { PrismaClient } from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
+import { processPendingDocumentScan } from "../apps/api/src/document-scan-worker.js";
+import type { PrivateDocumentStore } from "../apps/api/src/private-document-store.js";
+import type { DocumentMalwareScanner } from "../apps/api/src/document-malware-scanner.js";
+import { createPrivateDocumentKey } from "../apps/api/src/private-document-keys.js";
+
+const draftId = "550e8400-e29b-41d4-a716-446655440000";
+const bytes = Buffer.from("%PDF-1.7\nexample");
+const document = {
+  id: "550e8400-e29b-41d4-a716-446655440002",
+  draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
+  sha256: createHash("sha256").update(bytes).digest("hex"),
+  scanStatus: "PENDING", supersededAt: null,
+};
+function setup(overrides: Partial<typeof document> = {}) {
+  const findUnique = vi.fn(async () => ({ ...document, ...overrides }));
+  const updateMany = vi.fn(async () => ({ count: 1 }));
+  const db = { applicationDocument: { findUnique, updateMany } } as unknown as PrismaClient;
+  const store: PrivateDocumentStore = {
+    putQuarantined: async () => undefined,
+    readQuarantined: async () => bytes,
+    deleteQuarantined: async () => undefined,
+  };
+  const scan = vi.fn(async () => ({ status: "CLEAN" as const, engine: "test" }));
+  const scanner: DocumentMalwareScanner = { scan };
+  return { db, store, scanner, findUnique, updateMany, scan };
+}
+describe("document scan worker state transition", () => {
+  it("persists CLEAN only after a successful scan", async () => {
+    const s = setup();
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("CLEAN");
+    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ scanStatus: "PENDING", supersededAt: null }),
+      data: { scanStatus: "CLEAN" },
+    }));
+  });
+  it("persists FAILED if scanner cannot run", async () => {
+    const s = setup();
+    s.scan.mockRejectedValueOnce(new Error("daemon offline"));
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("FAILED");
+    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { scanStatus: "FAILED" } }));
+  });
+  it("skips already processed or superseded records", async () => {
+    for (const override of [{ scanStatus: "CLEAN" }, { supersededAt: new Date().toISOString() }]) {
+      const s = setup(override);
+      await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("SKIPPED");
+      expect(s.scan).not.toHaveBeenCalled();
+      expect(s.updateMany).not.toHaveBeenCalled();
+    }
+  });
+  it("does not claim success if another worker already changed the row", async () => {
+    const s = setup();
+    s.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("SKIPPED");
+  });
+});
