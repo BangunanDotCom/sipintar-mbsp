@@ -48,6 +48,31 @@ describe("draft readiness", () => {
     expect(result.readyForNextStage).toBe(false);
     expect(result.floorsComplete).toBe(false);
   });
+  it("rejects a mismatch in floor count even if rooms, workers and area match", () => {
+    const result = evaluateDraftReadiness({
+      premises: { ...premises, involvedFloors: 2 },
+      floors,
+    });
+    expect(result.readyForNextStage).toBe(false);
+    expect(result.consistent).toBe(false);
+    expect(result.issues.join(" ")).toContain("Bilangan tingkat");
+  });
+  it("rejects a mismatch in total floor area", () => {
+    const result = evaluateDraftReadiness({
+      premises: { ...premises, floorAreaSqm: 100.01 },
+      floors,
+    });
+    expect(result.readyForNextStage).toBe(false);
+    expect(result.issues.join(" ")).toContain("Keluasan lantai");
+  });
+  it("rejects duplicate floor labels with normalized whitespace", () => {
+    const result = evaluateDraftReadiness({
+      premises: { ...premises, involvedFloors: 2, totalRooms: 4, proposedWorkers: 8, floorAreaSqm: 200 },
+      floors: [...floors, { ...floors[0], floorLabel: "Tingkat   Bawah" }],
+    });
+    expect(result.readyForNextStage).toBe(false);
+    expect(result.floorsComplete).toBe(false);
+  });
   it("reports discrepancies without approving the draft", () => {
     const result = evaluateDraftReadiness({
       premises: { ...premises, proposedWorkers: 6 }, floors,
