@@ -5,6 +5,7 @@ import { db } from "./core.js";
 import { fail } from "./auth.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { premiseFloorsSchema, summarizePremiseFloors } from "../../../packages/shared/src/floor-summary.js";
+import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
 
 const paramsSchema = z.object({ id: z.uuid() });
 async function authorizedDraft(
@@ -34,11 +35,19 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         areaSqm: Number(row.areaSqm),
         facilities: row.facilities,
       }));
+      const totals = floors.length ? summarizePremiseFloors(premiseFloorsSchema.parse(floors)) : null;
+      const premises = await tx.applicationPremises.findUnique({ where: { draftId: id } });
+      const mismatches = totals ? comparePremisesTotals(premises ? {
+        involvedFloors: premises.involvedFloors,
+        totalRooms: premises.totalRooms,
+        proposedWorkers: premises.proposedWorkers,
+        floorAreaSqm: premises.floorAreaSqm === null ? null : Number(premises.floorAreaSqm),
+      } : null, totals) : [];
       return {
         draftId: id,
         version: draft.version,
         floors,
-        totals: floors.length ? summarizePremiseFloors(premiseFloorsSchema.parse(floors)) : null,
+        totals, mismatches,
       };
     });
   });
@@ -73,7 +82,14 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
           metadata: { version: input.version + 1, floorCount: totals.floors },
         },
       });
-      return { draftId: id, version: input.version + 1, totals };
+      const premises = await tx.applicationPremises.findUnique({ where: { draftId: id } });
+      const mismatches = comparePremisesTotals(premises ? {
+        involvedFloors: premises.involvedFloors,
+        totalRooms: premises.totalRooms,
+        proposedWorkers: premises.proposedWorkers,
+        floorAreaSqm: premises.floorAreaSqm === null ? null : Number(premises.floorAreaSqm),
+      } : null, totals);
+      return { draftId: id, version: input.version + 1, totals, mismatches };
     });
   });
 }
