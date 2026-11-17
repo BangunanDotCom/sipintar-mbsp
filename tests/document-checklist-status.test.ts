@@ -125,6 +125,9 @@ describe("document checklist statuses", () => {
     expect(summary.rejected).toBe(1);
     expect(summary.total).toBe(empty.total);
     expect(summary.missing).toHaveLength(empty.total - 2);
+    expect(summary.optionalTotal).toBeGreaterThan(0);
+    expect(summary.optionalRecorded).toBe(1);
+    expect(empty.optionalRecorded).toBe(0);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
