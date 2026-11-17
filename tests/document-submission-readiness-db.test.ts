@@ -23,7 +23,7 @@ describe("database-backed document readiness snapshot", () => {
       scanStatus: "CLEAN", verificationStatus: "UNVERIFIED", supersededAt: null,
     })));
     await expect(loadDocumentSubmissionReadiness(f.db, draftId, "INDIVIDUAL"))
-      .resolves.toEqual({ ready: true, blockingCategories: [], pendingScanCategories: [] });
+      .resolves.toEqual({ ready: true, blockingCategories: [], pendingScanCategories: [], unexpectedActiveDocuments: false });
     expect(f.findMany).toHaveBeenCalledWith({
       where: { draftId },
       select: {
