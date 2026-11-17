@@ -6,6 +6,7 @@ import { db } from "./core.js";
 import { validRepresentative } from "./company-invitations.js";
 import { loadDocumentSubmissionReadiness } from "./document-submission-readiness-db.js";
 import { validDraftApplicantContext } from "./draft-applicant-context.js";
+import { documentReadinessGuidance } from "./document-readiness-guidance.js";
 import {
   applicationDraftSchema,
   applicationDraftUpdateSchema,
@@ -268,7 +269,12 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
       )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
       const readiness = await loadDocumentSubmissionReadiness(tx, draft.id, draft.capacity);
-      return { draftId: draft.id, ...readiness, submissionEnabled: false };
+      return {
+        draftId: draft.id,
+        ...readiness,
+        guidance: documentReadinessGuidance(draft.capacity, readiness),
+        submissionEnabled: false,
+      };
     });
   });
   app.post("/api/application-drafts/:id/submit", async (req) => {
