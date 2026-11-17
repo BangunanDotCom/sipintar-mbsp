@@ -125,7 +125,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         {" "}Mengikut pihak: {filteredSummary.officerTasks} pegawai, {filteredSummary.applicantTasks} pemohon dan {filteredSummary.systemTasks} sistem.
         {" "}Mengikut status: {visibleStatusCounts.CONFLICT} konflik, {visibleStatusCounts.UNSAFE} isu keselamatan, {visibleStatusCounts.REJECTED} ditolak, {visibleStatusCounts.PENDING_SCAN} menunggu imbasan dan {visibleStatusCounts.PENDING_REVIEW} menunggu pengesahan.
       </p>
-      <div style={{ overflowX: "auto" }}>
+      {filtered.length > 0 && <div style={{ overflowX: "auto" }}>
         <table>
           <caption>Senarai tindakan susulan dokumen mengikut keutamaan dan pihak bertanggungjawab</caption>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Status dokumen</th><th scope="col">Keutamaan</th><th scope="col">Pihak</th><th scope="col">Versi</th><th scope="col">Panduan tindakan</th></tr></thead>
@@ -142,7 +142,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
       {filtered.length === 0 && (
         <p>{queue.length === 0 ? "Tiada dokumen yang memerlukan tindakan susulan dalam senarai semasa." : "Tiada rekod sepadan dengan penapis. Kosongkan penapis untuk melihat semua rekod."}</p>
       )}
