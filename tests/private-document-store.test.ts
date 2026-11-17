@@ -60,6 +60,10 @@ describe("private document quarantine adapter", () => {
     await expect(readVerifiedQuarantinedDocument(adapter, {
       draftId, storageKey, expectedSha256: "invalid", expectedByteSize: 1,
     })).rejects.toThrow("Metadata integriti");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: "0".repeat(64),
+      expectedByteSize: 101 * 1024 * 1024,
+    })).rejects.toThrow("Metadata integriti");
     expect(readQuarantined).not.toHaveBeenCalled();
   });
   it("rejects cross-draft keys before storage access", async () => {
