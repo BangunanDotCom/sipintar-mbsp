@@ -40,11 +40,11 @@ export async function storeQuarantinedDocument(
     throw new Error("Saiz fail tidak dibenarkan.");
   if (!policy.mime.split(",").includes(input.mimeType))
     throw new Error("Jenis fail tidak dibenarkan bagi kategori dokumen.");
-  if (!matchesDeclaredFileSignature(input.content, input.mimeType))
-    throw new Error("Kandungan fail tidak sepadan dengan MIME.");
-  // Snapshot caller-owned bytes so later caller mutations cannot alter the object
-  // being written after its integrity digest has been calculated.
+  // Validate the exact snapshot that will be hashed and stored. Checking the
+  // caller-owned Buffer first would leave a mutation window before copying.
   const content = Buffer.from(input.content);
+  if (!matchesDeclaredFileSignature(content, input.mimeType))
+    throw new Error("Kandungan fail tidak sepadan dengan MIME.");
   const sha256 = createHash("sha256").update(content).digest("hex");
   // Keep identity and MIME metadata stable across the asynchronous storage call.
   const storageKey = input.storageKey;
