@@ -23,7 +23,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const summary = documentChecklistSummary(visible);
-  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows } = summary;
+  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, attentionRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -55,7 +55,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           <strong>Rekod kategori persediaan utama: {recorded} daripada {total} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verified} kategori.</strong>{" "}
           {safetyAttention > 0 && <strong> Perlu perhatian keselamatan: {safetyAttention} kategori.</strong>}{" "}
-          {conflicts > 0 && <strong> Konflik versi aktif: {conflicts} kategori — rujuk pegawai.</strong>}{" "}
+          {conflicts > 0 && <strong> Konflik sejarah/versi dokumen: {conflicts} kategori — rujuk pegawai.</strong>}{" "}
           {pendingReview > 0 && <strong> Menunggu pengesahan pegawai: {pendingReview} kategori.</strong>}{" "}
           {rejected > 0 && <strong> Ditolak pegawai: {rejected} kategori — semak maklum balas.</strong>}{" "}
           Dokumen tambahan jika berkaitan: {optionalRecorded} daripada {optionalTotal} kategori mempunyai rekod.{" "}
@@ -63,6 +63,16 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
+      )}
+      {validDocuments && attentionRows.length > 0 && (
+        <div role="status">
+          <p>Kategori persediaan utama yang memerlukan tindakan atau pemantauan:</p>
+          <ul>
+            {attentionRows.map((item) => (
+              <li key={item.category}>{item.label}: {documentStatusLabels[item.state]}. {documentNextStepLabels[item.state]}</li>
+            ))}
+          </ul>
+        </div>
       )}
       {validDocuments && optionalAttentionRows.length > 0 && (
         <div role="status">
