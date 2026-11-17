@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftDocumentUploadPolicy } from "../apps/api/src/draft-document-upload-policy.js";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels, documentReviewActionOwner, hiddenCriticalDocumentCount, criticalDocumentReviewQueue } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue, documentReviewNextAction, documentReviewNextActionLabels, documentReviewActionOwner, hiddenCriticalDocumentCount, criticalDocumentReviewQueue, documentReviewStatusSummary } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -303,6 +303,22 @@ describe("document checklist statuses", () => {
     expect(critical.every((item) => item.priority === "CRITICAL")).toBe(true);
     expect(hiddenCriticalDocumentCount(queue, critical)).toBe(0);
     expect(criticalDocumentReviewQueue([])).toEqual([]);
+  });
+  it("summarizes every triage status without counting verified or missing records", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "REJECTED"), category: "premises_plan" },
+      { ...doc(1, "PENDING", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "premises_photos" },
+    ]);
+    const summary = documentReviewStatusSummary(documentReviewQueue(rows));
+    expect(summary).toEqual({
+      CONFLICT: 0, UNSAFE: 1, REJECTED: 1, PENDING_SCAN: 1, PENDING_REVIEW: 0,
+    });
+    expect(Object.values(summary).reduce((total, count) => total + count, 0)).toBe(3);
+    expect(documentReviewStatusSummary([])).toEqual({
+      CONFLICT: 0, UNSAFE: 0, REJECTED: 0, PENDING_SCAN: 0, PENDING_REVIEW: 0,
+    });
   });
   it("counts distinct hidden critical records even if category names repeat", () => {
     const queue = documentReviewQueue(documentChecklistRows("INDIVIDUAL", [
