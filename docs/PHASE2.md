@@ -297,3 +297,7 @@ Halaman `PremisesSummary` kini memaparkan `PreliminaryDocumentChecklist` dan `Dr
 ## Paparan panduan format dan saiz fail kepada pemohon
 
 `PreliminaryDocumentChecklist` kini membaca `uploadPolicy` daripada respons metadata dokumen dan memaparkan lajur `Format & saiz fail (panduan)` mengikut kategori. Jenis MIME diterjemahkan kepada PDF/JPEG/PNG dan had saiz lalai dipaparkan dalam MiB. Jika polisi kategori tiada, paparan menyatakan panduan belum tersedia dan tidak membuat andaian. Nota menjelaskan bahawa had lalai boleh berbeza daripada konfigurasi pentadbir semasa. Tiada input fail, POST muat naik, penghantaran rasmi atau kebenaran baharu diperkenalkan. Ujian TypeScript, CI dan pelayar belum disahkan.
+
+## Pengesahan konteks pemohon untuk metadata dokumen
+
+`GET /api/application-drafts/:id/documents` kini mengesahkan konsistensi konteks pemohon tersimpan menggunakan `validDraftApplicantContext` sebelum memulangkan metadata fail atau panduan `uploadPolicy`. Draf INDIVIDUAL mesti dipaut kepada pemohon rasmi yang sama dengan pemilik draf tanpa `companyId`; draf COMPANY mesti mempunyai UUID syarikat yang sah dan tiada `officialApplicantUserId`. Autorisasi pemilik draf serta wakil syarikat yang sah kekal diperlukan. Respons turut menetapkan `Cache-Control: private, no-store, max-age=0` dan `Pragma: no-cache`. Penghantaran rasmi dan muat naik fail kekal dinyahaktifkan. Perubahan belum disahkan melalui CI, ujian integrasi PostgreSQL atau ujian pelayar.
