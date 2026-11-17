@@ -373,3 +373,7 @@ Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kate
 ## Semakan integriti ketika membaca storan kuarantin
 
 Pembantu dalaman `readVerifiedQuarantinedDocument()` kini memerlukan kunci storan yang sepadan dengan ID draf, metadata SHA-256 64 digit heksadesimal dan saiz bait positif. Selepas membaca daripada adapter kuarantin, ia mengesahkan panjang dan SHA-256 menggunakan perbandingan masa tetap sebelum memulangkan `Buffer` kepada kod dalaman yang memanggilnya. Ujian unit meliputi kandungan sah, hash/saiz tidak sepadan, metadata tidak sah dan kunci silang draf. Pembantu ini **bukan endpoint HTTP** dan tidak menjalankan semakan identiti pemohon; pemanggil mesti terlebih dahulu mengesahkan kebenaran akses. Imbasan malware, storan produksi, muat naik dan penghantaran rasmi masih belum diaktifkan. Keputusan CI belum disahkan.
+
+## Integrasi semakan integriti dengan pekerja imbasan malware
+
+`scanQuarantinedDocument()` kini menggunakan `readVerifiedQuarantinedDocument()` dan mewajibkan kedua-dua `expectedSha256` dan `expectedByteSize` sebelum memanggil pengimbas. `processPendingDocumentScan()` membaca `byteSize` daripada rekod `ApplicationDocument` dan menghantarnya bersama hash. Ujian unit menegaskan perbezaan saiz menghalang panggilan `scanner.scan`, walaupun hash sepadan. Perubahan ini tidak membuka akses HTTP kepada fail atau mengaktifkan storan produksi. Keputusan CI belum disahkan.
