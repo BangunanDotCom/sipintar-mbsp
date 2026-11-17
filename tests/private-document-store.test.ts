@@ -74,6 +74,30 @@ describe("private document quarantine adapter", () => {
       expectedByteSize: prepared.byteSize, expectedMimeType: prepared.mimeType,
     })).resolves.toEqual(bytes);
   });
+  it("returns the actual stored key and MIME when caller metadata changes during write", async () => {
+    const originalKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const input = {
+      draftId, storageKey: originalKey, content: Buffer.from(bytes),
+      mimeType: "application/pdf",
+    };
+    let storedKey = "";
+    let storedMime = "";
+    const adapter: PrivateDocumentStore = {
+      putQuarantined: async ({ key, mimeType }) => {
+        storedKey = key;
+        storedMime = mimeType;
+        input.storageKey = createPrivateDocumentKey(draftId, "premises_photos");
+        input.mimeType = "image/png";
+      },
+      readQuarantined: async () => bytes,
+      deleteQuarantined: async () => undefined,
+    };
+    const prepared = await storeQuarantinedDocument(adapter, input);
+    expect(prepared.storageKey).toBe(originalKey);
+    expect(prepared.storageKey).toBe(storedKey);
+    expect(prepared.mimeType).toBe("application/pdf");
+    expect(prepared.mimeType).toBe(storedMime);
+  });
   it("verifies stored quarantine content against the recorded digest and size", async () => {
     const { adapter } = store();
     const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
