@@ -278,7 +278,7 @@ export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): Docu
       version: row.current?.version ?? null,
       priority,
       nextAction,
-      actionOwner: row.state === "REJECTED" ? "APPLICANT" : row.state === "PENDING_SCAN" ? "SYSTEM" : "OFFICER",
+      actionOwner: documentReviewActionOwner(nextAction),
     }];
   }).sort((a, b) => rank[a.priority] - rank[b.priority]
     || a.category.localeCompare(b.category));
@@ -331,6 +331,14 @@ export function documentReviewNextAction(state: DocumentChecklistRow["state"]): 
     case "PENDING_SCAN": return "AWAIT_SCAN";
     case "REJECTED": return "APPLICANT_CORRECTION";
     default: return null;
+  }
+}
+/** Assign ownership from the recommended action, not from a second status mapping. */
+export function documentReviewActionOwner(action: DocumentReviewNextAction): DocumentReviewQueueItem["actionOwner"] {
+  switch (action) {
+    case "APPLICANT_CORRECTION": return "APPLICANT";
+    case "AWAIT_SCAN": return "SYSTEM";
+    default: return "OFFICER";
   }
 }
 export const documentReviewNextActionLabels: Record<DocumentReviewNextAction, string> = {
