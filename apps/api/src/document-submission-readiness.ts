@@ -20,7 +20,9 @@ export function documentSubmissionReadiness(
   const blockingCategories: SupportingDocumentCategory[] = [];
   const pendingScanCategories: SupportingDocumentCategory[] = [];
   for (const row of documentChecklistRows(capacity, documents)) {
-    if (row.applicability === "IF_AVAILABLE") continue;
+    // Optional documents may be absent, but an uploaded unsafe or rejected
+    // optional document must never be silently accepted at submission.
+    if (row.applicability === "IF_AVAILABLE" && row.state === "MISSING") continue;
     // Reject ambiguous active versions rather than selecting an arbitrary record.
     // A corrupt/duplicated active version must never satisfy a submission gate.
     const active = documents.filter((d) => d.category === row.category && !d.supersededAt);
