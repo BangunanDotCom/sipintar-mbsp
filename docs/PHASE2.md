@@ -453,3 +453,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pengasingan memori antara kuarantin dan adapter pengimbas
 
 `scanQuarantinedDocument` kini menghantar `Buffer.from(bytes)` kepada `scanner.scan`, bukan rujukan `Buffer` yang diterima daripada storan kuarantin. Ini menghalang adapter pengimbas yang mengubah input daripada mengubah memori asal storan. Ujian regresi menggunakan pengimbas yang mengosongkan `Buffer` input dan mengesahkan `Buffer` kuarantin kekal tidak berubah. Pengimbas produksi belum diaktifkan dan keputusan CI belum disahkan.
+
+## Had metadata identiti enjin pengimbas
+
+`scanQuarantinedDocument` kini menolak hasil pengimbas apabila `engine.trim()` kosong atau melebihi 128 aksara. Ini menghalang respons pengimbas tidak dipercayai daripada menghasilkan metadata identiti enjin yang terlalu panjang. Ujian regresi merangkumi 128 aksara (diterima) dan 129 aksara (ditolak). Pengimbas sebenar belum diaktifkan dan keputusan CI belum disahkan.
