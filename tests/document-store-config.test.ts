@@ -16,8 +16,19 @@ describe("document storage configuration", () => {
       STAYLINK_DOCUMENT_STORE: "local",
       STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED: "true",
       STAYLINK_LOCAL_DOCUMENT_ROOT: "/tmp/staylink",
-    })).toThrow("produksi");
+    })).toThrow("pembangunan atau ujian");
   });
+  it.each([undefined, "", "Production", "staging", "preview"])(
+    "fails closed for unsupported NODE_ENV %s",
+    (nodeEnv) => {
+      expect(() => configuredDocumentStore({
+        NODE_ENV: nodeEnv,
+        STAYLINK_DOCUMENT_STORE: "local",
+        STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED: "true",
+        STAYLINK_LOCAL_DOCUMENT_ROOT: "/tmp/staylink",
+      })).toThrow("pembangunan atau ujian");
+    },
+  );
   it("requires explicit opt-in and directory", () => {
     expect(() => configuredDocumentStore({
       NODE_ENV: "test", STAYLINK_DOCUMENT_STORE: "local",
