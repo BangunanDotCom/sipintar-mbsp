@@ -42,6 +42,21 @@ describe("preliminary document submission readiness", () => {
     ]);
     expect(result.pendingScanCategories).toEqual(["floor_layout"]);
   });
+  it("rejects duplicate active versions even when one appears clean", () => {
+    const result = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs,
+      document("premises_plan", { scanStatus: "INFECTED" }),
+    ]);
+    expect(result.ready).toBe(false);
+    expect(result.blockingCategories).toEqual(["premises_plan"]);
+  });
+  it("rejects invalid active version numbers", () => {
+    const result = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs.filter((d) => d.category !== "floor_layout"),
+      document("floor_layout", { version: 0 }),
+    ]);
+    expect(result.blockingCategories).toEqual(["floor_layout"]);
+  });
   it("uses current non-superseded version rather than old verified files", () => {
     const result = documentSubmissionReadiness("INDIVIDUAL", [
       ...readyDocs.filter((d) => d.category !== "premises_plan"),
