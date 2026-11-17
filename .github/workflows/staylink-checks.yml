@@ -37,6 +37,8 @@ jobs:
         run: npm run typecheck
       - name: Unit tests
         run: npm test
+      - name: Officer triage component regression tests
+        run: npx vitest run tests/officer-document-triage-preview.test.tsx
       - name: Lint
         run: npm run lint
       - name: Production web build
