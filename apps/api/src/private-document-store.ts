@@ -62,9 +62,11 @@ export async function readVerifiedQuarantinedDocument(
 ): Promise<Buffer> {
   if (!isPrivateDocumentKeyForDraft(input.storageKey, input.draftId))
     throw new Error("Kunci dokumen tidak sepadan dengan permohonan.");
+  const category = supportingDocumentCategorySchema.parse(input.storageKey.split("/")[2]);
+  const policy = UPLOAD_CATEGORIES[uploadKindForSupportingDocument(category)];
   if (!/^[a-f0-9]{64}$/i.test(input.expectedSha256) ||
       !Number.isSafeInteger(input.expectedByteSize) || input.expectedByteSize < 1 ||
-      input.expectedByteSize > UPLOAD_CATEGORIES.plan.ceilingMiB * 1024 * 1024)
+      input.expectedByteSize > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Metadata integriti dokumen tidak sah.");
   const content = await store.readQuarantined(input.storageKey);
   const actual = createHash("sha256").update(content).digest();
