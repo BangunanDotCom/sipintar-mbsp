@@ -217,3 +217,7 @@ Ditambah `apps/api/src/document-scan-runner.ts`, arahan sekali jalan `scripts/sc
 ## Kod keluar arahan imbasan dokumen
 
 Arahan `npm run documents:scan` kini memulangkan kod keluar `1` apabila sekurang-kurangnya satu dokumen mempunyai keputusan `FAILED`, membolehkan pengendali tugas menjadualkan amaran tanpa menganggap dokumen `INFECTED` sebagai ralat pengimbas. Kod keluar `0` untuk kelompok tanpa kegagalan teknikal, termasuk dokumen dijangkiti yang kekal disekat melalui status rekod. Ringkasan diperiksa supaya semua kaunter integer bukan negatif dan jumlah keputusan sepadan dengan `examined`. Ujian regresi ditambah. Fungsi ini tidak menjadualkan tugas atau menghantar notifikasi secara automatik; keputusan CI belum disahkan.
+
+## Pengasingan kegagalan setiap dokumen dalam kelompok
+
+`processPendingDocumentScanBatch` kini menangkap ralat tidak dijangka daripada `processPendingDocumentScan` bagi setiap dokumen secara berasingan, menambah kaunter `failed` dan meneruskan dokumen seterusnya. Ini meliputi contohnya kegagalan pertanyaan pangkalan data bagi satu dokumen; kegagalan pertanyaan senarai kelompok awal masih menyebabkan tugas gagal secara keseluruhan. Kod keluar CLI yang ditambah sebelum ini akan bernilai bukan sifar apabila kaunter `failed` melebihi sifar. Ujian regresi meniru kegagalan carian dokumen pertama dan memastikan dokumen kedua tetap diimbas. Keputusan CI belum disahkan.
