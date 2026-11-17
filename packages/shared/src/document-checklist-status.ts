@@ -253,6 +253,7 @@ export type DocumentReviewQueueItem = {
   version: number | null;
   priority: "CRITICAL" | "ACTION" | "WAITING";
   nextAction: DocumentReviewNextAction;
+  actionOwner: "OFFICER" | "APPLICANT" | "SYSTEM";
 };
 export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): DocumentReviewQueueItem[] {
   const priorityByState: Partial<Record<DocumentChecklistRow["state"], DocumentReviewQueueItem["priority"]>> = {
@@ -273,6 +274,7 @@ export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): Docu
       version: row.current?.version ?? null,
       priority,
       nextAction: documentReviewNextAction(row.state)!,
+      actionOwner: row.state === "REJECTED" ? "APPLICANT" : row.state === "PENDING_SCAN" ? "SYSTEM" : "OFFICER",
     }] : [];
   }).sort((a, b) => rank[a.priority] - rank[b.priority]
     || a.category.localeCompare(b.category));
@@ -287,6 +289,9 @@ export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueIt
     waiting: queue.filter((item) => item.priority === "WAITING").length,
     main: queue.filter((item) => item.applicability !== "IF_AVAILABLE").length,
     optional: queue.filter((item) => item.applicability === "IF_AVAILABLE").length,
+    officerTasks: queue.filter((item) => item.actionOwner === "OFFICER").length,
+    applicantTasks: queue.filter((item) => item.actionOwner === "APPLICANT").length,
+    systemTasks: queue.filter((item) => item.actionOwner === "SYSTEM").length,
   };
 }
 
