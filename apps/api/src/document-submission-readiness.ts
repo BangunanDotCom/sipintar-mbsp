@@ -30,12 +30,11 @@ export function documentSubmissionReadiness(
     // Optional documents may be absent, but an uploaded unsafe or rejected
     // optional document must never be silently accepted at submission.
     if (row.applicability === "IF_AVAILABLE" && row.state === "MISSING") continue;
-    // Reject ambiguous active versions rather than selecting an arbitrary record.
-    // A corrupt/duplicated active version must never satisfy a submission gate.
+    // Exactly one active version per category is allowed. Older versions must
+    // be superseded; otherwise a clean newest file could mask an unsafe one.
     const active = documents.filter((d) => d.category === row.category && !d.supersededAt);
-    const versions = new Set(active.map((d) => d.version));
     const invalidVersions = active.some((d) => !Number.isSafeInteger(d.version) || d.version < 1);
-    if (invalidVersions || versions.size !== active.length) {
+    if (invalidVersions || active.length > 1) {
       blockingCategories.push(row.category as SupportingDocumentCategory);
       continue;
     }
