@@ -393,3 +393,7 @@ Semakan `readVerifiedQuarantinedDocument()` tidak lagi menggunakan had umum 100 
 ## Pengesahan MIME ketika imbasan dokumen kuarantin
 
 `readVerifiedQuarantinedDocument()` menerima `expectedMimeType` pilihan untuk menyemak MIME terhadap kategori dokumen dan mengesahkan tandatangan struktur kandungan sebelum memulangkan bait. Pekerja imbasan kini membaca `mimeType` daripada `ApplicationDocument`, memasukkannya ke kontrak imbasan dan ke syarat perbandingan atomik semasa claim lease serta menyimpan keputusan. Ujian pekerja mengesahkan ketidakpadanan MIME menghasilkan `FAILED` tanpa memanggil pengimbas. Pengesahan tandatangan ialah semakan struktur awal sahaja, bukan parser fail atau pengganti antivirus. Keputusan CI belum disahkan dan tiada fungsi muat naik produksi diaktifkan.
+
+## Pengukuhan sempadan adapter storan
+
+Bacaan kuarantin kini mengesahkan nilai pulangan adapter ialah `Buffer` dan panjang bait sepadan dengan metadata serta siling kategori sebelum melakukan pengiraan SHA-256. Ujian regresi meliputi adapter memulangkan jenis data salah dan panjang bait berbeza. Ujian kontrak pengimbas turut mengesahkan MIME PDF yang sepadan diterima serta MIME PNG yang tidak sepadan ditolak sebelum pengimbas dipanggil. Ini bukan pengesahan penuh format fail dan tidak mengaktifkan muat naik atau storan produksi. Keputusan CI belum disahkan.
