@@ -302,6 +302,9 @@ describe("document checklist statuses", () => {
     expect(filterDocumentReviewQueue(queue, "ALL", "OPTIONAL", "", "SYSTEM").map((item) => item.category)).toEqual(["fire_safety"]);
     expect(filterDocumentReviewQueue(queue, "ACTION", "PRIORITY", "kuasa", "APPLICANT").map((item) => item.category)).toEqual(["company_authority"]);
     expect(filterDocumentReviewQueue(queue, "CRITICAL", "ALL", "", "APPLICANT")).toEqual([]);
+    expect(filterDocumentReviewQueue(queue, "ALL", "ALL", "", "ALL", "PENDING_SCAN").map((item) => item.category)).toEqual(["fire_safety"]);
+    expect(filterDocumentReviewQueue(queue, "ACTION", "PRIORITY", "", "APPLICANT", "REJECTED").map((item) => item.category)).toEqual(["company_authority"]);
+    expect(filterDocumentReviewQueue(queue, "ALL", "ALL", "", "OFFICER", "PENDING_SCAN")).toEqual([]);
     expect(filterDocumentReviewQueue(queue)).toEqual(queue);
   });
   it("omits an unmapped status instead of creating a triage task with no action", () => {
