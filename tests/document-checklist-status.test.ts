@@ -135,6 +135,8 @@ describe("document checklist statuses", () => {
     ]));
     expect(unsafeOptional.optionalRecorded).toBe(2);
     expect(unsafeOptional.optionalAttention).toBe(2);
+    expect(unsafeOptional.optionalAttentionRows.map((row) => row.category)).toEqual(["building_certificate", "fire_safety"]);
+    expect(summary.optionalAttentionRows).toEqual([]);
     expect(unsafeOptional.safetyAttention).toBe(0);
   });
   it("shows missing documents as missing", () => {
