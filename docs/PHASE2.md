@@ -381,3 +381,7 @@ Pembantu dalaman `readVerifiedQuarantinedDocument()` kini memerlukan kunci stora
 ## Pengukuhan pekerja imbasan dan ujian regresi
 
 Ujian `document-scan-worker.test.ts` dikemas kini dengan medan `byteSize` yang diwajibkan selepas integrasi semakan integriti; ujian regresi mengesahkan saiz rekod yang tidak sepadan menghasilkan `FAILED` tanpa memanggil pengimbas. Pekerja imbasan turut menyertakan `byteSize` dalam syarat perbandingan atomik semasa memperoleh lease dan menyimpan keputusan, supaya perubahan metadata di antara dua peringkat tidak dianggap sebagai kejayaan. Ujian unit memeriksa syarat tersebut. Keputusan CI belum disahkan; tiada endpoint muat naik atau deploy diaktifkan.
+
+## Kawalan tambahan bacaan kuarantin dan ujian lease pengimbas
+
+`readVerifiedQuarantinedDocument()` kini menolak metadata saiz melebihi 100 MiB (had siling terbesar bagi kategori dokumen) sebelum adapter storan dibaca. Ujian regresi memastikan bacaan storan tidak berlaku untuk metadata tidak sah. Ujian `document-scan-worker.test.ts` turut meliputi perebutan lease antara pekerja, kehilangan lease sebelum keputusan disimpan, dan keputusan pengimbas dengan nama enjin kosong. Ujian ini ditambah dalam kod tetapi keputusan CI belum disahkan; ia tidak mengaktifkan storan atau muat naik produksi.
