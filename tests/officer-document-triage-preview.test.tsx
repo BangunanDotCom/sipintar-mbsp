@@ -26,6 +26,8 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Persediaan utama: 3 kategori. Dokumen tambahan jika berkaitan: 1 kategori.");
     expect(markup).toContain("jika berkaitan");
     expect(markup).toContain("Senarai ini bukan penetapan syarat wajib");
+    expect(markup).toContain("Dokumen berkaitan hak penggunaan premis");
+    expect(markup).toContain("Untuk permohonan atas nama syarikat");
     expect(markup).toContain("Kategori dengan dokumen disahkan: 0");
     expect(markup).toContain("Terdapat 1 rekod dokumen kritikal");
     expect(markup).not.toContain("rekod kritikal tidak dipaparkan");
