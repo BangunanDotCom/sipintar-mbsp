@@ -39,6 +39,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   // Never show a cached document list after a failed authorization or refresh.
   const documents = query.isSuccess ? query.data.documents : [];
   const visible = documentChecklistRows(capacity, documents);
+  const mandatory = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
+  const recordedMandatory = mandatory.filter((item) => Boolean(item.current)).length;
   const policyByCategory = new Map(
     (query.isSuccess ? query.data.uploadPolicy ?? [] : []).map((row) => [row.category, row]),
   );
@@ -61,6 +63,13 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
             <p>Maklumat draf perlu disemak semula sebelum status dokumen boleh dipaparkan.</p>
           )}
         </div>
+      )}
+      {query.isSuccess && (
+        <p role="status">
+          <strong>Rekod dokumen wajib: {recordedMandatory} daripada {mandatory.length} kategori.</strong>{" "}
+          Angka ini hanya menunjukkan kewujudan rekod fail, bukan pengesahan keselamatan,
+          kesahihan dokumen atau kelayakan untuk menghantar permohonan.
+        </p>
       )}
       {query.isSuccess && <div style={{ overflowX: "auto" }}>
         <table>
