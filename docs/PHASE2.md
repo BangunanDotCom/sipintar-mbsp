@@ -485,3 +485,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Sempadan tamat tempoh pajakan pengimbasan
 
 `processPendingDocumentScan` kini menggunakan `scanLeaseExpiresAt: { lte: now }` apabila mengambil alih rekod `SCANNING` yang telah tamat tempoh. Pajakan boleh dituntut semula tepat pada masa tamat tempoh, tanpa menunggu masa berikutnya. Penulisan keputusan masih dilindungi oleh token pajakan dan semakan masa tamat, jadi pekerja lama tidak boleh menimpa keputusan pekerja baharu selepas pengambilalihan. Ujian regresi memeriksa syarat inklusif ini. CI belum disahkan; tiada pengaktifan pengimbas atau storan produksi.
+
+## Sempadan eksklusif penyimpanan keputusan pajakan pengimbasan
+
+Selepas pembetulan pengambilalihan pajakan pada masa tamat (`lte`), penulisan keputusan pengimbasan kini memerlukan `scanLeaseExpiresAt: { gt: new Date() }`. Ini memastikan pekerja asal tidak lagi layak menyimpan keputusan tepat pada masa tamat, ketika pekerja lain sudah boleh menuntut semula pajakan. Token unik, status `SCANNING`, identiti dokumen dan syarat belum diganti kekal diwajibkan. Ujian regresi memeriksa operator `gt` pada operasi kemas kini keputusan. Keputusan CI belum disahkan; tiada perubahan produksi.
