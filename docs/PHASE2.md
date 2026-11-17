@@ -155,3 +155,9 @@ Migrasi `202611170003_document_scan_lease` menambah `scanLeaseToken`, `scanLease
 ## Ujian integrasi storan kuarantin dan scan worker
 
 `tests/document-quarantine-integration.test.ts` menggunakan direktori sementara sebenar melalui `LocalQuarantineDocumentStore` bersama mock Prisma dan mock pengimbas. Ujian memeriksa aliran simpan -> baca -> SHA-256 -> imbas -> keputusan CLEAN, pengesanan kandungan yang berubah (FAILED tanpa memanggil pengimbas), dan fail kuarantin hilang (FAILED). Ini **bukan** ujian pangkalan data PostgreSQL sebenar, ClamAV sebenar atau storan objek produksi. Tiada endpoint muat naik diaktifkan dan CI belum disahkan.
+
+## Ujian integrasi TCP ClamAV dan konfigurasi storan
+
+`tests/document-clamav-integration.test.ts` menguji aliran fail PDF setempat -> SHA-256 -> lease -> protokol TCP ClamAV menggunakan daemon simulasi -> rekod keputusan mock Prisma, untuk respons OK, FOUND dan ERROR. Ia tidak menggantikan ujian terhadap daemon ClamAV sebenar atau PostgreSQL sebenar.
+
+`apps/api/src/document-store-config.ts` menambah pemilihan storan **fail-closed**: lalai `STAYLINK_DOCUMENT_STORE=disabled`; hanya `local` dibenarkan dalam pembangunan/ujian dengan `STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED=true` dan `STAYLINK_LOCAL_DOCUMENT_ROOT` ditetapkan. Mod local ditolak apabila `NODE_ENV=production`. Mod `s3`/R2 belum dilaksanakan dan sengaja ditolak. `tests/document-store-config.test.ts` meliputi sekatan tersebut. Factory ini belum disambung kepada endpoint atau scheduler; tiada muat naik atau deployment diaktifkan. Ujian belum disahkan dijalankan.
