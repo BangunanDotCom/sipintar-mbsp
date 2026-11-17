@@ -449,3 +449,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pengesahan tandatangan pada salinan dokumen kuarantin
 
 `storeQuarantinedDocument` kini menyalin `Buffer` pemanggil dahulu, kemudian memeriksa tandatangan fail pada salinan yang sama sebelum SHA-256 dan operasi `putQuarantined`. Ini mengelakkan pemeriksaan format dilakukan pada `Buffer` asal yang berbeza daripada kandungan disimpan. Ujian regresi memastikan fail PDF dengan tandatangan tidak sah ditolak tanpa memanggil adapter storan. Pemeriksaan tandatangan bukan pengganti pengimbasan malware; storan produksi masih belum diaktifkan dan keputusan CI belum disahkan.
+
+## Pengasingan memori antara kuarantin dan adapter pengimbas
+
+`scanQuarantinedDocument` kini menghantar `Buffer.from(bytes)` kepada `scanner.scan`, bukan rujukan `Buffer` yang diterima daripada storan kuarantin. Ini menghalang adapter pengimbas yang mengubah input daripada mengubah memori asal storan. Ujian regresi menggunakan pengimbas yang mengosongkan `Buffer` input dan mengesahkan `Buffer` kuarantin kekal tidak berubah. Pengimbas produksi belum diaktifkan dan keputusan CI belum disahkan.
