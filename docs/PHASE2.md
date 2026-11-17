@@ -285,3 +285,7 @@ Panel `DraftDocumentReadiness` kini menetapkan `refetchOnMount: "always"`, `refe
 ## Pengasingan cache dokumen pada halaman Semakan Draf
 
 `PreliminaryDocumentChecklist` kini menggunakan kunci cache `["application-documents", userId, draftId, capacity]`, `gcTime:0`, dan refetch apabila tetingkap kembali aktif. Jika bacaan API gagal, senarai metadata terdahulu tidak dipaparkan sebagai status terkini. `PremisesSummary` menerima `userId` daripada konteks pemohon yang telah disahkan dan menyerahkannya kepada senarai semak. Kawalan ini tidak menggantikan autorisasi pemilikan draf pada API. Tiada muat naik atau penghantaran rasmi diaktifkan. Build, ujian pelayar dan CI belum disahkan.
+
+## Penyatuan senarai dokumen dan readiness pada Semakan Draf
+
+Halaman `PremisesSummary` kini memaparkan `PreliminaryDocumentChecklist` dan `DraftDocumentReadiness` bersama-sama: jadual rekod dokumen dan mesej tindakan daripada gerbang semakan awal API. Jadual hanya dirender selepas GET metadata berjaya, bukan ketika loading atau ralat. Pemohon boleh memuat semula senarai secara eksplisit. Kedua-dua komponen masih **baca sahaja**; muat naik, penghantaran rasmi, rujukan MBSP dan kelulusan tidak diaktifkan. Ujian CI, integrasi dan browser belum disahkan.
