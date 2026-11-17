@@ -25,7 +25,7 @@ export type DocumentChecklistRow = {
   applicability: string;
   note: string;
   current: DocumentStatusRecord | null;
-  state: "MISSING" | "PENDING_SCAN" | "UNSAFE" | "PENDING_REVIEW" | "REJECTED" | "VERIFIED";
+  state: "MISSING" | "PENDING_SCAN" | "CONFLICT" | "UNSAFE" | "PENDING_REVIEW" | "REJECTED" | "VERIFIED";
 };
 export function documentChecklistRows(
   capacity: "INDIVIDUAL" | "COMPANY",
@@ -41,7 +41,7 @@ export function documentChecklistRows(
     const conflictingActiveVersions = active.length > 1;
     let state: DocumentChecklistRow["state"] = "MISSING";
     if (current) {
-      if (conflictingActiveVersions) state = "UNSAFE";
+      if (conflictingActiveVersions) state = "CONFLICT";
       else if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
       else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
@@ -57,6 +57,7 @@ export function documentChecklistRows(
 export const documentStatusLabels: Record<DocumentChecklistRow["state"], string> = {
   MISSING: "Tiada rekod dokumen",
   PENDING_SCAN: "Menunggu imbasan keselamatan",
+  CONFLICT: "Konflik versi dokumen aktif — perlu semakan pegawai",
   UNSAFE: "Tidak selamat / imbasan gagal",
   PENDING_REVIEW: "Menunggu pengesahan pegawai",
   REJECTED: "Ditolak pegawai",
