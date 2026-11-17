@@ -233,3 +233,7 @@ Semakan awal `documentSubmissionReadiness` kini menolak kategori wajib jika terd
 ## Kawalan status pengesahan dokumen tidak dikenali
 
 `documentChecklistRows` kini menganggap hanya `UNVERIFIED` sebagai menunggu semakan pegawai selepas imbasan `CLEAN`; `VERIFIED` kekal disahkan dan `REJECTED` kekal ditolak. Nilai pengesahan lain yang tidak dikenali dipetakan kepada `UNSAFE` (sekatan konservatif) dan tidak boleh melepasi `documentSubmissionReadiness`. Ujian regresi meliputi nilai status yang tidak dikenali. Ini ialah kawalan dalaman; endpoint penghantaran sebenar masih belum diaktifkan dan keputusan CI belum disahkan.
+
+## Snapshot kesediaan dokumen daripada pangkalan data
+
+Ditambah `loadDocumentSubmissionReadiness` dalam `apps/api/src/document-submission-readiness-db.ts`. Fungsi ini mengesahkan format UUID draf, mengambil metadata dokumen bagi `draftId` yang tepat daripada Prisma (`category`, `version`, `fileName`, status imbasan/pengesahan dan `supersededAt`), lalu menggunakan penilaian kesediaan sedia ada. Ujian meliputi penapisan draf, metadata terpilih, ID tidak sah dan syarat syarikat. Fungsi ini **bukan endpoint** dan **tidak mengesahkan pemilikan atau kuasa pengguna**; pemanggil mesti mengesahkan akses kepada draf. Semakan muktamad mesti dilakukan dalam transaksi penghantaran untuk mengelakkan perubahan dokumen di antara semakan dan penghantaran. Tiada pengaktifan penghantaran sebenar; CI belum disahkan.
