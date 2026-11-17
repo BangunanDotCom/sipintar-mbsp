@@ -57,7 +57,7 @@ export function isDocumentStatusRecord(value: unknown): value is DocumentStatusR
     && typeof record.fileName === "string" && record.fileName.trim().length > 0
     && typeof record.scanStatus === "string" && record.scanStatus.trim().length > 0
     && typeof record.verificationStatus === "string" && record.verificationStatus.trim().length > 0
-    && (record.supersededAt === null || typeof record.supersededAt === "string");
+    && (record.supersededAt === null || isIsoTimestamp(record.supersededAt));
 }
 export type DocumentApiRecord = DocumentStatusRecord & {
   uploadedAt: string;
