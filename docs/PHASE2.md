@@ -389,3 +389,7 @@ Ujian `document-scan-worker.test.ts` dikemas kini dengan medan `byteSize` yang d
 ## Had bacaan kuarantin mengikut kategori dokumen
 
 Semakan `readVerifiedQuarantinedDocument()` tidak lagi menggunakan had umum 100 MiB untuk semua kategori. Ia mengekstrak kategori daripada kunci storan yang telah disahkan milik draf, memadankannya kepada polisi muat naik pusat, lalu menolak `expectedByteSize` melebihi siling kategori sebelum mengakses storan. Ujian regresi meliputi foto melebihi 20 MiB dan dokumen sokongan melebihi 50 MiB. Had ini ialah kawalan keselamatan, bukan kelulusan fail; pengimbasan malware dan kawalan akses masih diperlukan. CI belum disahkan.
+
+## Pengesahan MIME ketika imbasan dokumen kuarantin
+
+`readVerifiedQuarantinedDocument()` menerima `expectedMimeType` pilihan untuk menyemak MIME terhadap kategori dokumen dan mengesahkan tandatangan struktur kandungan sebelum memulangkan bait. Pekerja imbasan kini membaca `mimeType` daripada `ApplicationDocument`, memasukkannya ke kontrak imbasan dan ke syarat perbandingan atomik semasa claim lease serta menyimpan keputusan. Ujian pekerja mengesahkan ketidakpadanan MIME menghasilkan `FAILED` tanpa memanggil pengimbas. Pengesahan tandatangan ialah semakan struktur awal sahaja, bukan parser fail atau pengganti antivirus. Keputusan CI belum disahkan dan tiada fungsi muat naik produksi diaktifkan.
