@@ -135,6 +135,21 @@ describe("private document quarantine adapter", () => {
     };
     await expect(readVerifiedQuarantinedDocument(adapter, input)).resolves.toEqual(bytes);
   });
+  it("returns an independent verified Buffer instead of the storage adapter reference", async () => {
+    const source = Buffer.from(bytes);
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const verified = await readVerifiedQuarantinedDocument({
+      putQuarantined: async () => undefined,
+      readQuarantined: async () => source,
+      deleteQuarantined: async () => undefined,
+    }, {
+      draftId, storageKey, expectedSha256: createHash("sha256").update(bytes).digest("hex"),
+      expectedByteSize: bytes.length, expectedMimeType: "application/pdf",
+    });
+    expect(verified).not.toBe(source);
+    source.fill(0);
+    expect(verified).toEqual(bytes);
+  });
   it("rejects non-buffer adapter output instead of trusting the storage boundary", async () => {
     const { adapter } = store();
     adapter.readQuarantined = async () => "unexpected" as unknown as Buffer;
