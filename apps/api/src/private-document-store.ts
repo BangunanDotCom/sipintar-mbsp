@@ -70,17 +70,23 @@ export async function readVerifiedQuarantinedDocument(
   if (input.expectedMimeType !== undefined &&
       !policy.mime.split(",").includes(input.expectedMimeType))
     throw new Error("Metadata MIME dokumen tidak sah.");
-  const content = await store.readQuarantined(input.storageKey);
+  // Snapshot verified metadata before the asynchronous adapter call so a caller
+  // cannot change the expected identity, digest or size while storage is reading.
+  const storageKey = input.storageKey;
+  const expectedByteSize = input.expectedByteSize;
+  const expectedSha256 = input.expectedSha256;
+  const expectedMimeType = input.expectedMimeType;
+  const content = await store.readQuarantined(storageKey);
   // A storage adapter is a trust boundary: reject unexpected or oversized bytes
   // before computing a digest, even when the recorded metadata was valid.
-  if (!Buffer.isBuffer(content) || content.length !== input.expectedByteSize ||
+  if (!Buffer.isBuffer(content) || content.length !== expectedByteSize ||
       content.length > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Integriti dokumen kuarantin gagal.");
   const actual = createHash("sha256").update(content).digest();
-  if (!timingSafeEqual(actual, Buffer.from(input.expectedSha256, "hex")))
+  if (!timingSafeEqual(actual, Buffer.from(expectedSha256, "hex")))
     throw new Error("Integriti dokumen kuarantin gagal.");
-  if (input.expectedMimeType !== undefined &&
-      !matchesDeclaredFileSignature(content, input.expectedMimeType))
+  if (expectedMimeType !== undefined &&
+      !matchesDeclaredFileSignature(content, expectedMimeType))
     throw new Error("Kandungan fail kuarantin tidak sepadan dengan MIME.");
   return content;
 }
