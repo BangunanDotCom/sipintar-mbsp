@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentChecklistSummary, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentChecklistSummary, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse, filterDocumentChecklistRows, type DocumentStatusFilter } from "../../../packages/shared/src/document-checklist-status";
 
 export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   draftId: string;
@@ -23,14 +23,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const validDocuments = validated !== null;
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING">("ALL");
-  const filteredRows = visible.filter((row) => {
-    if (statusFilter === "ATTENTION") return ["CONFLICT", "UNSAFE", "REJECTED"].includes(row.state);
-    if (statusFilter === "PENDING") return ["PENDING_SCAN", "PENDING_REVIEW"].includes(row.state);
-    if (statusFilter === "VERIFIED") return row.state === "VERIFIED";
-    if (statusFilter === "MISSING") return row.state === "MISSING";
-    return true;
-  });
+  const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("ALL");
+  const filteredRows = filterDocumentChecklistRows(visible, statusFilter);
   const summary = documentChecklistSummary(visible);
   const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
@@ -126,7 +120,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
         <div>
           <label htmlFor="document-status-filter">Tapis senarai dokumen mengikut status</label>{" "}
           <select id="document-status-filter" value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+            onChange={(event) => setStatusFilter(event.target.value as DocumentStatusFilter)}>
             <option value="ALL">Semua dokumen</option>
             <option value="ATTENTION">Perlu perhatian atau pembetulan</option>
             <option value="PENDING">Menunggu imbasan atau pengesahan</option>
