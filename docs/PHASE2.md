@@ -277,3 +277,7 @@ Komponen `apps/web/src/DraftDocumentReadiness.tsx` kini menggunakan TanStack Que
 ## Penyegerakan status dokumen selepas simpan draf
 
 Cache TanStack Query bagi `DraftDocumentReadiness` kini menggunakan kunci `["draft-document-readiness", userId, draftId]` untuk memisahkan hasil antara identiti pemohon. Selepas draf disimpan, cache draf semasa diselaraskan dengan respons API dan query readiness draf tersebut dinyah-sah supaya data terkini dibaca semula. Jika pengguna mengubah kapasiti individu/syarikat atau syarikat yang diwakili tanpa menyimpan, panel readiness disembunyikan dan mesej supaya menyimpan dahulu dipaparkan. Langkah ini mengurangkan risiko status senarai semak lama dipersembahkan seolah-olah milik kapasiti baharu. Tiada penghantaran rasmi diaktifkan. Ujian CI, integrasi dan pelayar masih belum disahkan.
+
+## Kitar hayat cache status dokumen pemohon
+
+Panel `DraftDocumentReadiness` kini menetapkan `refetchOnMount: "always"`, `refetchOnWindowFocus: "always"` dan `gcTime: 0` supaya status diperoleh semula apabila panel dibuka atau tetingkap kembali aktif, dan cache tidak disimpan selepas tiada pengguna query. Ini melengkapkan pengasingan query key mengikut userId dan draftId. Jika API mengembalikan HTTP 401, pautan log masuk semula dipaparkan dengan laluan kembali kepada draf yang sedang dibuka. **Cache frontend bukan kawalan akses**; autorisasi pemilikan draf dan wakil syarikat kekal wajib pada API. Perubahan ini belum disahkan melalui ujian browser, CI atau integrasi pangkalan data.
