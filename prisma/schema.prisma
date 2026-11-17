@@ -269,6 +269,7 @@ model AuditLog {
 }
 
 model ApplicationDraft {
+ floors PremiseFloor[]
  premises ApplicationPremises?
  id String @id @default(uuid())
  initiatedByUserId String
@@ -315,4 +316,23 @@ model ApplicationPremises {
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@map("application_premises")
+}
+
+model PremiseFloor {
+ id String @id @default(uuid())
+ draftId String
+ draft ApplicationDraft @relation(fields:[draftId], references:[id], onDelete: Cascade)
+ floorLabel String
+ position Int
+ rooms Int
+ beds Int
+ workers Int
+ areaSqm Decimal @db.Decimal(12,2)
+ facilities Json
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([draftId, floorLabel])
+ @@unique([draftId, position])
+ @@index([draftId])
+ @@map("premise_floors")
 }
