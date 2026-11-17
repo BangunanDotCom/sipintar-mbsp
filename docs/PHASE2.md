@@ -465,3 +465,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pembetulan ujian aksara kawalan dan jenis status pengimbas
 
 Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`, `\\u0000` dan `\\u007f` dalam literal TypeScript, bukannya rentetan backslash biasa. Pengesahan hasil pengimbas turut mewajibkan `status` bertipe string sebelum dibandingkan dengan `CLEAN`, `INFECTED` atau `FAILED`. Ujian negatif meliputi null, nombor, objek dan status tidak dikenali. Ujian CI belum disahkan dan pengimbas produksi belum diaktifkan.
+
+## Metadata pengesahan kuarantin kekal sepanjang bacaan tak segerak
+
+`readVerifiedQuarantinedDocument` kini mengekalkan salinan setempat `storageKey`, `expectedSha256`, `expectedByteSize` dan `expectedMimeType` selepas validasi dan sebelum `await readQuarantined`. Pengesahan kandungan selepas bacaan menggunakan salinan yang telah disahkan itu, bukannya membaca semula objek input yang mungkin diubah ketika adapter berjalan. Ujian regresi mengubah semua medan metadata semasa adapter membaca dan memastikan kandungan asal masih disahkan dengan nilai yang betul. CI belum disahkan dan storan produksi belum diaktifkan.
