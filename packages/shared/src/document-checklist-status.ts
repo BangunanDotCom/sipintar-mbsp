@@ -12,7 +12,7 @@ export type DocumentUploadPolicy = {
 export function isDocumentUploadPolicy(value: unknown): value is DocumentUploadPolicy {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
-  return typeof row.category === "string" && row.category.trim().length > 0
+  return typeof row.category === "string" && row.category.trim().length > 0 && row.category === row.category.trim()
     && typeof row.label === "string" && row.label.trim().length > 0
     && Array.isArray(row.mimeTypes) && row.mimeTypes.length > 0
     && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && mime.trim().length > 0)
@@ -51,7 +51,7 @@ export type DocumentStatusRecord = {
 export function isDocumentStatusRecord(value: unknown): value is DocumentStatusRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  return typeof record.category === "string" && record.category.trim().length > 0
+  return typeof record.category === "string" && record.category.trim().length > 0 && record.category === record.category.trim()
     && Number.isSafeInteger(record.version) && (record.version as number) > 0
     && typeof record.fileName === "string" && record.fileName.trim().length > 0
     && typeof record.scanStatus === "string" && record.scanStatus.trim().length > 0
