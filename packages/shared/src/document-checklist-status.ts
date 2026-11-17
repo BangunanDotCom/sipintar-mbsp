@@ -175,6 +175,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     safetyAttention: priority.filter((row) => row.state === "UNSAFE" || row.state === "PENDING_SCAN").length,
     conflicts: priority.filter((row) => row.state === "CONFLICT").length,
     pendingReview: priority.filter((row) => row.state === "PENDING_REVIEW").length,
+    pendingReviewRows: priority.filter((row) => row.state === "PENDING_REVIEW"),
     rejected: priority.filter((row) => row.state === "REJECTED").length,
     attentionRows: priority.filter((row) => ["CONFLICT", "UNSAFE", "PENDING_SCAN", "REJECTED"].includes(row.state)),
     missing: priority.filter((row) => row.state === "MISSING"),
@@ -183,6 +184,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     optionalRecorded: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.current !== null).length,
     optionalAttention: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "PENDING_SCAN", "CONFLICT", "REJECTED"].includes(row.state)).length,
     optionalAttentionRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "PENDING_SCAN", "CONFLICT", "REJECTED"].includes(row.state)),
+    optionalPendingReviewRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.state === "PENDING_REVIEW"),
   };
 }
 
