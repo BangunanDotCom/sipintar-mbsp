@@ -23,7 +23,7 @@ describe("officer document triage preview", () => {
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
     expect(markup).toContain("Kategori tanpa rekod aktif: 4");
     expect(markup).toContain("Lihat 4 kategori tanpa rekod aktif");
-    expect(markup).toContain("Persediaan utama: 2 kategori. Dokumen tambahan jika berkaitan: 2 kategori.");
+    expect(markup).toContain("Persediaan utama: 3 kategori. Dokumen tambahan jika berkaitan: 1 kategori.");
     expect(markup).toContain("jika berkaitan");
     expect(markup).toContain("Senarai ini bukan penetapan syarat wajib");
     expect(markup).toContain("Kategori dengan dokumen disahkan: 0");
