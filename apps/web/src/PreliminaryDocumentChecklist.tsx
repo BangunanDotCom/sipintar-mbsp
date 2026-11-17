@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
@@ -22,6 +23,14 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const validDocuments = validated !== null;
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING">("ALL");
+  const filteredRows = visible.filter((row) => {
+    if (statusFilter === "ATTENTION") return ["CONFLICT", "UNSAFE", "REJECTED"].includes(row.state);
+    if (statusFilter === "PENDING") return ["PENDING_SCAN", "PENDING_REVIEW"].includes(row.state);
+    if (statusFilter === "VERIFIED") return row.state === "VERIFIED";
+    if (statusFilter === "MISSING") return row.state === "MISSING";
+    return true;
+  });
   const summary = documentChecklistSummary(visible);
   const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
@@ -113,11 +122,25 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           </ul>
         </div>
       )}
+      {validDocuments && (
+        <div>
+          <label htmlFor="document-status-filter">Tapis senarai dokumen mengikut status</label>{" "}
+          <select id="document-status-filter" value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+            <option value="ALL">Semua dokumen</option>
+            <option value="ATTENTION">Perlu perhatian atau pembetulan</option>
+            <option value="PENDING">Menunggu imbasan atau pengesahan</option>
+            <option value="VERIFIED">Telah disahkan pegawai</option>
+            <option value="MISSING">Tiada rekod aktif</option>
+          </select>
+          <p role="status">Memaparkan {filteredRows.length} daripada {visible.length} kategori dokumen.</p>
+        </div>
+      )}
       {validDocuments && <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Format & saiz fail (panduan)</th><th scope="col">Rekod sistem</th><th scope="col">Tindakan seterusnya</th></tr></thead>
           <tbody>
-            {visible.map((item) => {
+            {filteredRows.map((item) => {
               const current = item.current;
               return (
                 <tr key={item.category}>
@@ -137,6 +160,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
             })}
           </tbody>
         </table>
+        {filteredRows.length === 0 && <p>Tiada kategori dokumen bagi penapis yang dipilih.</p>}
       </div>}
       <p><small>Saiz yang dipaparkan ialah had lalai untuk persediaan sahaja; had sebenar mungkin berubah mengikut tetapan pentadbir. Rekod fail bukan bukti penerimaan atau pengesahan. Penghantaran rasmi dan muat naik kekal tidak tersedia.</small></p>
       <button className="button secondary small" type="button"
