@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentApiRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentApiRecord } from "../../../packages/shared/src/document-checklist-status";
 
 type DocumentResponse = {
   uploadPolicy: DocumentUploadPolicy[];
@@ -85,7 +85,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
       )}
       {validDocuments && <div style={{ overflowX: "auto" }}>
         <table>
-          <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Format & saiz fail (panduan)</th><th scope="col">Rekod sistem</th></tr></thead>
+          <thead><tr><th scope="col">Dokumen</th><th scope="col">Pemakaian</th><th scope="col">Catatan</th><th scope="col">Format & saiz fail (panduan)</th><th scope="col">Rekod sistem</th><th scope="col">Tindakan seterusnya</th></tr></thead>
           <tbody>
             {visible.map((item) => {
               const current = item.current;
@@ -101,6 +101,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
                     </>
                   ) : "Panduan belum tersedia"}</td>
                   <td>{current ? `Versi ${current.version} · ${current.fileName} · ` : ""}{documentStatusLabels[item.state]}</td>
+                  <td>{documentNextStepLabels[item.state]}</td>
                 </tr>
               );
             })}
