@@ -249,3 +249,7 @@ Ditambah `loadDocumentSubmissionReadiness` dalam `apps/api/src/document-submissi
 ## Pengesahan konsistensi konteks pemohon bagi endpoint readiness
 
 Ditambah `validDraftApplicantContext` untuk menyekat draf yang mempunyai kapasiti, `companyId`, `officialApplicantUserId` dan `initiatedByUserId` tidak sepadan. Draf individu mesti mempunyai `companyId=null` dan `officialApplicantUserId=initiatedByUserId`. Draf syarikat mesti mempunyai `companyId` bukan kosong dan `officialApplicantUserId=null`; kelayakan wakil semasa masih disemak oleh `companyAuthority`. Endpoint `GET /api/application-drafts/:id/submission-readiness` mengesahkan konsistensi ini sebelum mengambil metadata dokumen. Ujian unit meliputi konteks sah dan bercanggah. Endpoint penghantaran rasmi masih ditutup. Keputusan CI dan ujian integrasi endpoint belum disahkan.
+
+## Pengukuhan identiti draf dan cache respons readiness
+
+`validDraftApplicantContext` kini memerlukan UUID sah bagi `initiatedByUserId` dan `companyId` bagi permohonan syarikat; keserasian konteks individu/syarikat kekal diperiksa. Ujian regresi merangkumi ID rosak, kosong dan ruang putih. Endpoint `GET /api/application-drafts/:id/submission-readiness` kini menghantar `Cache-Control: private, no-store, max-age=0` serta `Pragma: no-cache` bagi mengurangkan penyimpanan respons khusus pemohon dalam cache yang mematuhi arahan. Ini bukan pengganti kawalan akses, perlindungan pelayan atau penyulitan. Penghantaran rasmi masih ditutup; CI dan ujian integrasi endpoint belum disahkan.
