@@ -316,6 +316,10 @@ describe("document checklist statuses", () => {
       CONFLICT: 0, UNSAFE: 1, REJECTED: 1, PENDING_SCAN: 1, PENDING_REVIEW: 0,
     });
     expect(Object.values(summary).reduce((total, count) => total + count, 0)).toBe(3);
+    const unexpected = [{ ...documentReviewQueue(rows)[0], state: "UNKNOWN_STATE" }] as unknown as Parameters<typeof documentReviewStatusSummary>[0];
+    expect(documentReviewStatusSummary(unexpected)).toEqual({
+      CONFLICT: 0, UNSAFE: 0, REJECTED: 0, PENDING_SCAN: 0, PENDING_REVIEW: 0,
+    });
     expect(documentReviewStatusSummary([])).toEqual({
       CONFLICT: 0, UNSAFE: 0, REJECTED: 0, PENDING_SCAN: 0, PENDING_REVIEW: 0,
     });
