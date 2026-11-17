@@ -44,7 +44,8 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const [scope, setScope] = useState<DocumentScopeFilter>("ALL");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<DocumentReviewStatusFilter>("ALL");
-  const missingCount = rows.filter((row) => row.state === "MISSING").length;
+  const missingRows = rows.filter((row) => row.state === "MISSING");
+  const missingCount = missingRows.length;
   const verifiedCount = rows.filter((row) => row.state === "VERIFIED").length;
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
@@ -78,6 +79,13 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       <h2 id={headingId}>Pratonton keutamaan semakan dokumen</h2>
       <p>Ringkasan untuk pegawai yang diberi kuasa sahaja. Cadangan tindakan bukan keputusan kelulusan.</p>
       <p role="status">Kategori tanpa rekod aktif: {missingCount}. Kategori dengan dokumen disahkan: {verifiedCount}. Kedua-duanya tidak termasuk dalam senarai tindakan susulan; status ini bukan pengesahan kelengkapan permohonan.</p>
+      {missingRows.length > 0 && (
+        <details>
+          <summary>Lihat {missingRows.length} kategori tanpa rekod aktif (panduan persediaan sahaja)</summary>
+          <ul>{missingRows.map((row) => <li key={row.category}>{row.label} — {row.applicability === "IF_AVAILABLE" ? "jika berkaitan" : row.applicability === "COMPANY" ? "pemohon syarikat" : "semua pemohon"}</li>)}</ul>
+          <p>Senarai ini bukan penetapan syarat wajib atau keputusan kelulusan MBSP.</p>
+        </details>
+      )}
       <p role="status">
         Jumlah memerlukan pemantauan: {summary.total}. Kritikal: {summary.critical}.
         {" "}Tindakan pegawai: {summary.officerTasks}. Tindakan pemohon: {summary.applicantTasks}.
