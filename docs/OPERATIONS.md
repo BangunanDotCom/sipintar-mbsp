@@ -6,7 +6,7 @@
 2. Log masuk, pilih peranan Pemohon dan buka **Syarikat & wakil**.
 3. Masukkan nama, SSM, alamat, e-mel, telefon dan jenis kuasa. Tarikh tamat pilihan mesti pada masa hadapan.
 4. Status akaun syarikat **ACTIVE** tidak sama dengan maklumat atau perwakilan disahkan.
-5. Muat naik surat kuasa PDF maksimum 10 MiB. Backend memeriksa nama, saiz dan tandatangan PDF. Akses muat turun memerlukan hubungan perwakilan sah.
+5. Muat naik surat kuasa PDF maksimum dikawal oleh Pentadbir ICT melalui konfigurasi teknikal `upload_delegation_mib` (lalai 10 MiB; julat 1-20 MiB). Backend menguatkuasakan had sebenar dan portal membaca had semasa. Backend memeriksa nama, saiz dan tandatangan PDF. Akses muat turun memerlukan hubungan perwakilan sah.
 6. Jika SSM sudah wujud, hentikan pendaftaran pendua. Hubungi bantuan melalui saluran rasmi MBSP untuk semakan pemilikan/perwakilan. Tiada aliran tuntutan SSM kendiri dalam versi ini.
 7. Pengurus profil (pencipta profil baharu) atau wakil VERIFIED boleh menjemput pemegang akaun pemohon lain yang e-melnya sudah disahkan. Penerima membuka pautan e-mel, login sebagai diri sendiri, menyemak nama/SSM dan menerima dalam 24 jam. Hubungan hanya wujud selepas penerimaan dan bermula **UNVERIFIED** tanpa kuasa mengurus jemputan.
 
