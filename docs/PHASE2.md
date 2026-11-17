@@ -301,3 +301,7 @@ Halaman `PremisesSummary` kini memaparkan `PreliminaryDocumentChecklist` dan `Dr
 ## Pengesahan konteks pemohon untuk metadata dokumen
 
 `GET /api/application-drafts/:id/documents` kini mengesahkan konsistensi konteks pemohon tersimpan menggunakan `validDraftApplicantContext` sebelum memulangkan metadata fail atau panduan `uploadPolicy`. Draf INDIVIDUAL mesti dipaut kepada pemohon rasmi yang sama dengan pemilik draf tanpa `companyId`; draf COMPANY mesti mempunyai UUID syarikat yang sah dan tiada `officialApplicantUserId`. Autorisasi pemilik draf serta wakil syarikat yang sah kekal diperlukan. Respons turut menetapkan `Cache-Control: private, no-store, max-age=0` dan `Pragma: no-cache`. Penghantaran rasmi dan muat naik fail kekal dinyahaktifkan. Perubahan belum disahkan melalui CI, ujian integrasi PostgreSQL atau ujian pelayar.
+
+## Pengendalian ralat semakan metadata dokumen pada portal
+
+`PreliminaryDocumentChecklist` kini menyediakan pautan `Log masuk semula` apabila GET dokumen memulangkan HTTP 401; pautan mengekalkan laluan kembali ke `/permohonan/draf/:id/semakan`. HTTP 409 (konteks pemohon tidak konsisten) dipaparkan sebagai arahan menyemak semula maklumat draf tanpa mendedahkan maklumat dalaman. Jadual metadata kekal tersembunyi semasa ralat. Tiada pengaktifan muat naik atau penghantaran rasmi. CI, ujian pelayar dan integrasi belum disahkan.
