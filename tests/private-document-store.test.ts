@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import {
   DisabledDocumentStore,
@@ -113,6 +114,26 @@ describe("private document quarantine adapter", () => {
     await expect(readVerifiedQuarantinedDocument(adapter, {
       draftId, storageKey, expectedSha256: prepared.sha256, expectedByteSize: prepared.byteSize + 1,
     })).rejects.toThrow("Integriti dokumen");
+  });
+  it("keeps verified read metadata stable when caller changes it during storage access", async () => {
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const input = {
+      draftId, storageKey, expectedSha256: digest,
+      expectedByteSize: bytes.length, expectedMimeType: "application/pdf",
+    };
+    const adapter: PrivateDocumentStore = {
+      putQuarantined: async () => undefined,
+      readQuarantined: async () => {
+        input.expectedSha256 = "0".repeat(64);
+        input.expectedByteSize = 1;
+        input.expectedMimeType = "image/png";
+        input.storageKey = createPrivateDocumentKey(draftId, "premises_photos");
+        return Buffer.from(bytes);
+      },
+      deleteQuarantined: async () => undefined,
+    };
+    await expect(readVerifiedQuarantinedDocument(adapter, input)).resolves.toEqual(bytes);
   });
   it("rejects non-buffer adapter output instead of trusting the storage boundary", async () => {
     const { adapter } = store();
