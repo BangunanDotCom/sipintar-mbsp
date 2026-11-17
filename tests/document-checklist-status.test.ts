@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels, filterDocumentChecklistRows, documentReviewQueue, documentReviewQueueSummary, filterDocumentReviewQueue } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -264,6 +264,20 @@ describe("document checklist statuses", () => {
       total: 0, critical: 0, action: 0, waiting: 0, main: 0, optional: 0,
     });
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
+  });
+  it("filters officer triage without changing priority or source records", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "company_authority" },
+      { ...doc(1, "SCANNING", "UNVERIFIED"), category: "fire_safety" },
+    ]);
+    const queue = documentReviewQueue(rows);
+    expect(filterDocumentReviewQueue(queue, "CRITICAL").map((item) => item.category)).toEqual(["floor_layout"]);
+    expect(filterDocumentReviewQueue(queue, "ACTION", "PRIORITY", "kuasa").map((item) => item.category)).toEqual(["company_authority"]);
+    expect(filterDocumentReviewQueue(queue, "WAITING", "OPTIONAL").map((item) => item.category)).toEqual(["fire_safety"]);
+    expect(filterDocumentReviewQueue(queue, "CRITICAL", "OPTIONAL")).toEqual([]);
+    expect(filterDocumentReviewQueue(queue)).toEqual(queue);
+    expect(documentReviewQueueSummary(queue).total).toBe(3);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
