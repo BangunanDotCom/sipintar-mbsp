@@ -183,7 +183,7 @@ export function documentChecklistSummary(rows: readonly DocumentChecklistRow[]) 
     // Optional documents are visible for preparation but excluded from priority counts.
     optionalTotal: rows.filter((row) => row.applicability === "IF_AVAILABLE").length,
     optionalRecorded: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.current !== null).length,
-    optionalAttention: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "PENDING_SCAN", "CONFLICT", "REJECTED"].includes(row.state)).length,
+    optionalAttention: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "CONFLICT", "REJECTED"].includes(row.state)).length,
     optionalAttentionRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && ["UNSAFE", "PENDING_SCAN", "CONFLICT", "REJECTED"].includes(row.state)),
     optionalPendingReviewRows: rows.filter((row) => row.applicability === "IF_AVAILABLE" && row.state === "PENDING_REVIEW"),
   };
