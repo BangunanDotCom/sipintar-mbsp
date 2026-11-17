@@ -1,6 +1,6 @@
 CREATE TABLE premise_floors (
-  id UUID PRIMARY KEY,
-  "draftId" UUID NOT NULL REFERENCES application_drafts(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  "draftId" TEXT NOT NULL REFERENCES application_drafts(id) ON DELETE CASCADE,
   "floorLabel" TEXT NOT NULL,
   position INTEGER NOT NULL,
   rooms INTEGER NOT NULL CHECK (rooms >= 0),
