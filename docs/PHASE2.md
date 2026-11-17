@@ -261,3 +261,7 @@ Ditambah `validDraftApplicantContext` untuk menyekat draf yang mempunyai kapasit
 ## Integriti satu versi aktif bagi setiap kategori dokumen
 
 Semakan `documentSubmissionReadiness` kini menghalang penghantaran apabila terdapat **lebih daripada satu versi aktif** dalam kategori yang sama, walaupun nombor versi berbeza dan versi terkini bersih. Ini mengelakkan pemilihan versi tertinggi menutup status `INFECTED` pada versi lama yang belum `supersededAt`. Jika versi lama sudah ditandakan superseded dan hanya satu versi aktif yang `CLEAN`, semakan boleh lulus tertakluk kepada syarat lain. Ujian regresi baharu meliputi kedua-dua keadaan. Tiada perubahan kepada endpoint penghantaran rasmi; CI belum disahkan.
+
+## Panduan Bahasa Melayu untuk pemohon berdasarkan readiness
+
+`GET /api/application-drafts/:id/submission-readiness` kini turut mengembalikan `guidance` dengan `headline`, `message`, `issues[]` (kategori, label dokumen dan mesej tindakan) serta `integrityWarning`. Panduan dihasilkan daripada `documentReadinessGuidance` menggunakan senarai semak sedia ada dan status keselamatan; mesej imbasan tertangguh dibezakan daripada isu dokumen lain. Isu kategori tidak dijangka hanya memaparkan amaran umum tanpa butiran fail. Panduan ini untuk persembahan sahaja, **bukan keputusan kelulusan atau autorisasi penghantaran**. `submissionEnabled:false` kekal dan endpoint penghantaran sebenar masih ditutup. Ujian unit panduan telah ditambah, tetapi CI dan ujian integrasi belum disahkan.
