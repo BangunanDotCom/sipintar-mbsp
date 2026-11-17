@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -21,6 +21,20 @@ describe("document checklist statuses", () => {
     expect(isDocumentUploadPolicy({ ...policy, label: "  " })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, defaultMaxMiB: Infinity })).toBe(false);
     expect(isDocumentUploadPolicy({ ...policy, hardCeilingMiB: 5 })).toBe(false);
+  });
+  it("does not select an arbitrary policy when duplicate categories conflict", () => {
+    const policy = {
+      category: "premises_plan", label: "Pelan premis",
+      mimeTypes: ["application/pdf"], defaultMaxMiB: 10, hardCeilingMiB: 25,
+    };
+    expect(unambiguousDocumentUploadPolicies(null)).toEqual([]);
+    expect(unambiguousDocumentUploadPolicies([policy])).toEqual([policy]);
+    expect(unambiguousDocumentUploadPolicies([
+      policy, { ...policy, defaultMaxMiB: 5 },
+    ])).toEqual([]);
+    expect(unambiguousDocumentUploadPolicies([
+      policy, { ...policy, category: "company_authority" }, null,
+    ])).toHaveLength(2);
   });
   it("rejects malformed API document records", () => {
     expect(isDocumentStatusRecord(doc(1, "CLEAN", "VERIFIED"))).toBe(true);
