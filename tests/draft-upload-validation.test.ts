@@ -46,6 +46,21 @@ describe("draft upload validation", () => {
     zeroWidth.writeUInt32BE(0, 16);
     expect(() => validateDraftUpload(zeroWidth.toString("base64"), "photo", "image/png", 1)).toThrow();
   });
+  it("rejects unsupported PNG IHDR bit depth, color type and compression settings", () => {
+    const cases: Array<[number, number]> = [
+      [24, 4],  // Truecolor cannot use four-bit samples.
+      [25, 5],  // Reserved PNG color type.
+      [26, 1],  // Compression method must be zero.
+      [27, 1],  // Filter method must be zero.
+      [28, 2],  // Interlace method must be zero or one.
+    ];
+    for (const [offset, value] of cases) {
+      const malformed = Buffer.from(png);
+      malformed[offset] = value;
+      expect(() => validateDraftUpload(malformed.toString("base64"), "photo", "image/png", 1))
+        .toThrow("Jenis fail");
+    }
+  });
   it("rejects empty files and oversized content", () => {
     expect(() => validateDraftUpload("", "supporting", "application/pdf", 1)).toThrow();
     const oversized = Buffer.concat([pdf, Buffer.alloc(1024 * 1024)]);
