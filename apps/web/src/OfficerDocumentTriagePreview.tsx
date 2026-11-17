@@ -47,6 +47,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const filteredSummary = documentReviewQueueSummary(filtered);
   const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
+  const hiddenCritical = Math.max(0, summary.critical - filteredSummary.critical);
 
 
   return (
@@ -59,7 +60,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         {" "}Proses sistem: {summary.systemTasks}.
       </p>
       {criticalUnfiltered && (
-        <p role="alert">Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. Paparan ini tidak memberikan kelulusan automatik.</p>
+        <p role="alert">Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. {hiddenCritical > 0 && `${hiddenCritical} kategori kritikal tidak dipaparkan kerana penapis semasa. `}Paparan ini tidak memberikan kelulusan automatik.</p>
       )}
       <label htmlFor={priorityId}>Keutamaan</label>
       <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
