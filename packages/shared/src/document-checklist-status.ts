@@ -21,6 +21,15 @@ export function isDocumentUploadPolicy(value: unknown): value is DocumentUploadP
     && row.hardCeilingMiB >= row.defaultMaxMiB;
 }
 
+/** Omit ambiguous policy categories rather than choosing an arbitrary duplicate. */
+export function unambiguousDocumentUploadPolicies(value: unknown): DocumentUploadPolicy[] {
+  if (!Array.isArray(value)) return [];
+  const valid = value.filter(isDocumentUploadPolicy);
+  const counts = new Map<string, number>();
+  for (const row of valid) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+  return valid.filter((row) => counts.get(row.category) === 1);
+}
+
 export type DocumentStatusRecord = {
   category: string;
   version: number;
