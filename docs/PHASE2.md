@@ -213,3 +213,7 @@ Ditambah `apps/api/src/document-scan-runner.ts`, arahan sekali jalan `scripts/sc
 ## Pra-pengesahan konfigurasi CLI imbasan dokumen
 
 `scripts/scan-documents.ts` kini memuatkan konfigurasi persekitaran dan menjalankan `validateDocumentScanConfiguration` **sebelum** import dinamik `core.ts` yang mewujudkan Prisma Client. Pra-pengesahan memerlukan pengaktifan kelompok, storan sah, ClamAV sah, dan had integer 1–50. Runner berkongsi validator yang sama. Ujian khusus menolak konfigurasi produksi/staging, ClamAV tidak lengkap, had tidak sah dan arahan tanpa opt-in. Storan `local` kekal untuk pembangunan/ujian sahaja; tiada storan produksi atau pemprosesan automatik diaktifkan. Keputusan CI masih belum disahkan.
+
+## Kod keluar arahan imbasan dokumen
+
+Arahan `npm run documents:scan` kini memulangkan kod keluar `1` apabila sekurang-kurangnya satu dokumen mempunyai keputusan `FAILED`, membolehkan pengendali tugas menjadualkan amaran tanpa menganggap dokumen `INFECTED` sebagai ralat pengimbas. Kod keluar `0` untuk kelompok tanpa kegagalan teknikal, termasuk dokumen dijangkiti yang kekal disekat melalui status rekod. Ringkasan diperiksa supaya semua kaunter integer bukan negatif dan jumlah keputusan sepadan dengan `examined`. Ujian regresi ditambah. Fungsi ini tidak menjadualkan tugas atau menghantar notifikasi secara automatik; keputusan CI belum disahkan.
