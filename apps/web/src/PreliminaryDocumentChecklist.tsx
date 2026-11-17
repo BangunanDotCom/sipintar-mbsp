@@ -1,21 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse, type DocumentUploadPolicy, type DocumentApiRecord } from "../../../packages/shared/src/document-checklist-status";
-
-type DocumentResponse = {
-  uploadPolicy: DocumentUploadPolicy[];
-  documents: DocumentApiRecord[];
-  uploadEnabled: boolean;
-  submissionEnabled: boolean;
-};
+import { documentChecklistRows, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse } from "../../../packages/shared/src/document-checklist-status";
 
 export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   draftId: string;
   capacity: "INDIVIDUAL" | "COMPANY";
   userId: string;
 }) {
-  const query = useQuery<DocumentResponse>({
+  const query = useQuery<unknown>({
     queryKey: ["application-documents", userId, draftId, capacity],
     queryFn: () => api(`/application-drafts/${draftId}/documents`),
     retry: false,
