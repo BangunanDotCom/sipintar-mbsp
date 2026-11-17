@@ -165,3 +165,7 @@ Migrasi `202611170003_document_scan_lease` menambah `scanLeaseToken`, `scanLease
 ## Pengukuhan adapter storan setempat terhadap symlink
 
 Adapter pembangunan `LocalQuarantineDocumentStore` kini memeriksa laluan ibu melalui `realpath`, menolak direktori akar yang merupakan symlink, menggunakan `O_NOFOLLOW` ketika membuka fail untuk baca/tulis dan menolak objek symlink semasa pemadaman. `tests/local-quarantine-document-store.test.ts` menambah ujian fail symlink. Kawalan ini mengurangkan risiko capaian luar direktori, tetapi bukan jaminan terhadap semua perlumbaan TOCTOU atau penggantian direktori oleh proses lain. Direktori akar masih mesti dikawal sepenuhnya oleh proses aplikasi; adapter tidak sesuai untuk produksi. Ujian belum disahkan dijalankan.
+
+## Semakan automatik cabang pembangunan
+
+`.github/workflows/staylink-phase1-checks.yml` menjalankan GitHub Actions apabila ada push ke `staylink-mbsp-phase1` atau arahan manual. Job menggunakan Node.js 22, `npm ci`, `npm run db:generate`, `npm run typecheck`, `npm run lint`, dan `npm test`. Storan dokumen dinyahaktifkan dan ClamAV sebenar tidak diaktifkan; ujian TCP menggunakan daemon simulasi. Workflow ini tidak mempunyai akses penulisan repositori, tidak menjalankan migrasi ke DB produksi dan tidak deploy. Status lulus/gagal perlu diperiksa pada tab Actions; penambahan fail workflow sahaja bukan bukti ujian lulus.
