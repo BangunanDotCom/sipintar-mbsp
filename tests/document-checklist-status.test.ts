@@ -214,6 +214,18 @@ describe("document checklist statuses", () => {
       doc(2, "CLEAN", "VERIFIED"),
     ])?.state).toBe("VERIFIED");
   });
+  it("reports duplicate superseded-only history as a conflict, not a missing category", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+      doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z"),
+    ]);
+    const row = rows.find((item) => item.category === "premises_plan");
+    expect(row?.current).toBeNull();
+    expect(row?.state).toBe("CONFLICT");
+    const summary = documentChecklistSummary(rows);
+    expect(summary.conflicts).toBe(1);
+    expect(summary.missing.some((item) => item.category === "premises_plan")).toBe(false);
+  });
   it("ignores invalid version numbers and superseded records", () => {
     expect(state([doc(0, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
     expect(state([doc(-1, "CLEAN", "VERIFIED")])?.state).toBe("MISSING");
