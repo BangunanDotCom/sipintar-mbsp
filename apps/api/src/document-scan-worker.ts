@@ -30,7 +30,7 @@ export async function processPendingDocumentScan(
       supersededAt: null,
       OR: [
         { scanStatus: "PENDING" },
-        { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: now } },
+        { scanStatus: "SCANNING", scanLeaseExpiresAt: { lte: now } },
       ],
     },
     data: {
