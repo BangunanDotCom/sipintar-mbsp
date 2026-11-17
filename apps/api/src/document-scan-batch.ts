@@ -38,7 +38,14 @@ export async function processPendingDocumentScanBatch(
     examined: pending.length, clean: 0, infected: 0, failed: 0, skipped: 0,
   };
   for (const document of pending) {
-    const result = await processPendingDocumentScan(db, store, scanner, document.id);
+    // A single unexpected worker error must not prevent later documents from being scanned.
+    // Count it as FAILED so the CLI returns a nonzero exit status for operator follow-up.
+    let result: "CLEAN" | "INFECTED" | "FAILED" | "SKIPPED";
+    try {
+      result = await processPendingDocumentScan(db, store, scanner, document.id);
+    } catch {
+      result = "FAILED";
+    }
     if (result === "CLEAN") summary.clean++;
     else if (result === "INFECTED") summary.infected++;
     else if (result === "FAILED") summary.failed++;
