@@ -429,3 +429,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pengasingan metadata respons pengimbas
 
 `scanQuarantinedDocument` kini memulangkan hanya medan yang dibenarkan (`status`, `engine`, `sha256`), dan menormalisasikan ruang pada nama enjin. Medan tidak dijangka daripada adapter pengimbas, seperti token dalaman atau data diagnostik, tidak lagi disalin ke hasil fungsi. Ujian regresi memeriksa hasil tepat dan memastikan metadata tambahan tidak terdedah. Ini bukan pengaktifan pengimbas produksi. Keputusan CI belum disahkan.
+
+## Pengesahan jenis kandungan sebelum storan kuarantin
+
+`storeQuarantinedDocument` kini memeriksa `Buffer.isBuffer` sebelum membaca saiz, mengira SHA-256 atau memanggil adapter storan. Input bukan Buffer, termasuk teks, `Uint8Array` dan `null`, ditolak secara gagal-selamat. Ujian regresi memastikan `putQuarantined` tidak dipanggil untuk input tersebut. Perubahan ini tidak mengaktifkan storan produksi; keputusan CI masih belum disahkan.
