@@ -58,14 +58,29 @@ export function isDocumentStatusRecord(value: unknown): value is DocumentStatusR
     && typeof record.verificationStatus === "string" && record.verificationStatus.trim().length > 0
     && (record.supersededAt === null || typeof record.supersededAt === "string");
 }
+export type DocumentApiRecord = DocumentStatusRecord & {
+  uploadedAt: string;
+  byteSize: number;
+  mimeType: string;
+};
+
+/** Validate document metadata as well as scan and officer status. */
+export function isDocumentApiRecord(value: unknown): value is DocumentApiRecord {
+  if (!isDocumentStatusRecord(value)) return false;
+  const record = value as unknown as Record<string, unknown>;
+  return typeof record.uploadedAt === "string" && record.uploadedAt.trim().length > 0
+    && typeof record.byteSize === "number" && Number.isSafeInteger(record.byteSize) && record.byteSize >= 0
+    && typeof record.mimeType === "string" && record.mimeType.trim().length > 0;
+}
+
 /** Parse the documents endpoint as untrusted data before showing any status. */
 export function validatedDocumentResponse(value: unknown): {
-  documents: DocumentStatusRecord[];
+  documents: DocumentApiRecord[];
   uploadPolicy: DocumentUploadPolicy[];
 } | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const response = value as Record<string, unknown>;
-  if (!Array.isArray(response.documents) || !response.documents.every(isDocumentStatusRecord)) return null;
+  if (!Array.isArray(response.documents) || !response.documents.every(isDocumentApiRecord)) return null;
   if (!Array.isArray(response.uploadPolicy)) return null;
   // Feature flags must be explicit. Never infer permission to upload or submit.
   if (typeof response.uploadEnabled !== "boolean" || typeof response.submissionEnabled !== "boolean") return null;
