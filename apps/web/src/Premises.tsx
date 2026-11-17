@@ -203,6 +203,7 @@ function PremisesEditor({ record }: { record: any }) {
     [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState(""),
     [message, setMessage] = React.useState(""),
+    [floorMismatches, setFloorMismatches] = React.useState<{ field: string; label: string; declared: number; calculated: number }[]>(record.floorMismatches || []),
     [errors, setErrors] = React.useState<Record<string, string>>({});
   const errorBox = React.useRef<HTMLDivElement>(null);
   const set = (key: string, value: string) => {
@@ -246,6 +247,7 @@ function PremisesEditor({ record }: { record: any }) {
       );
       setVersion(data.version);
       setSavedAt(data.updatedAt);
+      setFloorMismatches(data.floorMismatches || []);
       setMessage(
         "Maklumat premis berjaya disimpan sebagai draf. Belum dihantar kepada MBSP.",
       );
@@ -254,7 +256,7 @@ function PremisesEditor({ record }: { record: any }) {
         old?.id === record.draftId ? { ...old, version: data.version } : old,
       );
       await qc.invalidateQueries({ queryKey: ["application-drafts"] });
-      if (continueNext) nav(`/permohonan/draf/${record.draftId}/semakan`);
+      if (continueNext) nav(`/permohonan/draf/${record.draftId}/tingkat`);
       else if (previous) nav(`/permohonan/draf/${record.draftId}`);
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401)
@@ -477,6 +479,13 @@ function PremisesEditor({ record }: { record: any }) {
           </section>
         </fieldset>
         {message && <Notice>{message}</Notice>}
+        {floorMismatches.length > 0 && (
+          <Notice error>
+            Maklumat premis berbeza daripada butiran tingkat yang disimpan:
+            <ul>{floorMismatches.map((m) => <li key={m.field}>{m.label}: premis {m.declared}, tingkat {m.calculated}</li>)}</ul>
+            <Link to={`/permohonan/draf/${record.draftId}/tingkat`}>Semak butiran tingkat</Link>
+          </Notice>
+        )}
         {savedAt && (
           <p className="draft-saved">
             <ShieldCheck size={16} />
