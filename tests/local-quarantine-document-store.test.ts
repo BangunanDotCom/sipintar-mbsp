@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +35,19 @@ describe("local quarantine development adapter", () => {
     const input = { draftId, storageKey: key, content: Buffer.from("%PDF-1.7\nfile"), mimeType: "application/pdf" };
     await storeQuarantinedDocument(store, input);
     await expect(storeQuarantinedDocument(store, input)).rejects.toThrow();
+  });
+  it("rejects symlink objects instead of reading their targets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "staylink-symlink-"));
+    roots.push(root);
+    const store = new LocalQuarantineDocumentStore(root);
+    const key = createPrivateDocumentKey(draftId, "premises_plan");
+    const target = join(root, "outside.txt");
+    await writeFile(target, "private");
+    const location = join(root, ...key.split("/"));
+    await mkdir(join(root, ...key.split("/").slice(0, -1)), { recursive: true });
+    await symlink(target, location);
+    await expect(store.readQuarantined(key)).rejects.toThrow();
+    await expect(store.deleteQuarantined(key)).rejects.toThrow();
   });
   it("rejects path traversal and arbitrary object keys", async () => {
     const store = await setup();
