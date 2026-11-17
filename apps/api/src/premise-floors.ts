@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "./core.js";
@@ -69,7 +70,7 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
       await tx.premiseFloor.deleteMany({ where: { draftId: id } });
       await tx.premiseFloor.createMany({
         data: input.floors.map((floor, position) => ({
-          draftId: id, position, floorLabel: floor.floorLabel,
+          id: randomUUID(), draftId: id, position, floorLabel: floor.floorLabel,
           rooms: floor.rooms, beds: floor.beds, workers: floor.workers,
           areaSqm: new Prisma.Decimal(floor.areaSqm),
           facilities: floor.facilities,
