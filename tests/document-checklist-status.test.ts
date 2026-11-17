@@ -57,6 +57,11 @@ describe("document checklist statuses", () => {
       submissionEnabled: false,
     };
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
+    const draftId = "11111111-1111-4111-8111-111111111111";
+    expect(validatedDocumentResponse({ ...response, draftId }, draftId)?.documents).toHaveLength(1);
+    expect(validatedDocumentResponse({ ...response, draftId: "22222222-2222-4222-8222-222222222222" }, draftId)).toBeNull();
+    expect(validatedDocumentResponse(response, draftId)).toBeNull();
+    expect(validatedDocumentResponse({ ...response, draftId: null }, draftId)).toBeNull();
     expect(isDocumentApiRecord(response.documents[0])).toBe(true);
     expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-16T23:59:59Z" })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-17T00:00:00Z" })).toBe(true);
