@@ -291,6 +291,19 @@ describe("document checklist statuses", () => {
     expect(documentReviewQueue(rows)).toEqual(queue);
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
   });
+  it("routes rejected documents to applicant action rather than officer or system", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      doc(1, "CLEAN", "REJECTED"),
+    ]);
+    const queue = documentReviewQueue(rows);
+    expect(queue).toHaveLength(1);
+    expect(queue[0]?.nextAction).toBe("APPLICANT_CORRECTION");
+    expect(queue[0]?.actionOwner).toBe("APPLICANT");
+    const summary = documentReviewQueueSummary(queue);
+    expect(summary.applicantTasks).toBe(1);
+    expect(summary.officerTasks).toBe(0);
+    expect(summary.systemTasks).toBe(0);
+  });
   it("summarizes officer triage by priority and document applicability", () => {
     const rows = documentChecklistRows("COMPANY", [
       { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
