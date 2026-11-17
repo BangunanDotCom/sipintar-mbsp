@@ -107,6 +107,9 @@ export function validatedDocumentResponse(value: unknown): {
   if (!Array.isArray(response.uploadPolicy)) return null;
   // Feature flags must be explicit. Never infer permission to upload or submit.
   if (typeof response.uploadEnabled !== "boolean" || typeof response.submissionEnabled !== "boolean") return null;
+  // This read-only interface has no upload or submission workflow. Fail closed
+  // if the API unexpectedly advertises either feature as enabled.
+  if (response.uploadEnabled || response.submissionEnabled) return null;
   return {
     documents: response.documents,
     uploadPolicy: unambiguousDocumentUploadPolicies(response.uploadPolicy),
