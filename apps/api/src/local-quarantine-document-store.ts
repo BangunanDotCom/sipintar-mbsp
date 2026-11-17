@@ -1,6 +1,6 @@
 import { mkdir, open, lstat, realpath, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { isPrivateDocumentKeyForDraft } from "./private-document-keys.js";
 import type { PrivateDocumentStore } from "./private-document-store.js";
 
@@ -16,10 +16,10 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
   private async assertSafeParents(location: string): Promise<void> {
     const root = await realpath(this.root);
     if (root !== this.root) throw new Error("Direktori kuarantin tidak boleh menggunakan symlink.");
-    const parent = join(location, "..");
-    const relative = parent.slice(root.length + 1).split(sep);
+    const parent = dirname(location);
+    const segments = relative(root, parent).split(sep);
     let current = root;
-    for (const segment of relative) {
+    for (const segment of segments) {
       if (!segment || segment === "..") throw new Error("Laluan kuarantin tidak sah.");
       current = join(current, segment);
       const stat = await lstat(current);
@@ -43,7 +43,7 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
   async putQuarantined(input: { key: string; content: Buffer; mimeType: string }): Promise<void> {
     const location = this.location(input.key);
     if (!input.content.length) throw new Error("Fail kuarantin kosong.");
-    await mkdir(join(location, ".."), { recursive: true, mode: 0o700 });
+    await mkdir(dirname(location), { recursive: true, mode: 0o700 });
     // Exclusive create: never overwrite an existing quarantine object.
     await this.assertSafeParents(location);
     const handle = await open(location, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
@@ -51,7 +51,8 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
       await handle.writeFile(input.content);
       await handle.sync();
     } catch (error) {
-      await handle.close();
+      // Preserve the original write error even when close or cleanup fails.
+      await handle.close().catch(() => undefined);
       await unlink(location).catch(() => undefined);
       throw error;
     }
