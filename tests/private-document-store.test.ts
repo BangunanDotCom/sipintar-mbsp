@@ -61,6 +61,45 @@ describe("private document quarantine adapter", () => {
     })).rejects.toThrow("Jenis fail");
     expect(putQuarantined).not.toHaveBeenCalled();
   });
+  it("accepts a structurally valid JPEG photo in quarantine", async () => {
+    const { adapter, putQuarantined } = store();
+    const photo = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00, 0xff, 0xd9]);
+    const result = await storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      content: photo, mimeType: "image/jpeg",
+    });
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.byteSize).toBe(photo.length);
+    expect(putQuarantined).toHaveBeenCalledOnce();
+  });
+  it("rejects truncated PNG headers before writing to quarantine", async () => {
+    const { adapter, putQuarantined } = store();
+    const truncated = Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      Buffer.from([0, 0, 0, 13]),
+      Buffer.from("IHDR"),
+      Buffer.alloc(8),
+    ]);
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      content: truncated, mimeType: "image/png",
+    })).rejects.toThrow("Kandungan fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
+  it("rejects zero-dimension PNG headers before writing to quarantine", async () => {
+    const { adapter, putQuarantined } = store();
+    const invalid = Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      Buffer.from([0, 0, 0, 13]),
+      Buffer.from("IHDR"),
+      Buffer.alloc(17),
+    ]);
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      content: invalid, mimeType: "image/png",
+    })).rejects.toThrow("Kandungan fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
   it("does not enable uploads without an actual configured store", async () => {
     await expect(storeQuarantinedDocument(new DisabledDocumentStore(), {
       draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
