@@ -28,7 +28,8 @@ export function documentChecklistRows(
     if (current) {
       if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
-      else if (current.scanStatus !== "CLEAN") state = "PENDING_SCAN";
+      else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
+      else if (current.scanStatus !== "CLEAN") state = "UNSAFE";
       else if (current.verificationStatus === "REJECTED") state = "REJECTED";
       else if (current.verificationStatus === "VERIFIED") state = "VERIFIED";
       else if (current.verificationStatus === "UNVERIFIED") state = "PENDING_REVIEW";
