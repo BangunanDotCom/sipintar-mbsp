@@ -23,7 +23,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const summary = documentChecklistSummary(visible);
-  const { total, recorded, verified, safetyAttention, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
+  const { total, recorded, verified, unsafe, pendingScan, pendingScanRows, conflicts, pendingReview, rejected, missing, attentionRows, pendingReviewRows, optionalTotal, optionalRecorded, optionalAttention, optionalAttentionRows, optionalPendingReviewRows } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -54,7 +54,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
         <p role="status">
           <strong>Rekod kategori persediaan utama: {recorded} daripada {total} kategori.</strong>{" "}
           <strong> Disahkan pegawai selepas imbasan bersih: {verified} kategori.</strong>{" "}
-          {safetyAttention > 0 && <strong> Imbasan belum selesai atau isu keselamatan: {safetyAttention} kategori.</strong>}{" "}
+          {pendingScan > 0 && <strong> Menunggu imbasan keselamatan: {pendingScan} kategori.</strong>}
+          {unsafe > 0 && <strong> Isu keselamatan dokumen: {unsafe} kategori — rujuk pegawai.</strong>}{" "}
           {conflicts > 0 && <strong> Konflik sejarah/versi dokumen: {conflicts} kategori — rujuk pegawai.</strong>}{" "}
           {pendingReview > 0 && <strong> Menunggu pengesahan pegawai: {pendingReview} kategori.</strong>}{" "}
           {rejected > 0 && <strong> Ditolak pegawai: {rejected} kategori — semak maklum balas.</strong>}{" "}
