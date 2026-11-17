@@ -130,6 +130,17 @@ describe("document scan worker state transition", () => {
       data: { scanStatus: "INFECTED", scanLeaseToken: null, scanLeaseExpiresAt: null },
     }));
   });
+  it("requires a strictly unexpired lease when persisting scan results", async () => {
+    const s = setup();
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("CLEAN");
+    expect(s.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        scanStatus: "SCANNING",
+        scanLeaseExpiresAt: { gt: expect.any(Date) },
+      }),
+    }));
+  });
   it("does not report CLEAN when its lease expires before completion", async () => {
     const s = setup();
     s.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
