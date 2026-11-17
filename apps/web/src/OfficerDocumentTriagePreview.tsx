@@ -34,15 +34,18 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const ownerId = `${instanceId}-owner`;
   const scopeId = `${instanceId}-scope`;
   const searchId = `${instanceId}-search`;
+  const statusId = `${instanceId}-status`;
   const [priority, setPriority] = useState<DocumentReviewPriorityFilter>("ALL");
   const [owner, setOwner] = useState<DocumentReviewOwnerFilter>("ALL");
   const [scope, setScope] = useState<DocumentScopeFilter>("ALL");
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<DocumentChecklistRow["state"] | "ALL">("ALL");
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
-  const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner);
+  const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner)
+    .filter((item) => status === "ALL" || item.state === status);
   const filteredSummary = documentReviewQueueSummary(filtered);
-  const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || search.trim().length > 0;
+  const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || status !== "ALL" || search.trim().length > 0;
   const criticalUnfiltered = summary.critical > 0;
 
 
@@ -78,10 +81,19 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         <option value="PRIORITY">Persediaan utama</option>
         <option value="OPTIONAL">Tambahan jika berkaitan</option>
       </select>
+      <label htmlFor={statusId}>Status dokumen</label>
+      <select id={statusId} value={status} onChange={(e) => setStatus(e.target.value as DocumentChecklistRow["state"] | "ALL")}>
+        <option value="ALL">Semua status</option>
+        <option value="CONFLICT">Konflik versi</option>
+        <option value="UNSAFE">Isu keselamatan</option>
+        <option value="REJECTED">Ditolak pegawai</option>
+        <option value="PENDING_REVIEW">Menunggu pengesahan</option>
+        <option value="PENDING_SCAN">Menunggu imbasan</option>
+      </select>
       <label htmlFor={searchId}>Cari dokumen</label>
       <input id={searchId} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nama atau kategori dokumen" />
       <button className="button secondary small" type="button" disabled={!filtersActive} onClick={() => {
-        setPriority("ALL"); setOwner("ALL"); setScope("ALL"); setSearch("");
+        setPriority("ALL"); setOwner("ALL"); setScope("ALL"); setStatus("ALL"); setSearch("");
       }}>Kosongkan penapis</button>
       <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.
         {" "}Dalam hasil semasa: {filteredSummary.critical} kritikal, {filteredSummary.action} perlu tindakan dan {filteredSummary.waiting} menunggu proses.
