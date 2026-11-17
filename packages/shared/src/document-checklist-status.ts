@@ -80,7 +80,8 @@ function isIsoTimestamp(value: unknown): value is string {
   if (timezone !== "Z") {
     const offsetHours = Number(timezone.slice(1, 3));
     const offsetMinutes = Number(timezone.slice(4, 6));
-    if (offsetHours > 23 || offsetMinutes > 59) return false;
+    // ISO 8601 timezone offsets cannot exceed 14 hours.
+    if (offsetHours > 14 || offsetMinutes > 59 || (offsetHours === 14 && offsetMinutes !== 0)) return false;
   }
   return Number.isFinite(Date.parse(value));
 }
