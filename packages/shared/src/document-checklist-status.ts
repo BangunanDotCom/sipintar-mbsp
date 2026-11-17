@@ -234,3 +234,38 @@ export function filterDocumentChecklistRows(
     }
   });
 }
+
+/**
+ * Read-only officer triage preview. Never grants access, changes verification,
+ * or determines whether an application can be submitted.
+ */
+export type DocumentReviewQueueItem = {
+  category: string;
+  label: string;
+  applicability: string;
+  state: DocumentChecklistRow["state"];
+  version: number | null;
+  priority: "CRITICAL" | "ACTION" | "WAITING";
+};
+export function documentReviewQueue(rows: readonly DocumentChecklistRow[]): DocumentReviewQueueItem[] {
+  const priorityByState: Partial<Record<DocumentChecklistRow["state"], DocumentReviewQueueItem["priority"]>> = {
+    CONFLICT: "CRITICAL",
+    UNSAFE: "CRITICAL",
+    REJECTED: "ACTION",
+    PENDING_REVIEW: "ACTION",
+    PENDING_SCAN: "WAITING",
+  };
+  const rank = { CRITICAL: 0, ACTION: 1, WAITING: 2 };
+  return rows.flatMap((row) => {
+    const priority = priorityByState[row.state];
+    return priority ? [{
+      category: row.category,
+      label: row.label,
+      applicability: row.applicability,
+      state: row.state,
+      version: row.current?.version ?? null,
+      priority,
+    }] : [];
+  }).sort((a, b) => rank[a.priority] - rank[b.priority]
+    || a.category.localeCompare(b.category));
+}
