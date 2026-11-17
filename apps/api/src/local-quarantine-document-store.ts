@@ -6,6 +6,8 @@ import type { PrivateDocumentStore } from "./private-document-store.js";
 
 // Local development/test adapter only. Do not use as production object storage.
 // Each key is server-generated, draft-scoped and contains only UUID segments.
+const MAX_QUARANTINE_BYTES = 100 * 1024 * 1024;
+
 export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
   private readonly root: string;
   constructor(rootDirectory: string) {
@@ -49,7 +51,8 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
 
   async putQuarantined(input: { key: string; content: Buffer; mimeType: string }): Promise<void> {
     const location = this.location(input.key);
-    if (!input.content.length) throw new Error("Fail kuarantin kosong.");
+    if (!input.content.length || input.content.length > MAX_QUARANTINE_BYTES)
+      throw new Error("Saiz fail kuarantin tidak dibenarkan.");
     // Validate every ancestor before creating the next one: never follow a symlink
     // while recursively creating quarantine directories.
     await this.assertSafeParents(location, true);
@@ -72,6 +75,9 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
     await this.assertSafeParents(location);
     const handle = await open(location, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_QUARANTINE_BYTES)
+        throw new Error("Saiz atau jenis objek kuarantin tidak dibenarkan.");
       return await handle.readFile();
     } finally {
       await handle.close();
