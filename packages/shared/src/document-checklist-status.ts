@@ -138,9 +138,15 @@ export function documentChecklistRows(
     const newerSupersededVersion = current !== null && documents.some((d) =>
       d.category === requirement.category && d.supersededAt !== null
       && Number.isSafeInteger(d.version) && d.version >= current.version);
+    const categoryVersions = documents
+      .filter((d) => d.category === requirement.category && Number.isSafeInteger(d.version) && d.version > 0)
+      .map((d) => d.version);
+    // Duplicate historical version numbers make the audit trail ambiguous,
+    // even if one of those records has already been superseded.
+    const duplicateHistoricalVersions = new Set(categoryVersions).size !== categoryVersions.length;
     let state: DocumentChecklistRow["state"] = "MISSING";
     if (current) {
-      if (conflictingActiveVersions || newerSupersededVersion) state = "CONFLICT";
+      if (conflictingActiveVersions || newerSupersededVersion || duplicateHistoricalVersions) state = "CONFLICT";
       else if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
       else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
