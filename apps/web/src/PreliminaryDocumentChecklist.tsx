@@ -7,7 +7,6 @@ type DocumentRecord = DocumentStatusRecord & {
   uploadedAt: string;
   byteSize: number;
   mimeType: string;
-  sha256: string;
 };
 type DocumentResponse = {
   documents: DocumentRecord[];
@@ -23,6 +22,9 @@ export function PreliminaryDocumentChecklist({ draftId, capacity }: {
     queryKey: ["application-documents", draftId],
     queryFn: () => api(`/application-drafts/${draftId}/documents`),
     retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
   const documents = query.data?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
