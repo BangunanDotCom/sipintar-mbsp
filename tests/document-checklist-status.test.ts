@@ -58,6 +58,9 @@ describe("document checklist statuses", () => {
     };
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
     expect(isDocumentApiRecord(response.documents[0])).toBe(true);
+    expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-16T23:59:59Z" })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-17T00:00:00Z" })).toBe(true);
+    expect(isDocumentApiRecord({ ...response.documents[0], supersededAt: "2026-11-17T01:00:00+01:00" })).toBe(true);
     expect(isDocumentApiRecord({ ...response.documents[0], byteSize: -1 })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], byteSize: 0 })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], byteSize: 1.5 })).toBe(false);
