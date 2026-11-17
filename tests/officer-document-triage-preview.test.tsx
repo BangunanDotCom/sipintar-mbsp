@@ -77,6 +77,7 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Tiada dokumen yang memerlukan tindakan susulan");
     expect(markup).not.toContain("<table>");
     expect(markup).not.toContain("<caption>");
+    expect(markup).not.toContain("Paparkan semula semua rekod");
     expect(markup).not.toContain("role=\"alert\"");
     expect(markup).not.toContain("Fokus isu kritikal");
     expect(markup).toContain("disabled");
