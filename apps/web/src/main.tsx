@@ -47,6 +47,7 @@ import {
 import Dashboard from "./Dashboard";
 import ApplicationDraft from "./ApplicationDraft";
 const Premises = React.lazy(() => import("./Premises"));
+const Floors = React.lazy(() => import("./Floors"));
 import { CompanyInvitation } from "./CompanyInvitation";
 import { PasswordField } from "./PasswordField";
 import "@fontsource/montserrat/latin-400.css";
@@ -946,6 +947,14 @@ function App() {
             element={
               <React.Suspense fallback={<Loading />}>
                 <Premises />
+              </React.Suspense>
+            }
+          />
+          <Route
+            path="/permohonan/draf/:id/tingkat"
+            element={
+              <React.Suspense fallback={<Loading />}>
+                <Floors />
               </React.Suspense>
             }
           />
