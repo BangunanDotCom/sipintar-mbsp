@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 const uuid = z.uuid();
+export type DraftApplicantCapacity = "INDIVIDUAL" | "COMPANY";
+
+export function isDraftApplicantCapacity(value: string): value is DraftApplicantCapacity {
+  return value === "INDIVIDUAL" || value === "COMPANY";
+}
 
 // A draft's stored applicant context must be internally consistent before
 // authorizing access to its document readiness information.
