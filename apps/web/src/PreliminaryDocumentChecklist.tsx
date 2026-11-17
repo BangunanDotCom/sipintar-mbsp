@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentChecklistSummary, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse, filterDocumentChecklistRows, type DocumentStatusFilter } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentChecklistSummary, documentStatusLabels, documentNextStepLabels, validatedDocumentResponse, filterDocumentChecklistRows, type DocumentStatusFilter, type DocumentScopeFilter } from "../../../packages/shared/src/document-checklist-status";
 
 export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   draftId: string;
@@ -25,7 +25,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const visible = documentChecklistRows(capacity, documents);
   const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("ALL");
   const [documentSearch, setDocumentSearch] = useState("");
-  const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch);
+  const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("ALL");
+  const filteredRows = filterDocumentChecklistRows(visible, statusFilter, documentSearch, scopeFilter);
   const filterCounts = {
     attention: filterDocumentChecklistRows(visible, "ATTENTION").length,
     pending: filterDocumentChecklistRows(visible, "PENDING").length,
@@ -134,13 +135,20 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
             <option value="VERIFIED">Telah disahkan pegawai ({filterCounts.verified})</option>
             <option value="MISSING">Tiada rekod aktif ({filterCounts.missing})</option>
           </select>
+          <label htmlFor="document-scope-filter">Jenis kategori dokumen</label>{" "}
+          <select id="document-scope-filter" value={scopeFilter}
+            onChange={(event) => setScopeFilter(event.target.value as DocumentScopeFilter)}>
+            <option value="ALL">Semua kategori</option>
+            <option value="PRIORITY">Kategori persediaan utama</option>
+            <option value="OPTIONAL">Dokumen tambahan jika berkaitan</option>
+          </select>
           <label htmlFor="document-keyword-search">Cari kategori dokumen</label>{" "}
           <input id="document-keyword-search" type="search" value={documentSearch}
             onChange={(event) => setDocumentSearch(event.target.value)}
             placeholder="Contoh: pelan, kebakaran, surat kuasa" />
-          {(statusFilter !== "ALL" || documentSearch.trim() !== "") && (
+          {(statusFilter !== "ALL" || scopeFilter !== "ALL" || documentSearch.trim() !== "") && (
             <button className="button secondary small" type="button"
-              onClick={() => { setStatusFilter("ALL"); setDocumentSearch(""); }}>
+              onClick={() => { setStatusFilter("ALL"); setScopeFilter("ALL"); setDocumentSearch(""); }}>
               Kosongkan penapis dan carian
             </button>
           )}
