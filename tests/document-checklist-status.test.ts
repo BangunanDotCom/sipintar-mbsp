@@ -144,7 +144,8 @@ describe("document checklist statuses", () => {
     expect(unsafeOptional.optionalAttention).toBe(2);
     expect(unsafeOptional.optionalAttentionRows.map((row) => row.category)).toEqual(["building_certificate", "fire_safety"]);
     expect(summary.optionalAttentionRows).toEqual([]);
-    expect(unsafeOptional.safetyAttention).toBe(0);
+    expect(unsafeOptional.unsafe).toBe(0);
+    expect(unsafeOptional.pendingScan).toBe(0);
   });
   it("separates documents awaiting officer review from corrective action", () => {
     const summary = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", [
