@@ -52,7 +52,7 @@ export const audit = (
   db.auditLog.create({
     data: { actorId, activeRole, action, target, outcome, metadata },
   });
-let mailTransport: nodemailer.Transporter | undefined;
+let mailTransport: ReturnType<typeof nodemailer.createTransport> | undefined;
 export function closeMailer() {
   mailTransport?.close();
   mailTransport = undefined;
