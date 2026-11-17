@@ -269,3 +269,7 @@ Semakan `documentSubmissionReadiness` kini menghalang penghantaran apabila terda
 ## Panduan readiness tidak boleh bercanggah dengan amaran integriti
 
 `documentReadinessGuidance` kini menggunakan kedua-dua `ready` dan `unexpectedActiveDocuments` sebelum memaparkan tajuk dan mesej kejayaan. Walaupun data tidak konsisten menyatakan `ready=true`, amaran integriti memaksa panduan tindakan dan bukannya mesej lengkap. Ujian regresi bagi keadaan bercanggah ditambah. Ini hanya perlindungan persembahan; penghantaran rasmi masih ditutup. CI dan ujian integrasi belum disahkan.
+
+## Paparan semakan awal dokumen dalam draf pemohon
+
+Komponen `apps/web/src/DraftDocumentReadiness.tsx` kini menggunakan TanStack Query untuk membaca `GET /api/application-drafts/:id/submission-readiness` bagi draf tersimpan, memaparkan tajuk/mesej Bahasa Melayu, senarai dokumen yang menghalang, amaran integriti, status muat turun dan butang `Semak semula status dokumen`. Komponen dipasang pada bahagian sisi `apps/web/src/ApplicationDraft.tsx` apabila `draft.id` wujud. Ia tidak mengaktifkan muat naik atau penghantaran; butang hantar rasmi kekal disabled. Ralat API dipaparkan secara umum tanpa mendedahkan butiran dalaman. Semakan awal tidak boleh dianggap kelulusan MBSP. Pengujian UI/browser dan CI belum disahkan.
