@@ -469,3 +469,7 @@ Ujian regresi aksara kawalan kini menggunakan escape sebenar `\\n`, `\\r`, `\\t`
 ## Metadata pengesahan kuarantin kekal sepanjang bacaan tak segerak
 
 `readVerifiedQuarantinedDocument` kini mengekalkan salinan setempat `storageKey`, `expectedSha256`, `expectedByteSize` dan `expectedMimeType` selepas validasi dan sebelum `await readQuarantined`. Pengesahan kandungan selepas bacaan menggunakan salinan yang telah disahkan itu, bukannya membaca semula objek input yang mungkin diubah ketika adapter berjalan. Ujian regresi mengubah semua medan metadata semasa adapter membaca dan memastikan kandungan asal masih disahkan dengan nilai yang betul. CI belum disahkan dan storan produksi belum diaktifkan.
+
+## Ketekalan SHA-256 dalam keputusan pengimbasan
+
+`scanQuarantinedDocument` kini menyimpan nilai `expectedSha256` sebelum `await` membaca dokumen dan memanggil adapter pengimbas. Nilai SHA-256 yang dipulangkan menggunakan salinan awal yang disahkan oleh pembaca kuarantin, bukan metadata input yang mungkin diubah oleh adapter ketika pengimbasan. Ujian regresi mensimulasikan pengimbas mengubah `input.expectedSha256` kepada nilai palsu tetapi keputusan masih mengekalkan digest asal. CI belum disahkan dan pengimbas produksi belum diaktifkan.
