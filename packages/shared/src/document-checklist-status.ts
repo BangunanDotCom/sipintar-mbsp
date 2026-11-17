@@ -97,12 +97,14 @@ export function isDocumentApiRecord(value: unknown): value is DocumentApiRecord 
 }
 
 /** Parse the documents endpoint as untrusted data before showing any status. */
-export function validatedDocumentResponse(value: unknown): {
+export function validatedDocumentResponse(value: unknown, expectedDraftId?: string): {
   documents: DocumentApiRecord[];
   uploadPolicy: DocumentUploadPolicy[];
 } | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const response = value as Record<string, unknown>;
+  // Prevent showing metadata from a different draft if a response is mismatched.
+  if (expectedDraftId !== undefined && (typeof response.draftId !== "string" || response.draftId !== expectedDraftId)) return null;
   if (!Array.isArray(response.documents) || !response.documents.every(isDocumentApiRecord)) return null;
   if (!Array.isArray(response.uploadPolicy)) return null;
   // Feature flags must be explicit. Never infer permission to upload or submit.
