@@ -143,3 +143,7 @@ Adapter ClamAV tidak lagi menutup bahagian tulis soket sejurus selepas penghanta
 ## Lease imbasan dokumen (kawalan pemproses serentak)
 
 Migrasi `202611170003_document_scan_lease` menambah `scanLeaseToken`, `scanLeaseExpiresAt` dan status `SCANNING`. `processPendingDocumentScan` menggunakan tuntutan atomik `updateMany` terhadap dokumen PENDING atau SCANNING yang lease-nya tamat, token rawak dan tempoh 5 minit. Keputusan hanya boleh disimpan oleh pemegang token yang masih sah; token dibersihkan apabila selesai. Pemilihan batch merangkumi lease tamat tempoh. Kod ini belum disambungkan kepada storan objek sebenar, job scheduler atau endpoint muat naik. Migrasi dan ujian belum disahkan dijalankan. Tempoh lease 5 minit mesti dinilai bersama had masa ClamAV dan keperluan operasi sebelum produksi.
+
+## Pengesahan pemilikan scan lease
+
+`tests/document-scan-lease.test.ts` menambah ujian tuntutan lease sebelum imbasan, penolakan apabila lease dimiliki proses lain dan perlindungan apabila penyimpanan keputusan gagal akibat lease tamat. Skema Prisma kini turut mengisytiharkan indeks gabungan `[scanStatus, scanLeaseExpiresAt]` selaras dengan migrasi SQL. Ujian masih perlu dijalankan dalam CI dan terhadap PostgreSQL sebenar; tidak ada pengaktifan muat naik atau deployment.
