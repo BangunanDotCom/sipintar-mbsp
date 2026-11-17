@@ -216,8 +216,11 @@ export type DocumentStatusFilter = "ALL" | "ATTENTION" | "PENDING" | "VERIFIED" 
 export function filterDocumentChecklistRows(
   rows: readonly DocumentChecklistRow[],
   filter: DocumentStatusFilter,
+  search = "",
 ): DocumentChecklistRow[] {
+  const term = search.trim().toLocaleLowerCase("ms-MY");
   return rows.filter((row) => {
+    if (term && ![row.label, row.note, row.category].some((value) => value.toLocaleLowerCase("ms-MY").includes(term))) return false;
     switch (filter) {
       case "ATTENTION": return row.state === "CONFLICT" || row.state === "UNSAFE" || row.state === "REJECTED";
       case "PENDING": return row.state === "PENDING_SCAN" || row.state === "PENDING_REVIEW";
