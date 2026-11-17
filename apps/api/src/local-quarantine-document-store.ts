@@ -13,7 +13,7 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
     this.root = resolve(rootDirectory);
   }
 
-  private async assertSafeParents(location: string): Promise<void> {
+  private async assertSafeParents(location: string, createMissing = false): Promise<void> {
     const root = await realpath(this.root);
     if (root !== this.root) throw new Error("Direktori kuarantin tidak boleh menggunakan symlink.");
     const parent = dirname(location);
@@ -22,6 +22,13 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
     for (const segment of segments) {
       if (!segment || segment === "..") throw new Error("Laluan kuarantin tidak sah.");
       current = join(current, segment);
+      if (createMissing) {
+        try {
+          await mkdir(current, { mode: 0o700 });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+      }
       const stat = await lstat(current);
       if (!stat.isDirectory() || stat.isSymbolicLink())
         throw new Error("Direktori kuarantin tidak boleh menggunakan symlink.");
@@ -43,9 +50,10 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
   async putQuarantined(input: { key: string; content: Buffer; mimeType: string }): Promise<void> {
     const location = this.location(input.key);
     if (!input.content.length) throw new Error("Fail kuarantin kosong.");
-    await mkdir(dirname(location), { recursive: true, mode: 0o700 });
+    // Validate every ancestor before creating the next one: never follow a symlink
+    // while recursively creating quarantine directories.
+    await this.assertSafeParents(location, true);
     // Exclusive create: never overwrite an existing quarantine object.
-    await this.assertSafeParents(location);
     const handle = await open(location, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
     try {
       await handle.writeFile(input.content);
