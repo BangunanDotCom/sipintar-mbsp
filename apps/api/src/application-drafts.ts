@@ -5,7 +5,7 @@ import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
 import { validRepresentative } from "./company-invitations.js";
 import { loadDocumentSubmissionReadiness } from "./document-submission-readiness-db.js";
-import { validDraftApplicantContext } from "./draft-applicant-context.js";
+import { validDraftApplicantContext, isDraftApplicantCapacity } from "./draft-applicant-context.js";
 import { documentReadinessGuidance } from "./document-readiness-guidance.js";
 import {
   applicationDraftSchema,
@@ -264,7 +264,7 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
         select: { id: true, capacity: true, companyId: true, officialApplicantUserId: true, initiatedByUserId: true },
       });
       if (!draft) fail(404, "Draf tidak ditemui.");
-      if (!validDraftApplicantContext(
+      if (!isDraftApplicantCapacity(draft.capacity) || !validDraftApplicantContext(
         draft.capacity, draft.companyId, draft.officialApplicantUserId, draft.initiatedByUserId,
       )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
