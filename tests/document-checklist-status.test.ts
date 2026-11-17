@@ -74,6 +74,9 @@ describe("document checklist statuses", () => {
     expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2024-02-29T12:00:00Z" })).toBe(true);
     expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17T25:00:00Z" })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17T12:00:00+08:99" })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17T12:00:00+15:00" })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17T12:00:00-14:01" })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17T12:00:00+14:00" })).toBe(true);
 
     expect(validatedDocumentResponse({ ...response, documents: [doc(1, "CLEAN", "VERIFIED")] })).toBeNull();
     expect(validatedDocumentResponse(null)).toBeNull();
