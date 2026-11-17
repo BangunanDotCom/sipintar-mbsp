@@ -405,3 +405,7 @@ Pengesahan tandatangan fail PNG kini turut menyemak gabungan `bitDepth`/`colorTy
 ## Had dimensi PNG mengikut spesifikasi
 
 Semakan struktur `IHDR` PNG kini menolak lebar atau tinggi melebihi `2^31 - 1`, selain menolak dimensi sifar dan kombinasi jenis warna/kedalaman bit tidak sah. Ujian regresi memeriksa kedua-dua medan lebar dan tinggi dengan nilai `0x80000000`. Pemeriksaan ini tidak mengesahkan CRC, semua chunk PNG atau keselamatan imej secara menyeluruh. Keputusan CI belum disahkan; storan produksi dan muat naik pemohon kekal tidak diaktifkan.
+
+## Semakan sintaks pengepala PDF
+
+Pengesahan tandatangan `application/pdf` kini memerlukan pengepala versi berbentuk `%PDF-X.Y` (X dan Y digit ASCII), bukan sekadar awalan `%PDF-`. Ujian regresi menolak nombor versi bukan digit, pemisah tidak sah dan pengepala terpotong. Ini hanya semakan struktur awal; ia tidak mengesahkan keseluruhan fail PDF, tidak menggantikan parser atau pengimbas malware dan tidak mengaktifkan muat naik produksi. Keputusan CI belum disahkan.
