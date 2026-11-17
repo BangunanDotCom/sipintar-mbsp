@@ -15,7 +15,8 @@ export function isDocumentUploadPolicy(value: unknown): value is DocumentUploadP
   return typeof row.category === "string" && row.category.trim().length > 0 && row.category === row.category.trim()
     && typeof row.label === "string" && row.label.trim().length > 0
     && Array.isArray(row.mimeTypes) && row.mimeTypes.length > 0
-    && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && mime.trim().length > 0)
+    && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && /^[a-z0-9!#    && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && mime.trim().length > 0)^_.+-]+\/[a-z0-9!#    && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && mime.trim().length > 0)^_.+-]+$/.test(mime))
+    && new Set(row.mimeTypes).size === row.mimeTypes.length
     && typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0
     && typeof row.hardCeilingMiB === "number" && Number.isFinite(row.hardCeilingMiB)
     && row.hardCeilingMiB >= row.defaultMaxMiB;
