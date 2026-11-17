@@ -269,6 +269,7 @@ model AuditLog {
 }
 
 model ApplicationDraft {
+ documents ApplicationDocument[]
  floors PremiseFloor[]
  premises ApplicationPremises?
  id String @id @default(uuid())
@@ -335,4 +336,29 @@ model PremiseFloor {
  @@unique([draftId, position])
  @@index([draftId])
  @@map("premise_floors")
+}
+
+
+// Metadata only. Object bytes must remain in private, malware-scanned storage.
+model ApplicationDocument {
+ id String @id @default(uuid())
+ draftId String
+ draft ApplicationDraft @relation(fields:[draftId], references:[id], onDelete: Cascade)
+ category String
+ version Int
+ fileName String
+ mimeType String
+ byteSize Int
+ sha256 String
+ storageKey String @unique
+ scanStatus String @default("PENDING")
+ verificationStatus String @default("UNVERIFIED")
+ uploadedBy String
+ uploadedAt DateTime @default(now())
+ verifiedBy String?
+ verifiedAt DateTime?
+ supersededAt DateTime?
+ @@unique([draftId, category, version])
+ @@index([draftId, category, uploadedAt])
+ @@map("application_documents")
 }
