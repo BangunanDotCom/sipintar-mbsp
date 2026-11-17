@@ -21,6 +21,8 @@ describe("officer document triage preview", () => {
       record("fire_safety", "PENDING", "UNVERIFIED"),
     ]);
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Kategori tanpa rekod aktif: 4");
+    expect(markup).toContain("Kategori dengan dokumen disahkan: 0");
     expect(markup).toContain("Terdapat 1 rekod dokumen kritikal");
     expect(markup).not.toContain("rekod kritikal tidak dipaparkan");
     expect(markup).not.toContain("Paparkan semua termasuk isu kritikal");
@@ -87,6 +89,8 @@ describe("officer document triage preview", () => {
       record("premises_plan", "CLEAN", "VERIFIED"),
     ]);
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Kategori dengan dokumen disahkan: 1");
+    expect(markup).toContain("Kategori tanpa rekod aktif: 5");
     expect(markup).toContain("Tiada rekod berstatus tindakan susulan");
     expect(markup).toContain("bukan pengesahan dokumen lengkap atau permohonan layak diluluskan");
     expect(markup).not.toContain("<table>");
