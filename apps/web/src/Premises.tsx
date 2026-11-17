@@ -181,7 +181,7 @@ function PremisesSummary({ record }: { record: any }) {
         </section>
       </div>
       <FloorReview draftId={record.draftId} premises={p} />
-      <PreliminaryDocumentChecklist />
+      <PreliminaryDocumentChecklist draftId={record.draftId} capacity={record.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL"} />
       <div className="premises-actions">
         <Link
           className="button secondary"
