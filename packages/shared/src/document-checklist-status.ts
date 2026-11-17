@@ -134,3 +134,14 @@ export const documentStatusLabels: Record<DocumentChecklistRow["state"], string>
   REJECTED: "Ditolak pegawai",
   VERIFIED: "Disahkan pegawai",
 };
+
+/** Read-only next-step guidance; never implies that submission is enabled. */
+export const documentNextStepLabels: Record<DocumentChecklistRow["state"], string> = {
+  MISSING: "Sediakan dokumen jika berkaitan; semak keperluan rasmi dengan MBSP",
+  PENDING_SCAN: "Tunggu keputusan imbasan keselamatan",
+  CONFLICT: "Hubungi pegawai untuk menyelesaikan konflik versi aktif",
+  UNSAFE: "Hubungi pegawai; dokumen tidak boleh dianggap selamat",
+  PENDING_REVIEW: "Tunggu semakan dan pengesahan pegawai",
+  REJECTED: "Semak sebab penolakan dengan pegawai sebelum menyediakan pembetulan",
+  VERIFIED: "Tiada tindakan bagi rekod ini; tertakluk kepada semakan permohonan keseluruhan",
+};
