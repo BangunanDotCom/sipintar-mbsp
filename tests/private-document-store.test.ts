@@ -72,6 +72,15 @@ describe("private document quarantine adapter", () => {
     expect(result.byteSize).toBe(photo.length);
     expect(putQuarantined).toHaveBeenCalledOnce();
   });
+  it("rejects a JPEG without its closing marker before writing", async () => {
+    const { adapter, putQuarantined } = store();
+    await expect(storeQuarantinedDocument(adapter, {
+      draftId, storageKey: createPrivateDocumentKey(draftId, "premises_photos"),
+      content: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x00]),
+      mimeType: "image/jpeg",
+    })).rejects.toThrow("Kandungan fail");
+    expect(putQuarantined).not.toHaveBeenCalled();
+  });
   it("rejects truncated PNG headers before writing to quarantine", async () => {
     const { adapter, putQuarantined } = store();
     const truncated = Buffer.concat([
