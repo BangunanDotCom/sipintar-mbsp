@@ -15,7 +15,7 @@ function setup(status = "PENDING") {
     sha256: createHash("sha256").update(bytes).digest("hex"),
     scanStatus: status, supersededAt: null,
   }));
-  const updateMany = vi.fn(async (_args: { where: Record<string, unknown>; data: Record<string, any> }) => ({ count: 1 }));
+  const updateMany = vi.fn(async (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) => ({ count: 1 }));
   const db = { applicationDocument: { findUnique, updateMany } } as unknown as PrismaClient;
   const store: PrivateDocumentStore = {
     putQuarantined: async () => undefined,
