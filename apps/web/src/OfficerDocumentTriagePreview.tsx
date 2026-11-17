@@ -44,6 +44,8 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const [scope, setScope] = useState<DocumentScopeFilter>("ALL");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<DocumentReviewStatusFilter>("ALL");
+  const missingCount = rows.filter((row) => row.state === "MISSING").length;
+  const verifiedCount = rows.filter((row) => row.state === "VERIFIED").length;
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
   const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner, status);
@@ -75,6 +77,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
     <section className="panel" aria-labelledby={headingId}>
       <h2 id={headingId}>Pratonton keutamaan semakan dokumen</h2>
       <p>Ringkasan untuk pegawai yang diberi kuasa sahaja. Cadangan tindakan bukan keputusan kelulusan.</p>
+      <p role="status">Kategori tanpa rekod aktif: {missingCount}. Kategori dengan dokumen disahkan: {verifiedCount}. Kedua-duanya tidak termasuk dalam senarai tindakan susulan; status ini bukan pengesahan kelengkapan permohonan.</p>
       <p role="status">
         Jumlah memerlukan pemantauan: {summary.total}. Kritikal: {summary.critical}.
         {" "}Tindakan pegawai: {summary.officerTasks}. Tindakan pemohon: {summary.applicantTasks}.
