@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, documentChecklistSummary, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -107,6 +107,24 @@ describe("document checklist statuses", () => {
       expect(documentNextStepLabels[status].length).toBeGreaterThan(10);
       expect(documentNextStepLabels[status].toLowerCase()).not.toContain("hantar permohonan");
     }
+  });
+  it("summarizes priority categories without counting optional items as mandatory", () => {
+    const empty = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", []));
+    expect(empty.total).toBeGreaterThan(0);
+    expect(empty.recorded).toBe(0);
+    expect(empty.verified).toBe(0);
+    expect(empty.missing).toHaveLength(empty.total);
+    const records = [
+      doc(1, "CLEAN", "VERIFIED"),
+      { ...doc(1, "CLEAN", "REJECTED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "fire_safety" },
+    ];
+    const summary = documentChecklistSummary(documentChecklistRows("INDIVIDUAL", records));
+    expect(summary.recorded).toBe(2);
+    expect(summary.verified).toBe(1);
+    expect(summary.rejected).toBe(1);
+    expect(summary.total).toBe(empty.total);
+    expect(summary.missing).toHaveLength(empty.total - 2);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
