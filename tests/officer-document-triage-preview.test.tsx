@@ -24,6 +24,7 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Terdapat 1 kategori dokumen kritikal");
     expect(markup).not.toContain("kategori kritikal tidak dipaparkan");
     expect(markup).not.toContain("Paparkan semua termasuk isu kritikal");
+    expect(markup).toContain("Fokus isu kritikal");
     expect(markup).toContain("Tindakan pegawai: 2");
     expect(markup).toContain("Proses sistem: 1");
     expect(markup).not.toContain("Semak percanggahan versi");
@@ -67,6 +68,7 @@ describe("officer document triage preview", () => {
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
     expect(markup).toContain("Tiada dokumen yang memerlukan tindakan susulan");
     expect(markup).not.toContain("role=\"alert\"");
+    expect(markup).not.toContain("Fokus isu kritikal");
     expect(markup).toContain("disabled");
   });
 
