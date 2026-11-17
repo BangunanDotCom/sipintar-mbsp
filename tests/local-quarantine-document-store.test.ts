@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, mkdir, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
