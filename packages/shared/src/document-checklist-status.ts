@@ -148,8 +148,11 @@ export function documentChecklistRows(
     // even if one of those records has already been superseded.
     const duplicateHistoricalVersions = new Set(categoryVersions).size !== categoryVersions.length;
     let state: DocumentChecklistRow["state"] = "MISSING";
-    if (current) {
-      if (conflictingActiveVersions || newerSupersededVersion || duplicateHistoricalVersions) state = "CONFLICT";
+    // A duplicate audit-history version is a conflict even when no active
+    // document remains; do not misreport corrupted history as simply missing.
+    if (duplicateHistoricalVersions) state = "CONFLICT";
+    else if (current) {
+      if (conflictingActiveVersions || newerSupersededVersion) state = "CONFLICT";
       else if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
       else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
