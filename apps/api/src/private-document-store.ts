@@ -54,7 +54,7 @@ export async function storeQuarantinedDocument(
   return {
     storageKey: input.storageKey,
     sha256,
-    byteSize: input.content.length,
+    byteSize: content.length,
     mimeType: input.mimeType,
   };
 }
