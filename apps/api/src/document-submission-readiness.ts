@@ -8,6 +8,7 @@ export type DocumentSubmissionReadiness = {
   ready: boolean;
   blockingCategories: SupportingDocumentCategory[];
   pendingScanCategories: SupportingDocumentCategory[];
+  unexpectedActiveDocuments: boolean;
 };
 
 // Only mandatory categories block submission. Officer verification is a separate
@@ -18,8 +19,14 @@ export function documentSubmissionReadiness(
   documents: readonly DocumentStatusRecord[],
 ): DocumentSubmissionReadiness {
   const blockingCategories: SupportingDocumentCategory[] = [];
+  // Never silently ignore an uploaded document that is outside the checklist
+  // for this applicant capacity (for example a company letter on an individual draft).
+  const checklist = documentChecklistRows(capacity, documents);
+  const allowedCategories = new Set(checklist.map((row) => row.category));
+  const unexpectedActive = documents.some((document) =>
+    !document.supersededAt && !allowedCategories.has(document.category));
   const pendingScanCategories: SupportingDocumentCategory[] = [];
-  for (const row of documentChecklistRows(capacity, documents)) {
+  for (const row of checklist) {
     // Optional documents may be absent, but an uploaded unsafe or rejected
     // optional document must never be silently accepted at submission.
     if (row.applicability === "IF_AVAILABLE" && row.state === "MISSING") continue;
@@ -37,8 +44,9 @@ export function documentSubmissionReadiness(
       blockingCategories.push(row.category as SupportingDocumentCategory);
   }
   return {
-    ready: blockingCategories.length === 0,
+    ready: blockingCategories.length === 0 && !unexpectedActive,
     blockingCategories,
     pendingScanCategories,
+    unexpectedActiveDocuments: unexpectedActive,
   };
 }
