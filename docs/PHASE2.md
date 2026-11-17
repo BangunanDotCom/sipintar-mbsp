@@ -357,3 +357,7 @@ Komponen `PreliminaryDocumentChecklist` kini memaparkan bilangan kategori dokume
 ## Penyelarasan dasar kategori dokumen sokongan
 
 Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kategori dokumen sokongan kepada dasar muat naik `plan`, `photo` atau `supporting`. Ia digunakan bersama oleh metadata panduan muat naik dan `storeQuarantinedDocument`, bagi mengurangkan risiko had saiz/MIME berbeza antara lapisan. Ujian unit menyemak ketujuh-tujuh kategori dan kelengkapan senarai bagi pemohon syarikat. Perubahan tidak mengaktifkan laluan muat naik, storan produksi atau penghantaran permohonan. Keputusan CI selepas commit masih belum disahkan.
+
+## Pengesahan struktur fail dokumen bersama
+
+`document-file-signatures.ts` kini menyediakan pemeriksaan struktur asas MIME PDF, JPEG dan PNG yang digunakan oleh validator pra-muat-naik serta storan kuarantin. PNG memerlukan tandatangan, panjang IHDR 13 bait, sekurang-kurangnya 33 bait dan lebar/tinggi bukan sifar. Ujian tambahan menolak PNG yang terpotong dan dimensi sifar. Ini hanya pengesahan awal; ia tidak mengesahkan CRC, kandungan PDF/imej sepenuhnya atau keselamatan malware. Storan dan laluan muat naik produksi masih tidak diaktifkan; keputusan CI belum disahkan.
