@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { isPrivateDocumentKeyForDraft } from "./private-document-keys.js";
+import { UPLOAD_CATEGORIES } from "./upload-policy.js";
+import { supportingDocumentCategorySchema } from "../../../packages/shared/src/supporting-documents.js";
 
 // Storage adapter contract. No public URLs or applicant-supplied storage keys.
 // A production adapter must enforce private access, server-side encryption,
@@ -27,10 +29,27 @@ export async function storeQuarantinedDocument(
 ): Promise<PreparedDocument> {
   if (!isPrivateDocumentKeyForDraft(input.storageKey, input.draftId))
     throw new Error("Kunci dokumen tidak sepadan dengan permohonan.");
-  if (!input.content.length || input.content.length > 100 * 1024 * 1024)
+  const category = input.storageKey.split("/")[2];
+  supportingDocumentCategorySchema.parse(category);
+  const policy = category === "premises_photos" ? UPLOAD_CATEGORIES.photo :
+    category === "premises_plan" || category === "floor_layout" ? UPLOAD_CATEGORIES.plan :
+    UPLOAD_CATEGORIES.supporting;
+  if (!input.content.length || input.content.length > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Saiz fail tidak dibenarkan.");
-  if (!["application/pdf", "image/jpeg", "image/png"].includes(input.mimeType))
-    throw new Error("Jenis fail tidak dibenarkan.");
+  if (!policy.mime.split(",").includes(input.mimeType))
+    throw new Error("Jenis fail tidak dibenarkan bagi kategori dokumen.");
+  const pdf = input.content.subarray(0, 5).toString("ascii") === "%PDF-";
+  const jpeg = input.content.length >= 4 && input.content[0] === 0xff &&
+    input.content[1] === 0xd8 && input.content[2] === 0xff &&
+    input.content[input.content.length - 2] === 0xff &&
+    input.content[input.content.length - 1] === 0xd9;
+  const png = input.content.length >= 24 &&
+    input.content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
+    input.content.subarray(12, 16).toString("ascii") === "IHDR";
+  if (!(input.mimeType === "application/pdf" && pdf ||
+    input.mimeType === "image/jpeg" && jpeg ||
+    input.mimeType === "image/png" && png))
+    throw new Error("Kandungan fail tidak sepadan dengan MIME.");
   const sha256 = createHash("sha256").update(input.content).digest("hex");
   await store.putQuarantined({
     key: input.storageKey,
