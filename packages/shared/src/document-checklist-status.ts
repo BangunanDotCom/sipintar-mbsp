@@ -32,16 +32,16 @@ export function documentChecklistRows(
   documents: readonly DocumentStatusRecord[],
 ): DocumentChecklistRow[] {
   return preliminaryDocumentChecklist(capacity).map((requirement) => {
-    const current = documents
+    const active = documents
       .filter((d) => d.category === requirement.category && d.supersededAt === null && Number.isSafeInteger(d.version) && d.version > 0)
-      .sort((a, b) => b.version - a.version)[0] ?? null;
-    // Conflicting active records at the same version must never appear verified.
-    const duplicateVersion = current !== null && documents.filter((d) =>
-      d.category === requirement.category && d.supersededAt === null && d.version === current.version
-    ).length > 1;
+      .sort((a, b) => b.version - a.version);
+    const current = active[0] ?? null;
+    // Only one active version per category is valid. Any conflicting active
+    // records (including different versions) must never appear verified.
+    const conflictingActiveVersions = active.length > 1;
     let state: DocumentChecklistRow["state"] = "MISSING";
     if (current) {
-      if (duplicateVersion) state = "UNSAFE";
+      if (conflictingActiveVersions) state = "UNSAFE";
       else if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
       else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
