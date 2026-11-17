@@ -1,5 +1,26 @@
 import { preliminaryDocumentChecklist } from "./supporting-documents.js";
 
+export type DocumentUploadPolicy = {
+  category: string;
+  label: string;
+  mimeTypes: string[];
+  defaultMaxMiB: number;
+  hardCeilingMiB: number;
+};
+
+/** Validate policy data received from the API before rendering upload guidance. */
+export function isDocumentUploadPolicy(value: unknown): value is DocumentUploadPolicy {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.category === "string" && row.category.trim().length > 0
+    && typeof row.label === "string" && row.label.trim().length > 0
+    && Array.isArray(row.mimeTypes) && row.mimeTypes.length > 0
+    && row.mimeTypes.every((mime: unknown) => typeof mime === "string" && mime.trim().length > 0)
+    && typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0
+    && typeof row.hardCeilingMiB === "number" && Number.isFinite(row.hardCeilingMiB)
+    && row.hardCeilingMiB >= row.defaultMaxMiB;
+}
+
 export type DocumentStatusRecord = {
   category: string;
   version: number;
