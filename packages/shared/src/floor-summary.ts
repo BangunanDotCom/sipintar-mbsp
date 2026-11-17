@@ -25,7 +25,8 @@ export const premiseFloorsSchema = z.array(premiseFloorSchema)
   .superRefine((floors, ctx) => {
     const seen = new Set<string>();
     floors.forEach((floor, index) => {
-      // Treat visually equivalent labels as the same floor (Unicode width and whitespace).\n      const key = floor.floorLabel.normalize("NFKC").replace(/\\s+/gu, " ").trim().toLocaleLowerCase("ms-MY");
+      // Treat visually equivalent labels as the same floor (Unicode width and whitespace).
+      const key = floor.floorLabel.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("ms-MY");
       if (seen.has(key)) ctx.addIssue({
         code: "custom", path: [index, "floorLabel"],
         message: "Nama tingkat tidak boleh berulang.",
