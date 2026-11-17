@@ -285,6 +285,8 @@ describe("document checklist statuses", () => {
     expect(queue.find((item) => item.category === "floor_layout")?.version).toBe(1);
     expect(queue.find((item) => item.category === "floor_layout")?.nextAction).toBe("SECURITY_REVIEW");
     expect(queue.find((item) => item.category === "premises_plan")?.nextAction).toBe("REVIEW_DOCUMENT");
+    expect(queue.find((item) => item.category === "floor_layout")?.actionOwner).toBe("OFFICER");
+    expect(queue.find((item) => item.category === "fire_safety")?.actionOwner).toBe("SYSTEM");
     expect(queue.some((item) => item.category === "premises_photos")).toBe(false);
     expect(documentReviewQueue(rows)).toEqual(queue);
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
@@ -299,9 +301,11 @@ describe("document checklist statuses", () => {
     const queue = documentReviewQueue(rows);
     expect(documentReviewQueueSummary(queue)).toEqual({
       total: 3, critical: 1, action: 1, waiting: 1, main: 2, optional: 1,
+      officerTasks: 2, applicantTasks: 0, systemTasks: 1,
     });
     expect(documentReviewQueueSummary([])).toEqual({
       total: 0, critical: 0, action: 0, waiting: 0, main: 0, optional: 0,
+      officerTasks: 0, applicantTasks: 0, systemTasks: 0,
     });
     expect(rows.find((row) => row.category === "premises_photos")?.state).toBe("VERIFIED");
   });
