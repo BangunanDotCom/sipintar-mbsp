@@ -40,6 +40,10 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
   const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner);
+  const filteredSummary = documentReviewQueueSummary(filtered);
+  const filtersActive = priority !== "ALL" || owner !== "ALL" || scope !== "ALL" || search.trim().length > 0;
+  const criticalUnfiltered = summary.critical > 0;
+
 
   return (
     <section className="panel" aria-labelledby={headingId}>
@@ -50,6 +54,9 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         {" "}Tindakan pegawai: {summary.officerTasks}. Tindakan pemohon: {summary.applicantTasks}.
         {" "}Proses sistem: {summary.systemTasks}.
       </p>
+      {criticalUnfiltered && (
+        <p role="alert">Terdapat {summary.critical} kategori dokumen kritikal yang memerlukan perhatian. Paparan ini tidak memberikan kelulusan automatik.</p>
+      )}
       <label htmlFor={priorityId}>Keutamaan</label>
       <select id={priorityId} value={priority} onChange={(e) => setPriority(e.target.value as DocumentReviewPriorityFilter)}>
         <option value="ALL">Semua keutamaan</option>
@@ -72,12 +79,15 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       </select>
       <label htmlFor={searchId}>Cari dokumen</label>
       <input id={searchId} type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nama atau kategori dokumen" />
-      <button className="button secondary small" type="button" onClick={() => {
+      <button className="button secondary small" type="button" disabled={!filtersActive} onClick={() => {
         setPriority("ALL"); setOwner("ALL"); setScope("ALL"); setSearch("");
       }}>Kosongkan penapis</button>
-      <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.</p>
+      <p role="status">Memaparkan {filtered.length} daripada {queue.length} rekod pemantauan.
+        {" "}Dalam hasil semasa: {filteredSummary.critical} kritikal, {filteredSummary.action} perlu tindakan dan {filteredSummary.waiting} menunggu proses.
+      </p>
       <div style={{ overflowX: "auto" }}>
         <table>
+          <caption>Senarai tindakan susulan dokumen mengikut keutamaan dan pihak bertanggungjawab</caption>
           <thead><tr><th scope="col">Dokumen</th><th scope="col">Keutamaan</th><th scope="col">Pihak</th><th scope="col">Versi</th><th scope="col">Panduan tindakan</th></tr></thead>
           <tbody>
             {filtered.map((item) => (
@@ -92,7 +102,9 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
           </tbody>
         </table>
       </div>
-      {filtered.length === 0 && <p>Tiada rekod sepadan dengan penapis.</p>}
+      {filtered.length === 0 && (
+        <p>{queue.length === 0 ? "Tiada dokumen yang memerlukan tindakan susulan dalam senarai semasa." : "Tiada rekod sepadan dengan penapis. Kosongkan penapis untuk melihat semua rekod."}</p>
+      )}
       <p><small>Pratonton baca sahaja. Pengesahan dokumen, muat naik dan penghantaran rasmi tidak tersedia melalui komponen ini.</small></p>
     </section>
   );
