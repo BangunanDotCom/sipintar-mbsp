@@ -253,3 +253,7 @@ Ditambah `validDraftApplicantContext` untuk menyekat draf yang mempunyai kapasit
 ## Pengukuhan identiti draf dan cache respons readiness
 
 `validDraftApplicantContext` kini memerlukan UUID sah bagi `initiatedByUserId` dan `companyId` bagi permohonan syarikat; keserasian konteks individu/syarikat kekal diperiksa. Ujian regresi merangkumi ID rosak, kosong dan ruang putih. Endpoint `GET /api/application-drafts/:id/submission-readiness` kini menghantar `Cache-Control: private, no-store, max-age=0` serta `Pragma: no-cache` bagi mengurangkan penyimpanan respons khusus pemohon dalam cache yang mematuhi arahan. Ini bukan pengganti kawalan akses, perlindungan pelayan atau penyulitan. Penghantaran rasmi masih ditutup; CI dan ujian integrasi endpoint belum disahkan.
+
+## Kategori dokumen aktif di luar senarai pemohon
+
+`documentSubmissionReadiness` kini mengesan dokumen aktif dengan kategori yang tidak terdapat dalam `preliminaryDocumentChecklist(capacity)`. Ini termasuk kategori tidak dikenali dan dokumen `company_authority` pada draf individu. Jika dikesan, `ready=false` dan `unexpectedActiveDocuments=true`; butiran fail atau kategori luar jangka tidak didedahkan dalam penanda ini. Rekod `supersededAt` tidak dikira. Respons readiness kini mempunyai medan boolean tambahan `unexpectedActiveDocuments` dan ujian kontrak dikemas kini. Sebelum paparan pengguna dibina, medan baharu perlu dikendalikan sebagai isu integriti rekod yang memerlukan pembetulan. Endpoint penghantaran rasmi masih ditutup; CI dan ujian integrasi belum disahkan.
