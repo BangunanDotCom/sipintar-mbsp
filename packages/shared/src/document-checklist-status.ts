@@ -281,3 +281,19 @@ export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueIt
     optional: queue.filter((item) => item.applicability === "IF_AVAILABLE").length,
   };
 }
+
+/** Officer triage preview filters only; access control must be enforced by the API. */
+export type DocumentReviewPriorityFilter = "ALL" | DocumentReviewQueueItem["priority"];
+export function filterDocumentReviewQueue(
+  queue: readonly DocumentReviewQueueItem[],
+  priority: DocumentReviewPriorityFilter = "ALL",
+  scope: DocumentScopeFilter = "ALL",
+  search = "",
+): DocumentReviewQueueItem[] {
+  const term = search.trim().toLocaleLowerCase("ms-MY");
+  return queue.filter((item) =>
+    (priority === "ALL" || item.priority === priority)
+    && (scope === "ALL" || (scope === "OPTIONAL" ? item.applicability === "IF_AVAILABLE" : item.applicability !== "IF_AVAILABLE"))
+    && (!term || [item.label, item.category].some((value) => value.toLocaleLowerCase("ms-MY").includes(term)))
+  );
+}
