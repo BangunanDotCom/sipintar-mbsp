@@ -31,7 +31,8 @@ export function documentChecklistRows(
       else if (current.scanStatus !== "CLEAN") state = "PENDING_SCAN";
       else if (current.verificationStatus === "REJECTED") state = "REJECTED";
       else if (current.verificationStatus === "VERIFIED") state = "VERIFIED";
-      else state = "PENDING_REVIEW";
+      else if (current.verificationStatus === "UNVERIFIED") state = "PENDING_REVIEW";
+      else state = "UNSAFE"; // Unknown status must not be treated as pending approval.
     }
     return { ...requirement, current, state };
   });
