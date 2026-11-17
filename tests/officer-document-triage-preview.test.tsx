@@ -74,7 +74,8 @@ describe("officer document triage preview", () => {
       record("premises_plan", "CLEAN", "VERIFIED"),
     ]);
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
-    expect(markup).toContain("Tiada dokumen yang memerlukan tindakan susulan");
+    expect(markup).toContain("Tiada rekod berstatus tindakan susulan");
+    expect(markup).toContain("bukan pengesahan dokumen lengkap atau permohonan layak diluluskan");
     expect(markup).not.toContain("<table>");
     expect(markup).not.toContain("<caption>");
     expect(markup).not.toContain("Paparkan semula semua rekod");
