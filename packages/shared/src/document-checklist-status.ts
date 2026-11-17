@@ -90,6 +90,7 @@ export function isDocumentApiRecord(value: unknown): value is DocumentApiRecord 
   if (!isDocumentStatusRecord(value)) return false;
   const record = value as unknown as Record<string, unknown>;
   return isIsoTimestamp(record.uploadedAt)
+    && (record.supersededAt === null || Date.parse(record.supersededAt as string) >= Date.parse(record.uploadedAt as string))
     && typeof record.byteSize === "number" && Number.isSafeInteger(record.byteSize) && record.byteSize > 0
     && typeof record.mimeType === "string" && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(record.mimeType);
 }
