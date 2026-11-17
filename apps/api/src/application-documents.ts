@@ -6,7 +6,8 @@ import { fail } from "./auth.js";
 
 // Read-only metadata endpoint. Never return private object keys or download URLs.
 export async function applicationDocumentRoutes(app: FastifyInstance) {
-  app.get("/api/application-drafts/:id/documents", async (req) => {
+  app.get("/api/application-drafts/:id/documents", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
     const s = await applicant(req);
     const { id } = z.object({ id: z.uuid() }).parse(req.params);
     return db.$transaction(async (tx) => {
@@ -20,7 +21,7 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
         where: { draftId: id },
         select: {
           id: true, category: true, version: true, fileName: true,
-          mimeType: true, byteSize: true, sha256: true, scanStatus: true,
+          mimeType: true, byteSize: true, scanStatus: true,
           verificationStatus: true, uploadedAt: true, supersededAt: true,
         },
         orderBy: [{ category: "asc" }, { version: "desc" }],
