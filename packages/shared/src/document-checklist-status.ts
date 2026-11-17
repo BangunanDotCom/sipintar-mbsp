@@ -304,11 +304,10 @@ export function hiddenCriticalDocumentCount(
   all: readonly DocumentReviewQueueItem[],
   visible: readonly DocumentReviewQueueItem[],
 ): number {
-  const critical = new Set(all.filter((item) => item.priority === "CRITICAL").map((item) => item.category));
-  for (const item of visible) {
-    if (item.priority === "CRITICAL") critical.delete(item.category);
-  }
-  return critical.size;
+  // Match queue entries by identity, not category: duplicated category records
+  // must never cause a critical issue to be silently undercounted.
+  const visibleItems = new Set(visible);
+  return all.filter((item) => item.priority === "CRITICAL" && !visibleItems.has(item)).length;
 }
 
 /** Reusable, explicit critical view; never inherits a hidden owner/status/search filter. */
