@@ -50,6 +50,8 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
   const missingOptionalCount = missingRows.filter((row) => row.applicability === "IF_AVAILABLE").length;
   const verifiedRows = rows.filter((row) => row.state === "VERIFIED");
   const verifiedCount = verifiedRows.length;
+  const verifiedPrimaryCount = verifiedRows.filter((row) => row.applicability !== "IF_AVAILABLE").length;
+  const verifiedOptionalCount = verifiedRows.filter((row) => row.applicability === "IF_AVAILABLE").length;
   const queue = documentReviewQueue(rows);
   const summary = documentReviewQueueSummary(queue);
   const filtered = filterDocumentReviewQueue(queue, priority, scope, search, owner, status);
@@ -93,6 +95,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       {verifiedRows.length > 0 && (
         <details>
           <summary>Lihat {verifiedRows.length} kategori dengan dokumen disahkan pegawai</summary>
+          <p>Persediaan utama disahkan: {verifiedPrimaryCount} kategori. Dokumen tambahan disahkan jika berkaitan: {verifiedOptionalCount} kategori.</p>
           <ul>{verifiedRows.map((row) => <li key={row.category}>{row.label}{row.current ? ` — Versi ${row.current.version}` : ""}</li>)}</ul>
           <p>Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.</p>
         </details>
