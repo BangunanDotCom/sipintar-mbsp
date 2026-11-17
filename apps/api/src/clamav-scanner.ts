@@ -39,7 +39,7 @@ export class ClamAvScanner implements DocumentMalwareScanner {
           while (!settled && phase !== "done") {
             let frame: Buffer;
             if (phase === "command") {
-              frame = Buffer.from("zINSTREAM\\0");
+              frame = Buffer.from("zINSTREAM\0");
               phase = "length";
             } else if (phase === "length") {
               if (offset >= bytes.length) {
