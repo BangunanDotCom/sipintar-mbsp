@@ -20,9 +20,13 @@ export class ClamAvScanner implements DocumentMalwareScanner {
       const socket = connect({ host: this.host, port: this.port });
       let response = "";
       let settled = false;
+      // Enforce a wall-clock deadline as well as socket inactivity timeout.
+      // A daemon sending a byte periodically must not keep a scan open forever.
+      const deadline = setTimeout(() => finish(new Error("Pengimbas ClamAV tamat masa.")), this.timeoutMs);
       const finish = (error?: Error, result?: MalwareScanResult) => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         socket.destroy();
         if (error) reject(error);
         else if (result) resolve(result);
