@@ -12,6 +12,7 @@ const document = {
   id: "550e8400-e29b-41d4-a716-446655440002",
   draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
   sha256: createHash("sha256").update(bytes).digest("hex"),
+  byteSize: bytes.length,
   scanStatus: "PENDING", supersededAt: null,
 };
 function setup(overrides: { scanStatus?: string; supersededAt?: string | null } = {}) {
@@ -34,6 +35,16 @@ describe("document scan worker state transition", () => {
     expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ scanStatus: "SCANNING", supersededAt: null }),
       data: { scanStatus: "CLEAN", scanLeaseToken: null, scanLeaseExpiresAt: null },
+    }));
+  });
+  it("passes persisted byte size into the integrity check", async () => {
+    const s = setup();
+    s.findUnique.mockResolvedValueOnce({ ...document, byteSize: bytes.length + 1 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("FAILED");
+    expect(s.scan).not.toHaveBeenCalled();
+    expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { scanStatus: "FAILED", scanLeaseToken: null, scanLeaseExpiresAt: null },
     }));
   });
   it("persists FAILED if scanner cannot run", async () => {
