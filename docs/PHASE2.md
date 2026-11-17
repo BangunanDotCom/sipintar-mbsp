@@ -169,3 +169,7 @@ Adapter pembangunan `LocalQuarantineDocumentStore` kini memeriksa laluan ibu mel
 ## Semakan automatik cabang pembangunan
 
 `.github/workflows/staylink-phase1-checks.yml` menjalankan GitHub Actions apabila ada push ke `staylink-mbsp-phase1` atau arahan manual. Job menggunakan Node.js 22, `npm ci`, `npm run db:generate`, `npm run typecheck`, `npm run lint`, dan `npm test`. Storan dokumen dinyahaktifkan dan ClamAV sebenar tidak diaktifkan; ujian TCP menggunakan daemon simulasi. Workflow ini tidak mempunyai akses penulisan repositori, tidak menjalankan migrasi ke DB produksi dan tidak deploy. Status lulus/gagal perlu diperiksa pada tab Actions; penambahan fail workflow sahaja bukan bukti ujian lulus.
+
+## Pengukuhan aliran TCP ClamAV
+
+`ClamAvScanner.scan()` kini menghantar bingkai INSTREAM secara berperingkat dan menunggu acara `drain` apabila `socket.write()` memulangkan `false`, bagi mengelakkan penimbalan keseluruhan dokumen dalam penimbal tulis rangkaian. Pembetulan ujian `document-scan-lease.test.ts` membuang penggunaan `any` eksplisit. Semakan CI pada commit terkini belum dapat disahkan melalui connector (carian yang tersedia terhad kepada run berkaitan pull request); semak tab GitHub Actions untuk status sebenar. Tiada deployment atau migrasi produksi dibuat.
