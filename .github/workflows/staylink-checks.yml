@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - staylink-mbsp-phase1
+  pull_request:
+    branches:
+      - main
+      - staylink-mbsp-phase1
   workflow_dispatch:
 
 permissions:
@@ -35,3 +39,5 @@ jobs:
         run: npm test
       - name: Lint
         run: npm run lint
+      - name: Production web build
+        run: npm run build
