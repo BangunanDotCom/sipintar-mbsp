@@ -345,3 +345,7 @@ Sebelum `seed()` dijalankan dalam `tests/api.test.ts`, ujian integrasi kini mewa
 ## Semakan sambungan sebenar Prisma dan Mailpit dalam CI
 
 Workflow integrasi manual kini memeriksa kesediaan Mailpit melalui `/api/v1/messages`, endpoint yang juga digunakan oleh ujian e-mel, menggantikan `/api/v1/info`. Sebelum `seed()` dalam `tests/api.test.ts`, ujian menjalankan `SELECT current_database()` melalui Prisma dan mengesahkan nama sebenar sambungan sepadan dengan nama pangkalan data dalam `TEST_DATABASE_URL`, selepas pengesahan kedua-dua URL adalah sama dan berakhir dengan `_test`. Ini ialah kawalan tambahan untuk mengelakkan ujian mengubah pangkalan data yang tidak dijangka. Ujian sebenar dan keputusan CI selepas perubahan masih belum disahkan; tiada pengaktifan upload atau penghantaran rasmi.
+
+## Ketahanan ujian e-mel integrasi Mailpit
+
+Pembantu `emailToken()` dalam `tests/api.test.ts` kini menunggu secara terhad (15 cubaan pada sela 200 ms, maksimum kira-kira 3 saat selain masa respons HTTP) apabila rekod penghantaran SMTP bertanda `SENT` tetapi mesej belum kelihatan dalam indeks Mailpit. Respons senarai dan butiran mesej disemak; token yang hilang atau e-mel yang tidak ditemui akan menghasilkan ralat ujian yang jelas. Ini hanya mengurangkan kegagalan ujian akibat kelewatan pengindeksan; ia tidak mengubah penghantaran e-mel produksi. Ujian integrasi manual dan CI belum disahkan lulus.
