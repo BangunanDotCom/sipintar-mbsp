@@ -133,9 +133,14 @@ export function documentChecklistRows(
     // Only one active version per category is valid. Any conflicting active
     // records (including different versions) must never appear verified.
     const conflictingActiveVersions = active.length > 1;
+    // A superseded version cannot be newer than the only active version.
+    // Treat inconsistent version history as a conflict, never as verified.
+    const newerSupersededVersion = current !== null && documents.some((d) =>
+      d.category === requirement.category && d.supersededAt !== null
+      && Number.isSafeInteger(d.version) && d.version >= current.version);
     let state: DocumentChecklistRow["state"] = "MISSING";
     if (current) {
-      if (conflictingActiveVersions) state = "CONFLICT";
+      if (conflictingActiveVersions || newerSupersededVersion) state = "CONFLICT";
       else if (current.scanStatus === "INFECTED" || current.scanStatus === "FAILED")
         state = "UNSAFE";
       else if (current.scanStatus === "PENDING" || current.scanStatus === "SCANNING") state = "PENDING_SCAN";
