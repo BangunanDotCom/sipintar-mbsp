@@ -26,6 +26,9 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Proses sistem: 1");
     expect(markup).not.toContain("Semak percanggahan versi");
     expect(markup).toContain("Senarai tindakan susulan dokumen");
+    expect(markup).toContain("Status dokumen");
+    expect(markup).toContain("Menunggu pengesahan pegawai");
+    expect(markup).toContain("Menunggu imbasan keselamatan");
     expect(markup).not.toContain("type=\"submit\"");
     expect(markup).not.toContain("type=\"file\"");
   });
