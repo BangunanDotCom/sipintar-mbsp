@@ -22,6 +22,7 @@ describe("officer document triage preview", () => {
     ]);
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
     expect(markup).toContain("Terdapat 1 kategori dokumen kritikal");
+    expect(markup).not.toContain("kategori kritikal tidak dipaparkan");
     expect(markup).toContain("Tindakan pegawai: 2");
     expect(markup).toContain("Proses sistem: 1");
     expect(markup).not.toContain("Semak percanggahan versi");
@@ -32,6 +33,17 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Menunggu imbasan keselamatan");
     expect(markup).not.toContain("type=\"submit\"");
     expect(markup).not.toContain("type=\"file\"");
+  });
+
+  it("keeps critical warnings visible when filters are available", () => {
+    const rows = documentChecklistRows("INDIVIDUAL", [
+      record("floor_layout", "INFECTED", "UNVERIFIED"),
+      record("premises_plan", "CLEAN", "UNVERIFIED"),
+    ]);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Terdapat 1 kategori dokumen kritikal");
+    expect(markup).toContain("Dalam hasil semasa: ");
+    expect(markup).toContain("1 kritikal");
   });
 
   it("escapes untrusted document labels rather than interpreting them as HTML", () => {
