@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DisabledDocumentStore,
   storeQuarantinedDocument,
+  readVerifiedQuarantinedDocument,
   type PrivateDocumentStore,
 } from "../apps/api/src/private-document-store.js";
 import { createPrivateDocumentKey } from "../apps/api/src/private-document-keys.js";
@@ -28,6 +29,38 @@ describe("private document quarantine adapter", () => {
     expect(result.byteSize).toBe(bytes.length);
     expect(result.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(putQuarantined).toHaveBeenCalledOnce();
+  });
+  it("verifies stored quarantine content against the recorded digest and size", async () => {
+    const { adapter } = store();
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    const prepared = await storeQuarantinedDocument(adapter, {
+      draftId, storageKey, content: bytes, mimeType: "application/pdf",
+    });
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: prepared.sha256, expectedByteSize: prepared.byteSize,
+    })).resolves.toEqual(bytes);
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: "0".repeat(64), expectedByteSize: prepared.byteSize,
+    })).rejects.toThrow("Integriti dokumen");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: prepared.sha256, expectedByteSize: prepared.byteSize + 1,
+    })).rejects.toThrow("Integriti dokumen");
+  });
+  it("rejects invalid metadata and cross-draft reads before accessing storage", async () => {
+    const readQuarantined = vi.fn(async () => bytes);
+    const adapter: PrivateDocumentStore = {
+      putQuarantined: async () => undefined,
+      readQuarantined,
+      deleteQuarantined: async () => undefined,
+    };
+    const storageKey = createPrivateDocumentKey(draftId, "premises_plan");
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId: otherDraft, storageKey, expectedSha256: "0".repeat(64), expectedByteSize: 1,
+    })).rejects.toThrow();
+    await expect(readVerifiedQuarantinedDocument(adapter, {
+      draftId, storageKey, expectedSha256: "invalid", expectedByteSize: 1,
+    })).rejects.toThrow("Metadata integriti");
+    expect(readQuarantined).not.toHaveBeenCalled();
   });
   it("rejects cross-draft keys before storage access", async () => {
     const { adapter, putQuarantined } = store();
