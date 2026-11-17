@@ -1,10 +1,10 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { documentSubmissionReadiness, type DocumentSubmissionReadiness } from "./document-submission-readiness.js";
 
 // Server-side snapshot only; callers must still authorize the draft and perform
 // a final readiness check inside the submission transaction to avoid races.
 export async function loadDocumentSubmissionReadiness(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   draftId: string,
   capacity: "INDIVIDUAL" | "COMPANY",
 ): Promise<DocumentSubmissionReadiness> {
