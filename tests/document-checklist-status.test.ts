@@ -126,6 +126,7 @@ describe("document checklist statuses", () => {
     expect(summary.recorded).toBe(2);
     expect(summary.verified).toBe(1);
     expect(summary.rejected).toBe(1);
+    expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
     expect(summary.total).toBe(empty.total);
     expect(summary.missing).toHaveLength(empty.total - 2);
     expect(summary.optionalTotal).toBeGreaterThan(0);
@@ -224,6 +225,7 @@ describe("document checklist statuses", () => {
     expect(row?.state).toBe("CONFLICT");
     const summary = documentChecklistSummary(rows);
     expect(summary.conflicts).toBe(1);
+    expect(summary.attentionRows.map((item) => item.category)).toEqual(["premises_plan"]);
     expect(summary.missing.some((item) => item.category === "premises_plan")).toBe(false);
   });
   it("ignores invalid version numbers and superseded records", () => {
