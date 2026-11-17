@@ -14,7 +14,7 @@ const record = (category: string, scanStatus: string, verificationStatus: string
 });
 
 describe("officer document triage preview", () => {
-  it("renders a read-only priority overview and safely escapes document content", () => {
+  it("renders a read-only priority overview without submission or upload controls", () => {
     const rows = documentChecklistRows("COMPANY", [
       record("floor_layout", "INFECTED", "UNVERIFIED"),
       record("premises_plan", "CLEAN", "UNVERIFIED"),
