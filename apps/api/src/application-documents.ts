@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "./core.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { fail } from "./auth.js";
+import { draftDocumentUploadPolicy } from "./draft-document-upload-policy.js";
 
 // Read-only metadata endpoint. Never return private object keys or download URLs.
 export async function applicationDocumentRoutes(app: FastifyInstance) {
@@ -13,7 +14,7 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
     return db.$transaction(async (tx) => {
       const draft = await tx.applicationDraft.findFirst({
         where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-        select: { id: true, companyId: true },
+        select: { id: true, companyId: true, capacity: true },
       });
       if (!draft) fail(404, "Draf tidak ditemui.");
       if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
@@ -26,7 +27,13 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
         },
         orderBy: [{ category: "asc" }, { version: "desc" }],
       });
-      return { draftId: id, documents, uploadEnabled: false, submissionEnabled: false };
+      return {
+        draftId: id,
+        documents,
+        uploadPolicy: draftDocumentUploadPolicy(draft.capacity),
+        uploadEnabled: false,
+        submissionEnabled: false,
+      };
     });
   });
 }
