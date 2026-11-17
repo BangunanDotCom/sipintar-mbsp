@@ -23,7 +23,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const documents = validated?.documents ?? [];
   const visible = documentChecklistRows(capacity, documents);
   const summary = documentChecklistSummary(visible);
-  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, optionalTotal, optionalRecorded } = summary;
+  const { total, recorded, verified, safetyAttention, conflicts, pendingReview, rejected, missing, optionalTotal, optionalRecorded, optionalAttention } = summary;
   // Reject malformed upload guidance from the API.
   const uploadPolicy = validated?.uploadPolicy ?? [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
@@ -59,6 +59,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           {pendingReview > 0 && <strong> Menunggu pengesahan pegawai: {pendingReview} kategori.</strong>}{" "}
           {rejected > 0 && <strong> Ditolak pegawai: {rejected} kategori — semak maklum balas.</strong>}{" "}
           Dokumen tambahan jika berkaitan: {optionalRecorded} daripada {optionalTotal} kategori mempunyai rekod.{" "}
+          {optionalAttention > 0 && <strong> Dokumen tambahan memerlukan perhatian: {optionalAttention} kategori.</strong>}{" "}
           Bilangan rekod bukan pengesahan keselamatan,
           kesahihan dokumen atau kelayakan untuk menghantar permohonan.
         </p>
