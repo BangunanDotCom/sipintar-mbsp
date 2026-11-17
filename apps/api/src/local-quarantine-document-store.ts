@@ -16,11 +16,18 @@ export class LocalQuarantineDocumentStore implements PrivateDocumentStore {
   private async assertSafeParents(location: string): Promise<void> {
     const root = await realpath(this.root);
     if (root !== this.root) throw new Error("Direktori kuarantin tidak boleh menggunakan symlink.");
-    const parent = await realpath(join(location, ".."));
-    if (!parent.startsWith(root + sep))
+    const parent = join(location, "..");
+    const relative = parent.slice(root.length + 1).split(sep);
+    let current = root;
+    for (const segment of relative) {
+      if (!segment || segment === "..") throw new Error("Laluan kuarantin tidak sah.");
+      current = join(current, segment);
+      const stat = await lstat(current);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
+        throw new Error("Direktori kuarantin tidak boleh menggunakan symlink.");
+    }
+    if (await realpath(parent) !== resolve(parent))
       throw new Error("Laluan kuarantin tidak selamat.");
-    const stat = await lstat(parent);
-    if (!stat.isDirectory()) throw new Error("Direktori kuarantin tidak sah.");
   }
 
   private location(key: string): string {
