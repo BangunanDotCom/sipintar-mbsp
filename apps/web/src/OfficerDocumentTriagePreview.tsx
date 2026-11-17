@@ -96,7 +96,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
         <details>
           <summary>Lihat {verifiedRows.length} kategori dengan dokumen disahkan pegawai</summary>
           <p>Persediaan utama disahkan: {verifiedPrimaryCount} kategori. Dokumen tambahan disahkan jika berkaitan: {verifiedOptionalCount} kategori.</p>
-          <ul>{verifiedRows.map((row) => <li key={row.category}>{row.label}{row.current ? ` — Versi ${row.current.version}` : ""}</li>)}</ul>
+          <ul>{verifiedRows.map((row) => <li key={row.category}>{row.label} — {row.applicability === "IF_AVAILABLE" ? "dokumen tambahan jika berkaitan" : row.applicability === "COMPANY" ? "pemohon syarikat" : "semua pemohon"}{row.current ? ` — Versi ${row.current.version}` : ""}</li>)}</ul>
           <p>Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.</p>
         </details>
       )}
