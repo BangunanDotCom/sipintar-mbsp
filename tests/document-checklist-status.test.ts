@@ -192,6 +192,17 @@ describe("document checklist statuses", () => {
     expect(documentChecklistSummary(rows).verified).toBe(1);
     expect(rows).toHaveLength(categories("ALL").length);
   });
+  it("combines keyword search with status filtering without mutating the checklist", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "floor_layout" },
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "company_authority" },
+    ]);
+    expect(filterDocumentChecklistRows(rows, "ATTENTION", "PELAN").map((row) => row.category)).toEqual(["floor_layout"]);
+    expect(filterDocumentChecklistRows(rows, "VERIFIED", "surat kuasa").map((row) => row.category)).toEqual(["company_authority"]);
+    expect(filterDocumentChecklistRows(rows, "ALL", "  premis  ").length).toBeGreaterThan(0);
+    expect(filterDocumentChecklistRows(rows, "ALL", "tiada padanan")).toEqual([]);
+    expect(filterDocumentChecklistRows(rows, "ALL")).toHaveLength(rows.length);
+  });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
   });
