@@ -26,6 +26,7 @@ export async function processPendingDocumentScan(
     where: {
       id: document.id, draftId: document.draftId,
       storageKey: document.storageKey, sha256: document.sha256,
+      byteSize: document.byteSize,
       supersededAt: null,
       OR: [
         { scanStatus: "PENDING" },
@@ -55,6 +56,7 @@ export async function processPendingDocumentScan(
     where: {
       id: document.id, draftId: document.draftId,
       storageKey: document.storageKey, sha256: document.sha256,
+      byteSize: document.byteSize,
       scanStatus: "SCANNING", scanLeaseToken: token,
       scanLeaseExpiresAt: { gte: new Date() }, supersededAt: null,
     },
