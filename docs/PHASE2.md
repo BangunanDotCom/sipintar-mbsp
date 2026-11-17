@@ -173,3 +173,7 @@ Adapter pembangunan `LocalQuarantineDocumentStore` kini memeriksa laluan ibu mel
 ## Pengukuhan aliran TCP ClamAV
 
 `ClamAvScanner.scan()` kini menghantar bingkai INSTREAM secara berperingkat dan menunggu acara `drain` apabila `socket.write()` memulangkan `false`, bagi mengelakkan penimbalan keseluruhan dokumen dalam penimbal tulis rangkaian. Pembetulan ujian `document-scan-lease.test.ts` membuang penggunaan `any` eksplisit. Semakan CI pada commit terkini belum dapat disahkan melalui connector (carian yang tersedia terhad kepada run berkaitan pull request); semak tab GitHub Actions untuk status sebenar. Tiada deployment atau migrasi produksi dibuat.
+
+## Pembetulan framing INSTREAM selepas perubahan backpressure
+
+Semakan kod mendapati arahan INSTREAM pernah menggunakan aksara backslash dan angka sifar secara literal (`\\0`) dan bukannya penamat NUL (`\0`) selepas refaktor backpressure. `apps/api/src/clamav-scanner.ts` telah dibetulkan. Ujian regresi `tests/clamav-framing-regression.test.ts` mengesahkan header `zINSTREAM` dengan NUL dan pembahagian fail 150,000 bait kepada bingkai 65,536 + 65,536 + 18,928 bait serta bingkai tamat panjang sifar. Ini ujian daemon simulasi; keputusan CI masih perlu disahkan sebelum menyatakan integrasi berjaya.
