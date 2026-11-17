@@ -237,3 +237,7 @@ Semakan awal `documentSubmissionReadiness` kini menolak kategori wajib jika terd
 ## Snapshot kesediaan dokumen daripada pangkalan data
 
 Ditambah `loadDocumentSubmissionReadiness` dalam `apps/api/src/document-submission-readiness-db.ts`. Fungsi ini mengesahkan format UUID draf, mengambil metadata dokumen bagi `draftId` yang tepat daripada Prisma (`category`, `version`, `fileName`, status imbasan/pengesahan dan `supersededAt`), lalu menggunakan penilaian kesediaan sedia ada. Ujian meliputi penapisan draf, metadata terpilih, ID tidak sah dan syarat syarikat. Fungsi ini **bukan endpoint** dan **tidak mengesahkan pemilikan atau kuasa pengguna**; pemanggil mesti mengesahkan akses kepada draf. Semakan muktamad mesti dilakukan dalam transaksi penghantaran untuk mengelakkan perubahan dokumen di antara semakan dan penghantaran. Tiada pengaktifan penghantaran sebenar; CI belum disahkan.
+
+## Dokumen pilihan yang telah dimuat naik tetap tertakluk kepada imbasan
+
+`documentSubmissionReadiness` kini hanya mengecualikan kategori `IF_AVAILABLE` apabila tiada dokumen aktif. Jika dokumen pilihan telah dimuat naik, status `PENDING`/`SCANNING`, `INFECTED`/`FAILED`, atau `REJECTED` akan menghalang kesediaan penghantaran sama seperti dokumen wajib. Dokumen pilihan yang `CLEAN` dan `UNVERIFIED` atau `VERIFIED` dibenarkan oleh semakan awal. Ujian regresi meliputi dokumen pilihan tiada, menunggu imbasan, dijangkiti dan bersih. Modul masih belum dihubungkan kepada endpoint penghantaran sebenar; keputusan CI belum disahkan.
