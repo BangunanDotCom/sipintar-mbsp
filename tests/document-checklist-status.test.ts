@@ -165,6 +165,7 @@ describe("document checklist statuses", () => {
     expect(summary.attentionRows.map((row) => row.category)).toEqual(["floor_layout"]);
     expect(summary.optionalAttentionRows).toEqual([]);
     expect(summary.optionalAttention).toBe(summary.optionalAttentionRows.length);
+    expect(summary.optionalAttentionRows.some((row) => row.state === "PENDING_SCAN")).toBe(false);
     expect(summary.pendingReviewRows).toEqual([]);
     expect(summary.verified).toBe(0);
     expect(summary.safetyAttention).toBe(2);
