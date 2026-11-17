@@ -353,3 +353,7 @@ Pembantu `emailToken()` dalam `tests/api.test.ts` kini menunggu secara terhad (1
 ## Ringkasan rekod dokumen wajib untuk pemohon
 
 Komponen `PreliminaryDocumentChecklist` kini memaparkan bilangan kategori dokumen wajib yang mempunyai rekod aktif berbanding jumlah kategori wajib mengikut konteks individu/syarikat, serta menyenaraikan kategori yang belum mempunyai rekod aktif. Rekod aktif ditentukan oleh pembantu senarai semak bersama (`documentChecklistRows`) yang tidak mengira versi superseded. Ringkasan ini bukan ukuran dokumen diluluskan atau kelayakan penghantaran; pengesahan imbasan dan pegawai tetap berasingan. Muat naik dan penghantaran rasmi kekal dinyahaktifkan. Perubahan telah dikomit ke branch pembangunan tetapi keputusan CI belum disahkan.
+
+## Penyelarasan dasar kategori dokumen sokongan
+
+Fungsi `uploadKindForSupportingDocument` kini menjadi satu-satunya pemetaan kategori dokumen sokongan kepada dasar muat naik `plan`, `photo` atau `supporting`. Ia digunakan bersama oleh metadata panduan muat naik dan `storeQuarantinedDocument`, bagi mengurangkan risiko had saiz/MIME berbeza antara lapisan. Ujian unit menyemak ketujuh-tujuh kategori dan kelengkapan senarai bagi pemohon syarikat. Perubahan tidak mengaktifkan laluan muat naik, storan produksi atau penghantaran permohonan. Keputusan CI selepas commit masih belum disahkan.
