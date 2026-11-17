@@ -1,22 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, isDocumentUploadPolicy, type DocumentUploadPolicy, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
 
 type DocumentRecord = DocumentStatusRecord & {
   uploadedAt: string;
   byteSize: number;
   mimeType: string;
 };
-type UploadPolicyRow = {
-  category: string;
-  label: string;
-  mimeTypes: string[];
-  defaultMaxMiB: number;
-  hardCeilingMiB: number;
-};
 type DocumentResponse = {
-  uploadPolicy: UploadPolicyRow[];
+  uploadPolicy: DocumentUploadPolicy[];
   documents: DocumentRecord[];
   uploadEnabled: boolean;
   submissionEnabled: boolean;
@@ -46,17 +39,9 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
   const pendingSafetyPriority = priorityCategories.filter((item) => item.state === "UNSAFE" || item.state === "PENDING_SCAN").length;
   const conflictPriority = priorityCategories.filter((item) => item.state === "CONFLICT").length;
   const missingPriority = priorityCategories.filter((item) => !item.current);
-  // API policy is untrusted: malformed entries must not crash the checklist.
+  // Reject malformed upload guidance from the API.
   const uploadPolicy = query.isSuccess && Array.isArray(query.data?.uploadPolicy)
-    ? query.data!.uploadPolicy.filter((row): row is UploadPolicyRow =>
-      typeof row === "object" && row !== null &&
-      typeof row.category === "string" && row.category.length > 0 &&
-      typeof row.label === "string" &&
-      Array.isArray(row.mimeTypes) && row.mimeTypes.every((mime) => typeof mime === "string") &&
-      typeof row.defaultMaxMiB === "number" && Number.isFinite(row.defaultMaxMiB) && row.defaultMaxMiB > 0 &&
-      typeof row.hardCeilingMiB === "number" && Number.isFinite(row.hardCeilingMiB) &&
-      row.hardCeilingMiB >= row.defaultMaxMiB
-    )
+    ? query.data.uploadPolicy.filter(isDocumentUploadPolicy)
     : [];
   const policyByCategory = new Map(uploadPolicy.map((row) => [row.category, row]));
   const mimeLabel = (mime: string) => mime === "application/pdf" ? "PDF" :
