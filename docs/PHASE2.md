@@ -445,3 +445,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Identiti dokumen kekal semasa operasi storan tak segerak
 
 `storeQuarantinedDocument` kini menyimpan `storageKey` dan `mimeType` yang telah disahkan dalam pemboleh ubah setempat sebelum `await putQuarantined`. Metadata pulangan menggunakan nilai yang sama dengan nilai dihantar ke adapter, walaupun objek `input` diubah oleh pemanggil semasa operasi storan. Ujian regresi menukar kunci dan MIME pemanggil di dalam adapter dan mengesahkan metadata pulangan kekal sepadan dengan objek disimpan. Ujian CI belum disahkan dan storan produksi belum diaktifkan.
+
+## Pengesahan tandatangan pada salinan dokumen kuarantin
+
+`storeQuarantinedDocument` kini menyalin `Buffer` pemanggil dahulu, kemudian memeriksa tandatangan fail pada salinan yang sama sebelum SHA-256 dan operasi `putQuarantined`. Ini mengelakkan pemeriksaan format dilakukan pada `Buffer` asal yang berbeza daripada kandungan disimpan. Ujian regresi memastikan fail PDF dengan tandatangan tidak sah ditolak tanpa memanggil adapter storan. Pemeriksaan tandatangan bukan pengganti pengimbasan malware; storan produksi masih belum diaktifkan dan keputusan CI belum disahkan.
