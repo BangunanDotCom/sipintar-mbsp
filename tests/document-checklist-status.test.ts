@@ -203,6 +203,21 @@ describe("document checklist statuses", () => {
     expect(filterDocumentChecklistRows(rows, "ALL", "tiada padanan")).toEqual([]);
     expect(filterDocumentChecklistRows(rows, "ALL")).toHaveLength(rows.length);
   });
+  it("filters main and optional documents independently of status and search", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      { ...doc(1, "CLEAN", "VERIFIED"), category: "premises_plan" },
+      { ...doc(1, "INFECTED", "UNVERIFIED"), category: "fire_safety" },
+      { ...doc(1, "CLEAN", "UNVERIFIED"), category: "company_authority" },
+    ]);
+    const main = filterDocumentChecklistRows(rows, "ALL", "", "PRIORITY");
+    const optional = filterDocumentChecklistRows(rows, "ALL", "", "OPTIONAL");
+    expect(main.every((row) => row.applicability !== "IF_AVAILABLE")).toBe(true);
+    expect(optional.every((row) => row.applicability === "IF_AVAILABLE")).toBe(true);
+    expect(main.length + optional.length).toBe(rows.length);
+    expect(filterDocumentChecklistRows(rows, "ATTENTION", "", "OPTIONAL").map((row) => row.category)).toEqual(["fire_safety"]);
+    expect(filterDocumentChecklistRows(rows, "PENDING", "kuasa", "PRIORITY").map((row) => row.category)).toEqual(["company_authority"]);
+    expect(filterDocumentChecklistRows(rows, "VERIFIED", "", "OPTIONAL")).toEqual([]);
+  });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
   });
