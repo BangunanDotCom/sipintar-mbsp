@@ -56,8 +56,13 @@ describe("document checklist statuses", () => {
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
     expect(isDocumentApiRecord(response.documents[0])).toBe(true);
     expect(isDocumentApiRecord({ ...response.documents[0], byteSize: -1 })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], byteSize: 0 })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], byteSize: 1.5 })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], mimeType: " " })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], mimeType: "not-a-mime" })).toBe(false);
     expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: null })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "yesterday" })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: "2026-11-17" })).toBe(false);
     expect(validatedDocumentResponse({ ...response, documents: [doc(1, "CLEAN", "VERIFIED")] })).toBeNull();
     expect(validatedDocumentResponse(null)).toBeNull();
     expect(validatedDocumentResponse({ ...response, documents: null })).toBeNull();
