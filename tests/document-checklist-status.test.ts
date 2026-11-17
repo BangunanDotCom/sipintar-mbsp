@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -9,6 +9,13 @@ const state = (documents: ReturnType<typeof doc>[]) =>
   documentChecklistRows("INDIVIDUAL", documents).find((row) => row.category === "premises_plan");
 
 describe("document checklist statuses", () => {
+  it("rejects malformed API document records", () => {
+    expect(isDocumentStatusRecord(doc(1, "CLEAN", "VERIFIED"))).toBe(true);
+    expect(isDocumentStatusRecord(null)).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: null })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), version: "1" })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: false })).toBe(false);
+  });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
   });
