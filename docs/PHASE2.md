@@ -349,3 +349,7 @@ Workflow integrasi manual kini memeriksa kesediaan Mailpit melalui `/api/v1/mess
 ## Ketahanan ujian e-mel integrasi Mailpit
 
 Pembantu `emailToken()` dalam `tests/api.test.ts` kini menunggu secara terhad (15 cubaan pada sela 200 ms, maksimum kira-kira 3 saat selain masa respons HTTP) apabila rekod penghantaran SMTP bertanda `SENT` tetapi mesej belum kelihatan dalam indeks Mailpit. Respons senarai dan butiran mesej disemak; token yang hilang atau e-mel yang tidak ditemui akan menghasilkan ralat ujian yang jelas. Ini hanya mengurangkan kegagalan ujian akibat kelewatan pengindeksan; ia tidak mengubah penghantaran e-mel produksi. Ujian integrasi manual dan CI belum disahkan lulus.
+
+## Ringkasan rekod dokumen wajib untuk pemohon
+
+Komponen `PreliminaryDocumentChecklist` kini memaparkan bilangan kategori dokumen wajib yang mempunyai rekod aktif berbanding jumlah kategori wajib mengikut konteks individu/syarikat, serta menyenaraikan kategori yang belum mempunyai rekod aktif. Rekod aktif ditentukan oleh pembantu senarai semak bersama (`documentChecklistRows`) yang tidak mengira versi superseded. Ringkasan ini bukan ukuran dokumen diluluskan atau kelayakan penghantaran; pengesahan imbasan dan pegawai tetap berasingan. Muat naik dan penghantaran rasmi kekal dinyahaktifkan. Perubahan telah dikomit ke branch pembangunan tetapi keputusan CI belum disahkan.
