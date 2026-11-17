@@ -397,3 +397,7 @@ Semakan `readVerifiedQuarantinedDocument()` tidak lagi menggunakan had umum 100 
 ## Pengukuhan sempadan adapter storan
 
 Bacaan kuarantin kini mengesahkan nilai pulangan adapter ialah `Buffer` dan panjang bait sepadan dengan metadata serta siling kategori sebelum melakukan pengiraan SHA-256. Ujian regresi meliputi adapter memulangkan jenis data salah dan panjang bait berbeza. Ujian kontrak pengimbas turut mengesahkan MIME PDF yang sepadan diterima serta MIME PNG yang tidak sepadan ditolak sebelum pengimbas dipanggil. Ini bukan pengesahan penuh format fail dan tidak mengaktifkan muat naik atau storan produksi. Keputusan CI belum disahkan.
+
+## Pengukuhan semakan struktur PNG
+
+Pengesahan tandatangan fail PNG kini turut menyemak gabungan `bitDepth`/`colorType` yang dibenarkan oleh format PNG, kaedah pemampatan dan penapisan bernilai sifar, serta kaedah interlace 0 atau 1. Ujian muat naik menolak lima variasi pengepala IHDR tidak sah. Ini kekal semakan struktur awal sahaja: CRC, chunk seterusnya dan kebolehnyahkodan imej penuh belum disahkan; pengimbasan malware tetap diperlukan. Keputusan CI belum disahkan.
