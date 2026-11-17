@@ -103,6 +103,19 @@ describe("document scan worker state transition", () => {
     expect(s.scan).not.toHaveBeenCalled();
     expect(s.updateMany).toHaveBeenCalledTimes(1);
   });
+  it("does not persist INFECTED after another worker takes over the lease", async () => {
+    const s = setup();
+    s.scan.mockResolvedValueOnce({ status: "INFECTED", engine: "test" });
+    s.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id))
+      .resolves.toBe("SKIPPED");
+    expect(s.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({
+        scanStatus: "SCANNING", scanLeaseToken: expect.any(String),
+      }),
+      data: { scanStatus: "INFECTED", scanLeaseToken: null, scanLeaseExpiresAt: null },
+    }));
+  });
   it("does not report CLEAN when its lease expires before completion", async () => {
     const s = setup();
     s.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
