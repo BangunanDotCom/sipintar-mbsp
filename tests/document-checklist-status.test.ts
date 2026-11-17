@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -48,12 +48,17 @@ describe("document checklist statuses", () => {
   });
   it("requires a complete document API response before displaying statuses", () => {
     const response = {
-      documents: [doc(1, "CLEAN", "VERIFIED")],
+      documents: [{ ...doc(1, "CLEAN", "VERIFIED"), uploadedAt: "2026-11-17T00:00:00Z", byteSize: 1024, mimeType: "application/pdf" }],
       uploadPolicy: [],
       uploadEnabled: false,
       submissionEnabled: false,
     };
     expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
+    expect(isDocumentApiRecord(response.documents[0])).toBe(true);
+    expect(isDocumentApiRecord({ ...response.documents[0], byteSize: -1 })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], mimeType: " " })).toBe(false);
+    expect(isDocumentApiRecord({ ...response.documents[0], uploadedAt: null })).toBe(false);
+    expect(validatedDocumentResponse({ ...response, documents: [doc(1, "CLEAN", "VERIFIED")] })).toBeNull();
     expect(validatedDocumentResponse(null)).toBeNull();
     expect(validatedDocumentResponse({ ...response, documents: null })).toBeNull();
     expect(validatedDocumentResponse({ ...response, documents: [null] })).toBeNull();
