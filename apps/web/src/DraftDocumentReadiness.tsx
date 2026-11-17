@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { ApiError } from "./api";
 import { api } from "./api";
 
 type ReadinessResponse = {
@@ -20,6 +22,9 @@ export function DraftDocumentReadiness({ draftId, userId }: { draftId: string; u
     queryFn: () => api(`/application-drafts/${encodeURIComponent(draftId)}/submission-readiness`),
     retry: false,
     staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    gcTime: 0,
   });
   return (
     <section className="panel" aria-labelledby="draft-readiness-title">
@@ -27,7 +32,14 @@ export function DraftDocumentReadiness({ draftId, userId }: { draftId: string; u
       {q.isPending ? (
         <p role="status">Memuatkan status dokumen…</p>
       ) : q.isError ? (
-        <p role="alert">Status dokumen tidak dapat dipaparkan. Sila cuba semula.</p>
+        <div role="alert">
+          <p>Status dokumen tidak dapat dipaparkan. Sila cuba semula.</p>
+          {q.error instanceof ApiError && q.error.status === 401 && (
+            <Link to={`/log-masuk?next=${encodeURIComponent(`/permohonan/draf/${draftId}`)}`}>
+              Log masuk semula
+            </Link>
+          )}
+        </div>
       ) : (
         <div aria-live="polite">
           <h3>{q.data.guidance.headline}</h3>
