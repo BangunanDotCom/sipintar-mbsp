@@ -86,6 +86,10 @@ describe("document checklist statuses", () => {
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: null })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), version: "1" })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: false })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: "" })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: "yesterday" })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: "2026-02-30T00:00:00Z" })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: "2026-11-17T00:00:00Z" })).toBe(true);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), category: "  " })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), category: " premises_plan " })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), fileName: "" })).toBe(false);
