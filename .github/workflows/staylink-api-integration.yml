@@ -1,0 +1,58 @@
+name: STAYLink isolated API integration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-integration:
+    name: PostgreSQL and Mailpit integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://staylink_test:staylink_test@127.0.0.1:5432/staylink_ci_test
+      TEST_DATABASE_URL: postgresql://staylink_test:staylink_test@127.0.0.1:5432/staylink_ci_test
+      MFA_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      APP_ORIGIN: http://localhost:5173
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+      STAYLINK_DOCUMENT_STORE: disabled
+      STAYLINK_CLAMAV_ENABLED: "false"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: staylink_test
+          POSTGRES_PASSWORD: staylink_test
+          POSTGRES_DB: staylink_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U staylink_test -d staylink_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+          - 8025:8025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npm run db:generate
+      - name: Migrate dedicated test database
+        run: npm run db:test:migrate
+      - name: Run API integration suite
+        run: npx vitest run tests/api.test.ts
