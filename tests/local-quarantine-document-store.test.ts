@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, mkdir, writeFile, access } from "node:fs/promises";
+import { mkdtemp, rm, symlink, mkdir, writeFile, access, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,7 +46,7 @@ describe("local quarantine development adapter", () => {
     const key = createPrivateDocumentKey(draftId, "premises_plan");
     const location = join(root, ...key.split("/"));
     await mkdir(join(root, ...key.split("/").slice(0, -1)), { recursive: true });
-    const handle = await (await import("node:fs/promises")).open(location, "w");
+    const handle = await open(location, "w");
     try {
       await handle.truncate(100 * 1024 * 1024 + 1);
     } finally {
@@ -86,6 +86,7 @@ describe("local quarantine development adapter", () => {
     await expect(store.putQuarantined({
       key, content: Buffer.from("%PDF-1.7\\ntest"), mimeType: "application/pdf",
     })).rejects.toThrow("symlink");
+    await expect(access(join(target, draft, category, key.split("/")[3]))).rejects.toThrow();
   });
   it("rejects a symlinked quarantine root", async () => {
     const root = await mkdtemp(join(tmpdir(), "staylink-root-target-"));
