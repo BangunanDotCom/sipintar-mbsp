@@ -140,6 +140,16 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Dokumen sokongan keselamatan kebakaran — dokumen tambahan jika berkaitan — Versi 1");
   });
 
+  it("labels company-authority verification without treating it as general applicant evidence", () => {
+    const rows = documentChecklistRows("COMPANY", [
+      record("company_authority", "CLEAN", "VERIFIED"),
+    ]);
+    const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
+    expect(markup).toContain("Surat kuasa wakil syarikat — pemohon syarikat — Versi 1");
+    expect(markup).toContain("Persediaan utama disahkan: 1 kategori. Dokumen tambahan disahkan jika berkaitan: 0 kategori.");
+    expect(markup).toContain("Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
+  });
+
   it("uses distinct accessible field IDs for two instances on the same page", () => {
     const rows = documentChecklistRows("INDIVIDUAL", []);
     const markup = renderToStaticMarkup(createElement("main", null,
