@@ -433,3 +433,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pengesahan jenis kandungan sebelum storan kuarantin
 
 `storeQuarantinedDocument` kini memeriksa `Buffer.isBuffer` sebelum membaca saiz, mengira SHA-256 atau memanggil adapter storan. Input bukan Buffer, termasuk teks, `Uint8Array` dan `null`, ditolak secara gagal-selamat. Ujian regresi memastikan `putQuarantined` tidak dipanggil untuk input tersebut. Perubahan ini tidak mengaktifkan storan produksi; keputusan CI masih belum disahkan.
+
+## Salinan defensif kandungan sebelum tulis kuarantin
+
+`storeQuarantinedDocument` kini membuat salinan `Buffer` milik pemanggil selepas pengesahan tandatangan dan sebelum mengira SHA-256 serta memanggil `putQuarantined`. Salinan ini mengurangkan risiko metadata hash tidak sepadan apabila pemanggil mengubah `Buffer` asal semasa operasi storan tak segerak. Ujian regresi memutasi `Buffer` asal dalam adapter dan mengesahkan kandungan kuarantin masih sepadan dengan hash dan MIME yang direkod. Adapter produksi masih perlu menjamin integriti tulis, akses persendirian, enkripsi, dan imbasan malware. Keputusan CI belum disahkan.
