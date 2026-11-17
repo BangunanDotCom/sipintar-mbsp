@@ -115,7 +115,7 @@ describe("officer document triage preview", () => {
     expect(markup).toContain("Lihat 1 kategori dengan dokumen disahkan pegawai");
     expect(markup).toContain("Persediaan utama disahkan: 1 kategori. Dokumen tambahan disahkan jika berkaitan: 0 kategori.");
     expect(markup).toContain("Pelan lokasi dan premis — semua pemohon — Versi 1");
-    expect(markup).toContain("Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
+    expect(markup).toContain("Pengesahan setiap rekod dokumen tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
     expect(markup).toContain("Kategori tanpa rekod aktif: 5");
     expect(markup).toContain("Lihat 5 kategori tanpa rekod aktif");
     expect(markup).toContain("Persediaan utama: 3 kategori. Dokumen tambahan jika berkaitan: 2 kategori.");
@@ -147,7 +147,7 @@ describe("officer document triage preview", () => {
     const markup = renderToStaticMarkup(createElement(OfficerDocumentTriagePreview, { rows }));
     expect(markup).toContain("Surat kuasa wakil syarikat — pemohon syarikat — Versi 1");
     expect(markup).toContain("Persediaan utama disahkan: 1 kategori. Dokumen tambahan disahkan jika berkaitan: 0 kategori.");
-    expect(markup).toContain("Pengesahan dokumen individu tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
+    expect(markup).toContain("Pengesahan setiap rekod dokumen tidak bermaksud keseluruhan permohonan lengkap atau diluluskan.");
   });
 
   it("uses distinct accessible field IDs for two instances on the same page", () => {
