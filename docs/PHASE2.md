@@ -377,3 +377,7 @@ Pembantu dalaman `readVerifiedQuarantinedDocument()` kini memerlukan kunci stora
 ## Integrasi semakan integriti dengan pekerja imbasan malware
 
 `scanQuarantinedDocument()` kini menggunakan `readVerifiedQuarantinedDocument()` dan mewajibkan kedua-dua `expectedSha256` dan `expectedByteSize` sebelum memanggil pengimbas. `processPendingDocumentScan()` membaca `byteSize` daripada rekod `ApplicationDocument` dan menghantarnya bersama hash. Ujian unit menegaskan perbezaan saiz menghalang panggilan `scanner.scan`, walaupun hash sepadan. Perubahan ini tidak membuka akses HTTP kepada fail atau mengaktifkan storan produksi. Keputusan CI belum disahkan.
+
+## Pengukuhan pekerja imbasan dan ujian regresi
+
+Ujian `document-scan-worker.test.ts` dikemas kini dengan medan `byteSize` yang diwajibkan selepas integrasi semakan integriti; ujian regresi mengesahkan saiz rekod yang tidak sepadan menghasilkan `FAILED` tanpa memanggil pengimbas. Pekerja imbasan turut menyertakan `byteSize` dalam syarat perbandingan atomik semasa memperoleh lease dan menyimpan keputusan, supaya perubahan metadata di antara dua peringkat tidak dianggap sebagai kejayaan. Ujian unit memeriksa syarat tersebut. Keputusan CI belum disahkan; tiada endpoint muat naik atau deploy diaktifkan.
