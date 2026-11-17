@@ -97,7 +97,7 @@ export function isDocumentApiRecord(value: unknown): value is DocumentApiRecord 
 }
 
 /** Parse the documents endpoint as untrusted data before showing any status. */
-export function validatedDocumentResponse(value: unknown, expectedDraftId?: string): {
+export function validatedDocumentResponse(value: unknown, expectedDraftId?: string, expectedCapacity?: "INDIVIDUAL" | "COMPANY"): {
   documents: DocumentApiRecord[];
   uploadPolicy: DocumentUploadPolicy[];
 } | null {
@@ -105,6 +105,8 @@ export function validatedDocumentResponse(value: unknown, expectedDraftId?: stri
   const response = value as Record<string, unknown>;
   // Prevent showing metadata from a different draft if a response is mismatched.
   if (expectedDraftId !== undefined && (typeof response.draftId !== "string" || response.draftId !== expectedDraftId)) return null;
+  // A mismatched applicant context must not silently show another checklist.
+  if (expectedCapacity !== undefined && response.capacity !== expectedCapacity) return null;
   if (!Array.isArray(response.documents) || !response.documents.every(isDocumentApiRecord)) return null;
   if (!Array.isArray(response.uploadPolicy)) return null;
   // Feature flags must be explicit. Never infer permission to upload or submit.
