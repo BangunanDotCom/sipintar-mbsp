@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse, isDocumentApiRecord, documentNextStepLabels } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -77,6 +77,12 @@ describe("document checklist statuses", () => {
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), fileName: "" })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: " " })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), verificationStatus: "" })).toBe(false);
+  });
+  it("provides safe next-step guidance for every document state", () => {
+    for (const status of ["MISSING", "PENDING_SCAN", "CONFLICT", "UNSAFE", "PENDING_REVIEW", "REJECTED", "VERIFIED"] as const) {
+      expect(documentNextStepLabels[status].length).toBeGreaterThan(10);
+      expect(documentNextStepLabels[status].toLowerCase()).not.toContain("hantar permohonan");
+    }
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
