@@ -58,7 +58,7 @@ export async function storeQuarantinedDocument(
 // never return quarantined bytes to an applicant or a public URL.
 export async function readVerifiedQuarantinedDocument(
   store: PrivateDocumentStore,
-  input: { draftId: string; storageKey: string; expectedSha256: string; expectedByteSize: number },
+  input: { draftId: string; storageKey: string; expectedSha256: string; expectedByteSize: number; expectedMimeType?: string },
 ): Promise<Buffer> {
   if (!isPrivateDocumentKeyForDraft(input.storageKey, input.draftId))
     throw new Error("Kunci dokumen tidak sepadan dengan permohonan.");
@@ -68,11 +68,17 @@ export async function readVerifiedQuarantinedDocument(
       !Number.isSafeInteger(input.expectedByteSize) || input.expectedByteSize < 1 ||
       input.expectedByteSize > policy.ceilingMiB * 1024 * 1024)
     throw new Error("Metadata integriti dokumen tidak sah.");
+  if (input.expectedMimeType !== undefined &&
+      !policy.mime.split(",").includes(input.expectedMimeType))
+    throw new Error("Metadata MIME dokumen tidak sah.");
   const content = await store.readQuarantined(input.storageKey);
   const actual = createHash("sha256").update(content).digest();
   if (content.length !== input.expectedByteSize ||
       !timingSafeEqual(actual, Buffer.from(input.expectedSha256, "hex")))
     throw new Error("Integriti dokumen kuarantin gagal.");
+  if (input.expectedMimeType !== undefined &&
+      !matchesDeclaredFileSignature(content, input.expectedMimeType))
+    throw new Error("Kandungan fail kuarantin tidak sepadan dengan MIME.");
   return content;
 }
 
