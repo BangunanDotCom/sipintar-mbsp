@@ -59,7 +59,7 @@ export async function processPendingDocumentScan(
       storageKey: document.storageKey, sha256: document.sha256,
       byteSize: document.byteSize, mimeType: document.mimeType,
       scanStatus: "SCANNING", scanLeaseToken: token,
-      scanLeaseExpiresAt: { gte: new Date() }, supersededAt: null,
+      scanLeaseExpiresAt: { gt: new Date() }, supersededAt: null,
     },
     data: { scanStatus: status, scanLeaseToken: null, scanLeaseExpiresAt: null },
   });
