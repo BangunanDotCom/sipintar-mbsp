@@ -12,6 +12,15 @@ describe("applicant document readiness guidance", () => {
     expect(result.issues).toEqual([]);
     expect(result.integrityWarning).toBeNull();
   });
+  it("never displays a ready headline when integrity warning is present", () => {
+    const result = documentReadinessGuidance("INDIVIDUAL", {
+      ready: true, blockingCategories: [], pendingScanCategories: [],
+      unexpectedActiveDocuments: true,
+    });
+    expect(result.headline).toBe("Tindakan diperlukan pada dokumen");
+    expect(result.message).not.toContain("memenuhi semakan awal");
+    expect(result.integrityWarning).not.toBeNull();
+  });
   it("labels pending scans and missing company documents in Malay", () => {
     const result = documentReadinessGuidance("COMPANY", {
       ready: false, blockingCategories: ["floor_layout", "company_authority"],
