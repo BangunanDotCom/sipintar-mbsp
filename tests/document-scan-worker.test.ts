@@ -33,7 +33,7 @@ describe("document scan worker state transition", () => {
     const s = setup();
     await expect(processPendingDocumentScan(s.db, s.store, s.scanner, document.id)).resolves.toBe("CLEAN");
     expect(s.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ scanStatus: "SCANNING", supersededAt: null }),
+      where: expect.objectContaining({ scanStatus: "SCANNING", supersededAt: null, byteSize: bytes.length }),
       data: { scanStatus: "CLEAN", scanLeaseToken: null, scanLeaseExpiresAt: null },
     }));
   });
@@ -60,6 +60,13 @@ describe("document scan worker state transition", () => {
       expect(s.scan).not.toHaveBeenCalled();
       expect(s.updateMany).not.toHaveBeenCalled();
     }
+  });
+  it("includes the recorded byte size when claiming a scan lease", async () => {
+    const s = setup();
+    await processPendingDocumentScan(s.db, s.store, s.scanner, document.id);
+    expect(s.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ byteSize: bytes.length, sha256: document.sha256 }),
+    }));
   });
   it("does not claim success if another worker already changed the row", async () => {
     const s = setup();
