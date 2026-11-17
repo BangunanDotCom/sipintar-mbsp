@@ -27,6 +27,7 @@ describe("officer document triage preview", () => {
     expect(markup).not.toContain("Semak percanggahan versi");
     expect(markup).toContain("Senarai tindakan susulan dokumen");
     expect(markup).toContain("Status dokumen");
+    expect(markup).toContain("Semua status");
     expect(markup).toContain("Menunggu pengesahan pegawai");
     expect(markup).toContain("Menunggu imbasan keselamatan");
     expect(markup).not.toContain("type=\"submit\"");
@@ -64,10 +65,10 @@ describe("officer document triage preview", () => {
     ));
     const ids = [...markup.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.length).toBe(10);
+    expect(ids.length).toBe(12);
     expect((markup.match(/aria-labelledby=/g) ?? []).length).toBe(2);
     const labels = [...markup.matchAll(/\bfor="([^"]+)"/g)].map((match) => match[1]);
-    expect(labels).toHaveLength(8);
+    expect(labels).toHaveLength(10);
     expect(labels.every((id) => ids.includes(id))).toBe(true);
     const headingRefs = [...markup.matchAll(/aria-labelledby="([^"]+)"/g)].map((match) => match[1]);
     expect(headingRefs.every((id) => ids.includes(id))).toBe(true);
