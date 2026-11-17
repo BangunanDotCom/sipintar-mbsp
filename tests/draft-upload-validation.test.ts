@@ -21,6 +21,19 @@ describe("draft upload validation", () => {
     expect(() => validateDraftUpload(pdf.toString("base64"), "supporting", "image/png", 1)).toThrow();
     expect(() => validateDraftUpload("%%%", "supporting", "application/pdf", 1)).toThrow();
   });
+  it("rejects noncanonical base64 padding bits", () => {
+    const canonical = pdf.toString("base64");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const paddingIndex = canonical.indexOf("=");
+    expect(paddingIndex).toBeGreaterThan(0);
+    const lastDataIndex = paddingIndex - 1;
+    const original = alphabet.indexOf(canonical[lastDataIndex]);
+    const noncanonical = canonical.slice(0, lastDataIndex) +
+      alphabet[original ^ 1] + canonical.slice(lastDataIndex + 1);
+    expect(Buffer.from(noncanonical, "base64").equals(pdf)).toBe(true);
+    expect(() => validateDraftUpload(noncanonical, "supporting", "application/pdf", 1))
+      .toThrow("tidak kanonik");
+  });
   it("accepts PNG signature for photo category only", () => {
     expect(validateDraftUpload(png.toString("base64"), "photo", "image/png", 1).mimeType)
       .toBe("image/png");
