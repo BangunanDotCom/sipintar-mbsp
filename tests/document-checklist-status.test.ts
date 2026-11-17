@@ -15,6 +15,10 @@ describe("document checklist statuses", () => {
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: null })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), version: "1" })).toBe(false);
     expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), supersededAt: false })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), category: "  " })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), fileName: "" })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), scanStatus: " " })).toBe(false);
+    expect(isDocumentStatusRecord({ ...doc(1, "CLEAN", "VERIFIED"), verificationStatus: "" })).toBe(false);
   });
   it("shows missing documents as missing", () => {
     expect(state([])?.state).toBe("MISSING");
