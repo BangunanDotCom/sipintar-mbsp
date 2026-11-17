@@ -213,13 +213,17 @@ export const documentNextStepLabels: Record<DocumentChecklistRow["state"], strin
 
 /** Read-only display filtering; does not change document verification or submission eligibility. */
 export type DocumentStatusFilter = "ALL" | "ATTENTION" | "PENDING" | "VERIFIED" | "MISSING";
+export type DocumentScopeFilter = "ALL" | "PRIORITY" | "OPTIONAL";
 export function filterDocumentChecklistRows(
   rows: readonly DocumentChecklistRow[],
   filter: DocumentStatusFilter,
   search = "",
+  scope: DocumentScopeFilter = "ALL",
 ): DocumentChecklistRow[] {
   const term = search.trim().toLocaleLowerCase("ms-MY");
   return rows.filter((row) => {
+    if (scope === "PRIORITY" && row.applicability === "IF_AVAILABLE") return false;
+    if (scope === "OPTIONAL" && row.applicability !== "IF_AVAILABLE") return false;
     if (term && ![row.label, row.note, row.category].some((value) => value.toLocaleLowerCase("ms-MY").includes(term))) return false;
     switch (filter) {
       case "ATTENTION": return row.state === "CONFLICT" || row.state === "UNSAFE" || row.state === "REJECTED";
