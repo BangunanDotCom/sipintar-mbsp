@@ -425,3 +425,7 @@ Kontrak `scanQuarantinedDocument` kini menolak nilai `engine` yang bukan renteta
 ## Pengoptimuman pengiraan SHA-256 pengimbasan
 
 `scanQuarantinedDocument` kini menggunakan semula SHA-256 metadata yang telah disahkan secara pemadanan masa tetap oleh `readVerifiedQuarantinedDocument`, dan mengembalikannya dalam bentuk heksadesimal huruf kecil. Ini mengelakkan pengiraan SHA-256 kali kedua pada dokumen besar tanpa memintas pengesahan saiz, kandungan dan MIME yang tersedia. Ujian regresi ditambah bagi SHA-256 metadata huruf besar. CI belum disahkan; pengimbas dan storan produksi masih belum diaktifkan.
+
+## Pengasingan metadata respons pengimbas
+
+`scanQuarantinedDocument` kini memulangkan hanya medan yang dibenarkan (`status`, `engine`, `sha256`), dan menormalisasikan ruang pada nama enjin. Medan tidak dijangka daripada adapter pengimbas, seperti token dalaman atau data diagnostik, tidak lagi disalin ke hasil fungsi. Ujian regresi memeriksa hasil tepat dan memastikan metadata tambahan tidak terdedah. Ini bukan pengaktifan pengimbas produksi. Keputusan CI belum disahkan.
