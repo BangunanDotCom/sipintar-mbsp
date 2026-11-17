@@ -28,6 +28,27 @@ describe("configurable delegation PDF upload", () => {
     expect(() => validateDelegationPdf("%%%!", 1)).toThrow();
     expect(() => validateDelegationPdf(Buffer.from("not a pdf").toString("base64"), 1)).toThrow();
   });
+  it("rejects noncanonical base64 encoding even when bytes decode correctly", () => {
+    const bytes = Buffer.from("%PDF-1.7\\nexample");
+    const canonical = bytes.toString("base64");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const last = canonical.indexOf("=") - 1;
+    const altered = canonical.slice(0, last) +
+      alphabet[alphabet.indexOf(canonical[last]) ^ 1] + canonical.slice(last + 1);
+    expect(Buffer.from(altered, "base64").equals(bytes)).toBe(true);
+    expect(() => validateDelegationPdf(altered, 1)).toThrow("tidak kanonik");
+  });
+  it("rejects invalid PDF version headers and empty documents", () => {
+    for (const data of ["", "%PDF-x.7\\nexample", "%PDF-1x7\\nexample"]) {
+      expect(() => validateDelegationPdf(Buffer.from(data).toString("base64"), 1)).toThrow();
+    }
+  });
+  it("rejects invalid administrative limits", () => {
+    const data = Buffer.from("%PDF-1.7\\nexample").toString("base64");
+    for (const limit of [0, 21, 1.5, Number.NaN]) {
+      expect(() => validateDelegationPdf(data, limit)).toThrow("Had saiz");
+    }
+  });
   it("rejects a file exceeding the administrator limit", () => {
     const data = Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(1024 * 1024)]).toString("base64");
     expect(() => validateDelegationPdf(data, 1)).toThrow("melebihi had");
