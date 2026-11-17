@@ -137,7 +137,9 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
       submissionEnabled: false,
     };
   });
-  app.get("/api/application-drafts", async (req) => {
+  app.get("/api/application-drafts", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
     const s = await applicant(req),
       companyIds = (await allowedCompanies(s.userId)).map((r) => r.companyId);
     return db.applicationDraft.findMany({
@@ -189,7 +191,9 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
     reply.code(201);
     return draft;
   });
-  app.get("/api/application-drafts/:id", async (req) => {
+  app.get("/api/application-drafts/:id", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
     const s = await applicant(req),
       { id } = z.object({ id: z.uuid() }).parse(req.params);
     return db.$transaction(async (tx) => {
@@ -197,6 +201,9 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
         where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
       });
       if (!d) fail(404, "Draf tidak ditemui.");
+      if (!isDraftApplicantCapacity(d.capacity) || !validDraftApplicantContext(
+        d.capacity, d.companyId, d.officialApplicantUserId, d.initiatedByUserId,
+      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
       await tx.auditLog.create({
         data: {
