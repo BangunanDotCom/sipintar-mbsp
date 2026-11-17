@@ -297,15 +297,18 @@ export function documentReviewQueueSummary(queue: readonly DocumentReviewQueueIt
 
 /** Officer triage preview filters only; access control must be enforced by the API. */
 export type DocumentReviewPriorityFilter = "ALL" | DocumentReviewQueueItem["priority"];
+export type DocumentReviewOwnerFilter = "ALL" | DocumentReviewQueueItem["actionOwner"];
 export function filterDocumentReviewQueue(
   queue: readonly DocumentReviewQueueItem[],
   priority: DocumentReviewPriorityFilter = "ALL",
   scope: DocumentScopeFilter = "ALL",
   search = "",
+  owner: DocumentReviewOwnerFilter = "ALL",
 ): DocumentReviewQueueItem[] {
   const term = search.trim().toLocaleLowerCase("ms-MY");
   return queue.filter((item) =>
     (priority === "ALL" || item.priority === priority)
+    && (owner === "ALL" || item.actionOwner === owner)
     && (scope === "ALL" || (scope === "OPTIONAL" ? item.applicability === "IF_AVAILABLE" : item.applicability !== "IF_AVAILABLE"))
     && (!term || [item.label, item.category].some((value) => value.toLocaleLowerCase("ms-MY").includes(term)))
   );
