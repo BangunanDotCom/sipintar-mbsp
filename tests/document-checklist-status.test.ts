@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies } from "../packages/shared/src/document-checklist-status.js";
+import { documentChecklistRows, isDocumentStatusRecord, isDocumentUploadPolicy, unambiguousDocumentUploadPolicies, validatedDocumentResponse } from "../packages/shared/src/document-checklist-status.js";
 
 const doc = (version: number, scanStatus: string, verificationStatus: string, supersededAt: string | null = null) => ({
   category: "premises_plan", version, fileName: `plan-v${version}.pdf`,
@@ -41,6 +41,21 @@ describe("document checklist statuses", () => {
     expect(unambiguousDocumentUploadPolicies([
       policy, { ...policy, category: "company_authority" }, null,
     ])).toHaveLength(2);
+  });
+  it("requires a complete document API response before displaying statuses", () => {
+    const response = {
+      documents: [doc(1, "CLEAN", "VERIFIED")],
+      uploadPolicy: [],
+      uploadEnabled: false,
+      submissionEnabled: false,
+    };
+    expect(validatedDocumentResponse(response)?.documents).toHaveLength(1);
+    expect(validatedDocumentResponse(null)).toBeNull();
+    expect(validatedDocumentResponse({ ...response, documents: null })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, documents: [null] })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, uploadPolicy: null })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, uploadEnabled: "false" })).toBeNull();
+    expect(validatedDocumentResponse({ ...response, submissionEnabled: undefined })).toBeNull();
   });
   it("rejects malformed API document records", () => {
     expect(isDocumentStatusRecord(doc(1, "CLEAN", "VERIFIED"))).toBe(true);
