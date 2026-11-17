@@ -66,7 +66,7 @@ export type DocumentApiRecord = DocumentStatusRecord & {
 
 /** Require a real, timezone-qualified ISO timestamp from the API. */
 function isIsoTimestamp(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed);
 }
