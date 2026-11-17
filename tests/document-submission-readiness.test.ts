@@ -18,7 +18,7 @@ describe("preliminary document submission readiness", () => {
   });
   it("allows clean pending officer review and optional missing documents", () => {
     expect(documentSubmissionReadiness("INDIVIDUAL", readyDocs)).toEqual({
-      ready: true, blockingCategories: [], pendingScanCategories: [],
+      ready: true, blockingCategories: [], pendingScanCategories: [], unexpectedActiveDocuments: false,
     });
   });
   it("blocks uploaded optional attachments until safe, while allowing them to be absent", () => {
@@ -36,6 +36,23 @@ describe("preliminary document submission readiness", () => {
       ...readyDocs, document("building_certificate"),
     ]);
     expect(clean.ready).toBe(true);
+  });
+  it("blocks unexpected active categories without leaking file metadata", () => {
+    const unknown = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("unrecognized_category"),
+    ]);
+    expect(unknown.ready).toBe(false);
+    expect(unknown.unexpectedActiveDocuments).toBe(true);
+    const companyLetter = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("company_authority"),
+    ]);
+    expect(companyLetter.ready).toBe(false);
+    expect(companyLetter.unexpectedActiveDocuments).toBe(true);
+    const superseded = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs, document("unrecognized_category", { supersededAt: "2026-11-17" }),
+    ]);
+    expect(superseded.ready).toBe(true);
+    expect(superseded.unexpectedActiveDocuments).toBe(false);
   });
   it("requires company authority only for company submissions", () => {
     const result = documentSubmissionReadiness("COMPANY", readyDocs);
