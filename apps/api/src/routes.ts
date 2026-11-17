@@ -1,5 +1,5 @@
 import { premisesRoutes } from "./premises.js";
-import { delegationLimitMiB, validateDelegationPdf } from "./upload-policy.js";
+import { delegationLimitMiB, validateDelegationPdf, UPLOAD_CATEGORIES, uploadLimitMiB, uploadPolicyKey, uploadCategoryForKey } from "./upload-policy.js";
 import { applicationDraftRoutes } from "./application-drafts.js";
 import argon2 from "argon2";
 import { protectIdentification } from "./identity.js";
@@ -183,7 +183,19 @@ export async function routes(app: FastifyInstance) {
     await session(req);
     const setting = await db.systemConfiguration.findUnique({ where: { key: "technical.upload_delegation_mib" } });
     const maxMiB = delegationLimitMiB(setting?.value);
-    return { delegationPdfMiB: maxMiB };
+    const settings = await db.systemConfiguration.findMany({
+      where: { key: { in: Object.keys(UPLOAD_CATEGORIES).map((category) => uploadPolicyKey(category as keyof typeof UPLOAD_CATEGORIES)) } },
+    });
+    const values = new Map(settings.map((item) => [item.key, item.value]));
+    const categories = Object.fromEntries(
+      (Object.keys(UPLOAD_CATEGORIES) as (keyof typeof UPLOAD_CATEGORIES)[]).map((category) => [
+        category, {
+          maxMiB: uploadLimitMiB(category, values.get(uploadPolicyKey(category))),
+          mime: UPLOAD_CATEGORIES[category].mime,
+        },
+      ]),
+    );
+    return { delegationPdfMiB: maxMiB, categories };
   });
   app.post("/api/companies/:id/documents", async (req) => {
     const companyId = id(req),
@@ -660,7 +672,10 @@ export async function routes(app: FastifyInstance) {
         reason: z.string().min(5).max(500),
       })
       .parse(req.body);
-    if (scope === "technical" && b.key === "upload_delegation_mib" && (typeof b.value !== "number" || !Number.isInteger(b.value) || b.value < 1 || b.value > 20)) fail(400, "Had PDF mesti nombor bulat 1 hingga 20 MiB.");
+    const uploadCategory = scope === "technical" ? uploadCategoryForKey(b.key) : undefined;
+    if (uploadCategory && (typeof b.value !== "number" || !Number.isInteger(b.value) ||
+      b.value < 1 || b.value > UPLOAD_CATEGORIES[uploadCategory].ceilingMiB))
+      fail(400, `Had ${uploadCategory} mesti nombor bulat 1 hingga ${UPLOAD_CATEGORIES[uploadCategory].ceilingMiB} MiB.`);
     const key = `${scope}.${b.key}`;
     await db.$transaction(async (tx) => {
       await tx.systemConfiguration.upsert({
