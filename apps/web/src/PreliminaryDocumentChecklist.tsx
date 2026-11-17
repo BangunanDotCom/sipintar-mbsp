@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "./api";
 import { Link } from "react-router-dom";
-import { documentChecklistRows, documentStatusLabels, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
+import { documentChecklistRows, documentStatusLabels, isDocumentStatusRecord, type DocumentStatusRecord } from "../../../packages/shared/src/document-checklist-status";
 
 type DocumentRecord = DocumentStatusRecord & {
   uploadedAt: string;
@@ -37,7 +37,8 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
     gcTime: 0,
   });
   // Never show a cached document list after a failed authorization or refresh.
-  const documents = query.isSuccess && Array.isArray(query.data.documents) ? query.data.documents : [];
+  const validDocuments = query.isSuccess && Array.isArray(query.data.documents) && query.data.documents.every(isDocumentStatusRecord);
+  const documents = validDocuments ? query.data.documents : [];
   const visible = documentChecklistRows(capacity, documents);
   const priorityCategories = visible.filter((item) => item.applicability === "ALL" || item.applicability === "COMPANY");
   const recordedPriority = priorityCategories.filter((item) => Boolean(item.current)).length;
@@ -67,7 +68,7 @@ export function PreliminaryDocumentChecklist({ draftId, capacity, userId }: {
           )}
         </div>
       )}
-      {query.isSuccess && !Array.isArray(query.data.documents) && (
+      {query.isSuccess && !validDocuments && (
         <p role="alert">Respons status dokumen tidak lengkap. Sila semak semula kemudian.</p>
       )}
       {query.isSuccess && Array.isArray(query.data.documents) && (
