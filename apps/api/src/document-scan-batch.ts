@@ -23,7 +23,13 @@ export async function processPendingDocumentScanBatch(
   if (!Number.isInteger(limit) || limit < 1 || limit > 50)
     throw new Error("Had kelompok imbasan mesti antara 1 hingga 50.");
   const pending = await db.applicationDocument.findMany({
-    where: { scanStatus: "PENDING", supersededAt: null },
+    where: {
+      supersededAt: null,
+      OR: [
+        { scanStatus: "PENDING" },
+        { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: new Date() } },
+      ],
+    },
     select: { id: true },
     orderBy: [{ uploadedAt: "asc" }, { id: "asc" }],
     take: limit,
