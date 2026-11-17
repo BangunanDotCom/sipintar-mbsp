@@ -91,6 +91,23 @@ describe("preliminary document submission readiness", () => {
     expect(result.ready).toBe(false);
     expect(result.blockingCategories).toEqual(["premises_plan"]);
   });
+  it("blocks two active versions even when their version numbers differ", () => {
+    const result = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs.filter((d) => d.category !== "premises_plan"),
+      document("premises_plan", { version: 1, scanStatus: "INFECTED" }),
+      document("premises_plan", { version: 2, scanStatus: "CLEAN" }),
+    ]);
+    expect(result.ready).toBe(false);
+    expect(result.blockingCategories).toEqual(["premises_plan"]);
+  });
+  it("allows one current version when the previous version is superseded", () => {
+    const result = documentSubmissionReadiness("INDIVIDUAL", [
+      ...readyDocs.filter((d) => d.category !== "premises_plan"),
+      document("premises_plan", { version: 1, scanStatus: "INFECTED", supersededAt: "2026-11-17" }),
+      document("premises_plan", { version: 2, scanStatus: "CLEAN" }),
+    ]);
+    expect(result.ready).toBe(true);
+  });
   it("rejects invalid active version numbers", () => {
     const result = documentSubmissionReadiness("INDIVIDUAL", [
       ...readyDocs.filter((d) => d.category !== "floor_layout"),
