@@ -39,10 +39,10 @@ describe("document checklist statuses", () => {
   it("requires both clean scan and officer verification", () => {
     expect(state([doc(1, "CLEAN", "VERIFIED")])?.state).toBe("VERIFIED");
   });
-  it("selects latest non-superseded version", () => {
+  it("selects latest active version but flags an older active version as a conflict", () => {
     const row = state([doc(1, "CLEAN", "VERIFIED"), doc(2, "PENDING", "UNVERIFIED")]);
     expect(row?.current?.version).toBe(2);
-    expect(row?.state).toBe("PENDING_SCAN");
+    expect(row?.state).toBe("UNSAFE");
     const superseded = state([doc(1, "CLEAN", "VERIFIED", "2026-11-17T00:00:00Z")]);
     expect(superseded?.state).toBe("MISSING");
   });
