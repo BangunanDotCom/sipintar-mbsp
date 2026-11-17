@@ -352,6 +352,8 @@ model ApplicationDocument {
  sha256 String
  storageKey String @unique
  scanStatus String @default("PENDING")
+ scanLeaseToken String?
+ scanLeaseExpiresAt DateTime?
  verificationStatus String @default("UNVERIFIED")
  uploadedBy String
  uploadedAt DateTime @default(now())
