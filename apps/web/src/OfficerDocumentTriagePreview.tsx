@@ -146,7 +146,7 @@ export function OfficerDocumentTriagePreview({ rows }: { rows: readonly Document
       {filtered.length === 0 && (
         <div role="status">
           <p>{queue.length === 0
-            ? "Tiada dokumen yang memerlukan tindakan susulan dalam senarai semasa."
+            ? "Tiada rekod berstatus tindakan susulan dalam senarai semasa. Ini bukan pengesahan dokumen lengkap atau permohonan layak diluluskan."
             : filtersActive
               ? "Tiada rekod sepadan dengan penapis. Kosongkan penapis untuk melihat semua rekod."
               : "Tiada rekod pemantauan untuk dipaparkan."}</p>
