@@ -64,7 +64,8 @@ function Steps({
       >
         2 · Maklumat premis
       </Link>
-      <span aria-current={review ? "step" : undefined}>3 · Semakan draf</span>
+      <Link to={`/permohonan/draf/${draftId}/tingkat`}>3 · Butiran tingkat</Link>
+      <span aria-current={review ? "step" : undefined}>4 · Semakan draf</span>
     </nav>
   );
 }
