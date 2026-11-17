@@ -14,7 +14,7 @@ export async function processPendingDocumentScan(
   const document = await db.applicationDocument.findUnique({
     where: { id: documentId },
     select: {
-      id: true, draftId: true, storageKey: true, sha256: true, byteSize: true,
+      id: true, draftId: true, storageKey: true, sha256: true, byteSize: true, mimeType: true,
       scanStatus: true, supersededAt: true,
     },
   });
@@ -26,7 +26,7 @@ export async function processPendingDocumentScan(
     where: {
       id: document.id, draftId: document.draftId,
       storageKey: document.storageKey, sha256: document.sha256,
-      byteSize: document.byteSize,
+      byteSize: document.byteSize, mimeType: document.mimeType,
       supersededAt: null,
       OR: [
         { scanStatus: "PENDING" },
@@ -47,6 +47,7 @@ export async function processPendingDocumentScan(
       storageKey: document.storageKey,
       expectedSha256: document.sha256,
       expectedByteSize: document.byteSize,
+      expectedMimeType: document.mimeType,
     });
     status = result.status;
   } catch {
@@ -56,7 +57,7 @@ export async function processPendingDocumentScan(
     where: {
       id: document.id, draftId: document.draftId,
       storageKey: document.storageKey, sha256: document.sha256,
-      byteSize: document.byteSize,
+      byteSize: document.byteSize, mimeType: document.mimeType,
       scanStatus: "SCANNING", scanLeaseToken: token,
       scanLeaseExpiresAt: { gte: new Date() }, supersededAt: null,
     },
