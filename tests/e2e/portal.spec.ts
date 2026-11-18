@@ -828,11 +828,38 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
     .getByLabel("Tarikh sijil (jika diketahui)", { exact: true })
     .fill("2025-01-01");
   await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
+  await expect(page).toHaveURL(/\/tingkat$/);
+  const reviewButton = page.getByRole("button", {
+    name: "Simpan dan ke Semakan Draf",
+    exact: true,
+  });
+  await expect(reviewButton).toBeDisabled();
+  await page.getByRole("button", { name: "Tambah tingkat", exact: true }).click();
+  for (const [index, floorLabel, area] of [
+    [1, "Tingkat Bawah", "125"],
+    [2, "Tingkat 1", "125.75"],
+  ] as const) {
+    const floor = page.getByRole("group", { name: `Aras ${index}`, exact: true });
+    await floor.getByLabel("Nama tingkat", { exact: true }).fill(floorLabel);
+    await floor.getByLabel("Bilik", { exact: true }).fill("6");
+    await floor.getByLabel("Katil", { exact: true }).fill("18");
+    await floor.getByLabel("Pekerja", { exact: true }).fill("18");
+    await floor.getByLabel("Keluasan (m²)", { exact: true }).fill(area);
+  }
+  await reviewButton.click();
   await expect(page).toHaveURL(/\/semakan$/);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Semakan Draf PPTT", exact: true }),
   ).toBeVisible();
+  const floorSummary = page.getByRole("table").filter({
+    has: page.getByRole("rowheader", { name: "JUMLAH", exact: true }),
+  });
+  await expect(floorSummary.getByRole("rowheader", { name: "Tingkat Bawah" })).toBeVisible();
+  await expect(floorSummary.getByRole("rowheader", { name: "Tingkat 1" })).toBeVisible();
+  await expect(
+    floorSummary.getByRole("row", { name: /^JUMLAH\b/ }).getByRole("cell"),
+  ).toHaveText(["12", "36", "36", "250.75", "0", "0", "0", "0", "0", "0"]);
   await expect(
     page.getByRole("button", {
       name: "Hantar Permohonan (belum tersedia)",
