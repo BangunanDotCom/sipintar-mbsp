@@ -23,6 +23,7 @@ async function fixture() {
   });
   const document = {
     id: documentId, draftId, storageKey, sha256: prepared.sha256,
+    byteSize: bytes.length, mimeType: "application/pdf",
     scanStatus: "PENDING", supersededAt: null,
   };
   const findUnique = vi.fn(async () => document);

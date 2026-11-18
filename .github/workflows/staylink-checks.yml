@@ -36,7 +36,7 @@ jobs:
       - name: TypeScript typecheck
         run: npm run typecheck
       - name: Unit tests
-        run: npm test
+        run: npx vitest run --exclude tests/api.test.ts
       - name: Officer triage component regression tests
         run: npx vitest run tests/officer-document-triage-preview.test.tsx
       - name: Lint

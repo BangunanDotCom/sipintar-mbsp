@@ -15,6 +15,7 @@ function fixture() {
     id: where.id, draftId,
     storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
     sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteSize: bytes.length, mimeType: "application/pdf",
     scanStatus: "PENDING", supersededAt: null,
   }));
   const updateMany = vi.fn(async () => ({ count: 1 }));
