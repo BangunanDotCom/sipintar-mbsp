@@ -44,8 +44,13 @@ jobs:
           const body = issue.body ?? '';
           const required = ['Objective and user benefit', 'Acceptance criteria', 'Files or modules in scope', 'Risk classification', 'Required controls'];
           for (const heading of required) {
-            const match = body.match(new RegExp(`(?:^|\\n)### ${heading.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\n([\\s\\S]*?)(?=\\n### |$)`));
-            if (!match || !match[1].trim() || match[1].trim() === '_No response_') throw new Error(`Missing required section: ${heading}`);
+            const marker = `### ${heading}\n`;
+            const sectionStart = body.indexOf(marker);
+            if (sectionStart < 0) throw new Error(`Missing required section: ${heading}`);
+            const valueStart = sectionStart + marker.length;
+            const nextSection = body.indexOf('\n### ', valueStart);
+            const value = body.slice(valueStart, nextSection < 0 ? undefined : nextSection).trim();
+            if (!value || value === '_No response_') throw new Error(`Empty required section: ${heading}`);
           }
           const risk = body.match(/### Risk classification\n([^\n]+)/)?.[1]?.trim() ?? '';
           if (!risk.startsWith('Low') && !risk.startsWith('Medium')) throw new Error('High or unknown risk requires manual review; no agent handoff');
