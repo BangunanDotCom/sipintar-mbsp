@@ -1,0 +1,45 @@
+name: STAYLink scheduled quality audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staylink-quality-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      STAYLINK_DOCUMENT_STORE: disabled
+      STAYLINK_CLAMAV_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: staylink-mbsp-phase1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx vitest run --exclude tests/api.test.ts
+      - run: npm run build
+      - name: Dependency security audit
+        run: npm audit --audit-level=high
+      - name: Publish job summary
+        if: always()
+        run: |
+          echo '## STAYLink weekly quality audit' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Target: staylink-mbsp-phase1. No production deployment or code writes.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Inspect the steps above for pass/fail details.' >> "$GITHUB_STEP_SUMMARY"
