@@ -13,6 +13,7 @@ function setup(status = "PENDING") {
   const findUnique = vi.fn(async () => ({
     id, draftId, storageKey: createPrivateDocumentKey(draftId, "premises_plan"),
     sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteSize: bytes.length, mimeType: "application/pdf",
     scanStatus: status, supersededAt: null,
   }));
   const updateMany = vi.fn(async (_args: { where: Record<string, unknown>; data: Record<string, unknown> }) => ({ count: 1 }));
@@ -35,12 +36,12 @@ describe("document scan lease ownership", () => {
     const complete = f.updateMany.mock.calls[1][0] as unknown as { where: { scanLeaseToken: string; scanLeaseExpiresAt: unknown } };
     expect(claim.where.OR).toEqual([
       { scanStatus: "PENDING" },
-      { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: expect.any(Date) } },
+      { scanStatus: "SCANNING", scanLeaseExpiresAt: { lte: expect.any(Date) } },
     ]);
     expect(claim.data.scanStatus).toBe("SCANNING");
     expect(claim.data.scanLeaseToken).toMatch(/^[a-f0-9-]{36}$/);
     expect(complete.where.scanLeaseToken).toBe(claim.data.scanLeaseToken);
-    expect(complete.where.scanLeaseExpiresAt).toEqual({ gte: expect.any(Date) });
+    expect(complete.where.scanLeaseExpiresAt).toEqual({ gt: expect.any(Date) });
   });
   it("skips work when another worker owns the lease", async () => {
     const f = setup("SCANNING");
