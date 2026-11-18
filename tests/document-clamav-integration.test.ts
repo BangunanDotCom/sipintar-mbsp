@@ -55,6 +55,7 @@ async function fixture() {
   });
   const findUnique = vi.fn(async () => ({
     id: documentId, draftId, storageKey, sha256: prepared.sha256,
+    byteSize: Buffer.byteLength("%PDF-1.7\nscan fixture"), mimeType: "application/pdf",
     scanStatus: "PENDING", supersededAt: null,
   }));
   const updateMany = vi.fn(async (_args: unknown) => ({ count: 1 }));
