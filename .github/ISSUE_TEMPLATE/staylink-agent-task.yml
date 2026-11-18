@@ -1,0 +1,56 @@
+name: STAYLink AI coding task
+description: Define a bounded development task for a future supervised coding agent. Creating this issue does not start an AI agent.
+title: "[STAYLink task] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Intake only.** No autonomous coding runner is enabled by this template.
+        Work must follow AGENTS.md. A human must authorize any production, security, payments, or schema changes.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective and user benefit
+      description: Describe the precise STAYLink behavior to implement or repair.
+      placeholder: As an officer, I need ... so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide observable behavior and edge cases, without personal or production data.
+      placeholder: |
+        - Given ... when ... then ...
+        - Existing behavior ... must remain unchanged.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Files or modules in scope
+      description: List known code areas and anything explicitly out of scope.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk classification
+      options:
+        - Low — documentation, isolated UI, or tests
+        - Medium — non-production application logic
+        - High — security, personal data, payments, database schema, or external integration
+    validations:
+      required: true
+  - type: checkboxes
+    id: controls
+    attributes:
+      label: Required controls
+      options:
+        - label: No production deployment or Cloudflare Worker changes
+          required: true
+        - label: Draft PR to staylink-mbsp-phase1; no autonomous merges
+          required: true
+        - label: Do not include applicant data, secrets, or real credentials
+          required: true
