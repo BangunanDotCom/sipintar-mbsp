@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - 'issue-36-uat-ict-readiness'
+      - 'issue-40-ict-acceptance'
 
 permissions:
   contents: read
@@ -40,8 +41,8 @@ jobs:
         suite: [api, browser]
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue36_${{ matrix.suite }}_test
-      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue36_${{ matrix.suite }}_test
+      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue40_${{ matrix.suite }}_test
+      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue40_${{ matrix.suite }}_test
       APP_ORIGIN: http://localhost:5173
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '1025'
@@ -56,7 +57,7 @@ jobs:
         env:
           POSTGRES_USER: staylink_fixture
           POSTGRES_PASSWORD: staylink_fixture
-          POSTGRES_DB: staylink_issue36_${{ matrix.suite }}_test
+          POSTGRES_DB: staylink_issue40_${{ matrix.suite }}_test
         ports:
           - 5432:5432
         options: >-
@@ -100,6 +101,13 @@ jobs:
       - name: Run PostgreSQL API integration tests
         if: matrix.suite == 'api'
         run: npx vitest run tests/api.test.ts
+      - name: Rehearse backup and restore into a separate synthetic database
+        if: matrix.suite == 'api'
+        env:
+          POSTGRES_FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_FIXTURE_CONTAINER" psql -X -U staylink_fixture -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE staylink_issue40_restore_ci_test OWNER staylink_fixture'
+          bash scripts/rehearse-synthetic-restore.sh "$POSTGRES_FIXTURE_CONTAINER" staylink_fixture staylink_issue40_api_test staylink_issue40_restore_ci_test
       - name: Install Playwright Chromium
         if: matrix.suite == 'browser'
         run: npx playwright install --with-deps chromium
