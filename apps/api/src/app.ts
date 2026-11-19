@@ -1,6 +1,6 @@
 import { closeMailer } from "./core.js";
 import { transformOpenApi } from "./openapi.js";
-import Fastify from "fastify";
+import Fastify, { LogController } from "fastify";
 import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -11,6 +11,15 @@ import { authRoutes } from "./auth.js";
 import { routes } from "./routes.js";
 import { safeServerFailure } from "./errors.js";
 import { syntheticPortalRoutes } from "./synthetic-portal.js";
+export const requestLogRedactions = [
+  "req.headers.cookie",
+  "req.headers.authorization",
+  "req.headers['x-csrf-token']",
+  "req.headers['x-staylink-synthetic-signature']",
+  "req.body",
+  "res.headers.set-cookie",
+];
+
 export async function buildApp() {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.
@@ -18,14 +27,9 @@ export async function buildApp() {
     bodyLimit: 29 * 1024 * 1024,
     logger: {
       level: process.env.NODE_ENV === "test" ? "silent" : "info",
-      redact: [
-        "req.headers.cookie",
-        "req.headers.authorization",
-        "req.body",
-        "res.headers.set-cookie",
-      ],
+      redact: requestLogRedactions,
     },
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     requestIdHeader: false,
   });
   await app.register(cookie);
@@ -75,13 +79,11 @@ export async function buildApp() {
         },
         "Ralat dalaman",
       );
-      return reply
-        .code(failure.status)
-        .send({
-          message: failure.message,
-          code: failure.code,
-          requestId: req.id,
-        });
+      return reply.code(failure.status).send({
+        message: failure.message,
+        code: failure.code,
+        requestId: req.id,
+      });
     }
     return reply.code(e.statusCode).send({ message: e.message });
   });

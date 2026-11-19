@@ -18,6 +18,7 @@ import {
 import {
   loadSyntheticReview,
   lockSyntheticReview,
+  requireCurrentSyntheticEvidence,
   syntheticReviewOfficer,
 } from "./synthetic-portal-review.js";
 
@@ -181,6 +182,12 @@ export async function syntheticBillingRoutes(portal: FastifyInstance) {
       if (state.status !== "REGISTERED")
         fail(409, "Daftar keputusan sintetik dahulu.");
       if (action === "ISSUE") {
+        if (!ledger.invoices.length)
+          await requireCurrentSyntheticEvidence(
+            tx,
+            state.caseId,
+            snapshot.evidence,
+          );
         const now = Date.now();
         const output = issueMockInvoice(
           true,
