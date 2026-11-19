@@ -1991,3 +1991,195 @@ describe("K02 physical units and floor links", () => {
   });
 
 });
+
+describe("Issue 24 synthetic document scopes and submissions", () => {
+  const scopedDatabase = /\/staylink_issue24_[a-z0-9_]+_test$/.test(
+    process.env.TEST_DATABASE_URL ?? "",
+  );
+  it.runIf(scopedDatabase)(
+    "rejects cross-draft evidence, captures exactly once and preserves the previous snapshot",
+    async () => {
+      const { captureSyntheticSubmission } =
+        await import("../apps/api/src/synthetic-submissions");
+      const a = await actor("PEMOHON");
+      const other = await actor("PEMOHON");
+      const makeDraft = async (owner: Actor) => {
+        const response = await request(
+          owner,
+          "/api/application-drafts",
+          "POST",
+          { capacity: "INDIVIDUAL" },
+        );
+        expect(response.statusCode).toBe(201);
+        return response.json().id as string;
+      };
+      const id = await makeDraft(a);
+      const foreign = await makeDraft(other);
+      const floor = (draftId: string) =>
+        db.premiseFloor.create({
+          data: {
+            draftId,
+            floorLabel: "Tingkat sintetik",
+            position: 0,
+            rooms: 1,
+            beds: 1,
+            workers: 1,
+            areaSqm: 12,
+            facilities: {},
+          },
+        });
+      const [ownFloor, foreignFloor] = await Promise.all([
+        floor(id),
+        floor(foreign),
+      ]);
+      const premises = await db.applicationPremises.create({
+        data: { draftId: id, buildingType: "SHOP", accommodationUnits: 1 },
+      });
+      const unit = await db.premiseUnit.create({
+        data: {
+          premiseId: premises.id,
+          draftId: id,
+          unitLabel: "A",
+          normalizedLabel: "a",
+        },
+      });
+      await db.premiseUnitFloor.create({
+        data: { unitId: unit.id, floorId: ownFloor.id, draftId: id },
+      });
+      const document = await db.applicationDocument.create({
+        data: {
+          draftId: id,
+          version: 1,
+          category: "floor_layout",
+          fileName: "synthetic.pdf",
+          mimeType: "application/pdf",
+          byteSize: 42,
+          sha256: "0".repeat(64),
+          uploadedBy: a.id,
+          storageKey: `synthetic/${id}`,
+        },
+      });
+      await expect(
+        db.draftDocumentScope.create({
+          data: {
+            documentId: document.id,
+            draftId: id,
+            floorId: foreignFloor.id,
+          },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        db.draftDocumentScope.create({
+          data: {
+            documentId: document.id,
+            draftId: id,
+            floorId: ownFloor.id,
+            unitId: unit.id,
+          },
+        }),
+      ).rejects.toThrow();
+      await db.draftDocumentScope.create({
+        data: { documentId: document.id, draftId: id, floorId: ownFloor.id },
+      });
+
+      const path = `/api/application-drafts/${id}/documents`;
+      const metadata = await request(a, path);
+      expect(metadata.statusCode).toBe(200);
+      expect(metadata.json().documents[0].scope).toEqual({
+        unitId: null,
+        floorId: ownFloor.id,
+      });
+      expect(metadata.json().documents[0]).not.toHaveProperty("storageKey");
+      expect((await request(other, path)).statusCode).toBe(404);
+
+      const policy = {
+        declarationVersion: "SYNTHETIC-v1",
+        documents: {
+          version: "SYNTHETIC-v1",
+          rules: [
+            {
+              requirement: "layout",
+              alternatives: ["floor_layout"],
+              scope: "FLOOR",
+              requireVerified: false,
+            },
+          ],
+        },
+      };
+      const input = {
+        draftId: id,
+        version: 1,
+        accepted: true,
+        declarationVersion: "SYNTHETIC-v1",
+        key: randomUUID(),
+        previousId: null,
+      };
+      await expect(
+        captureSyntheticSubmission(a.id, input),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      await expect(
+        captureSyntheticSubmission(other.id, input, policy),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      await expect(
+        captureSyntheticSubmission(a.id, input, policy),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(
+        await db.syntheticSubmission.count({ where: { draftId: id } }),
+      ).toBe(0);
+      await db.applicationDocument.update({
+        where: { id: document.id },
+        data: { scanStatus: "CLEAN" },
+      });
+      const [first, replay] = await Promise.all([
+        captureSyntheticSubmission(a.id, input, policy),
+        captureSyntheticSubmission(a.id, input, policy),
+      ]);
+      expect(replay).toEqual(first);
+      await expect(
+        captureSyntheticSubmission(a.id, { ...input, version: 2 }, policy),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(
+        await db.auditLog.count({
+          where: { action: "SYNTHETIC_SUBMISSION_CAPTURED", target: first.id },
+        }),
+      ).toBe(1);
+      const original = await db.syntheticSubmission.findUniqueOrThrow({
+        where: { id: first.id },
+      });
+      await expect(
+        db.syntheticSubmission.update({
+          where: { id: first.id },
+          data: { snapshot: {} },
+        }),
+      ).rejects.toThrow();
+
+      const edit = await request(a, `/api/application-drafts/${id}`, "PATCH", {
+        version: 1,
+        notes: "Pembetulan sintetik",
+        capacity: "INDIVIDUAL",
+      });
+      expect(edit.statusCode).toBe(200);
+      const next = {
+        ...input,
+        key: randomUUID(),
+        version: 2,
+        previousId: first.id,
+      };
+      await expect(
+        captureSyntheticSubmission(a.id, next, policy),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      const correction = await captureSyntheticSubmission(a.id, next, {
+        ...policy,
+        correctionFor: first.id,
+      });
+      expect(correction.id).not.toBe(first.id);
+      expect(
+        await db.syntheticSubmission.findUnique({ where: { id: first.id } }),
+      ).toEqual(original);
+      expect(
+        (await request(a, `/api/application-drafts/${id}/submit`, "POST", {}))
+          .statusCode,
+      ).toBe(409);
+    },
+  );
+});

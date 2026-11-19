@@ -269,6 +269,7 @@ model AuditLog {
 }
 
 model ApplicationDraft {
+ syntheticSubmissions SyntheticSubmission[]
  documents ApplicationDocument[]
  floors PremiseFloor[]
  premises ApplicationPremises?
@@ -413,4 +414,25 @@ model DraftDocumentScope {
  @@index([unitId, draftId], map: "draft_document_scopes_unit_idx")
  @@index([floorId, draftId], map: "draft_document_scopes_floor_idx")
  @@map("draft_document_scopes")
+}
+
+model SyntheticSubmission {
+ id String @id @default(uuid())
+ draftId String
+ draft ApplicationDraft @relation(fields: [draftId], references: [id], onDelete: Restrict, map: "synthetic_submissions_draft_fkey")
+ draftVersion Int
+ key String
+ actorId String
+ declarationVersion String
+ policyVersion String
+ previousId String?
+ previous SyntheticSubmission? @relation("SyntheticCorrection", fields: [previousId, draftId], references: [id, draftId], onDelete: Restrict, map: "synthetic_submissions_previous_fkey")
+ correction SyntheticSubmission? @relation("SyntheticCorrection")
+ snapshot Json
+ createdAt DateTime @default(now()) @db.Timestamptz(6)
+ @@unique([previousId, draftId], map: "synthetic_submissions_previous_draft_unique")
+ @@unique([id, draftId], map: "synthetic_submissions_id_draft_unique")
+ @@unique([draftId, key], map: "synthetic_submissions_key_unique")
+ @@unique([draftId, draftVersion], map: "synthetic_submissions_version_unique")
+ @@map("synthetic_submissions")
 }
