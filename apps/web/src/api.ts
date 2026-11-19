@@ -7,11 +7,32 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
-export let csrf = "";
-export const setCsrf = (v: string) => {
-  csrf = v;
-};
-export async function api(path: string, method = "GET", body?: unknown) {
+let csrf = "";
+let sessionRequests: Promise<void> = Promise.resolve();
+
+export function api(path: string, method = "GET", body?: unknown) {
+  const refreshesSession = method === "GET" && path === "/auth/me";
+  if (method === "GET" && !refreshesSession) return request(path, method, body);
+
+  // A session refresh rotates the server's CSRF token. Finish it before
+  // sending the next mutation, and let in-flight mutations finish first.
+  const result = sessionRequests.then(async () => {
+    const data = await request(path, method, body);
+    if (refreshesSession || (method === "POST" && path === "/auth/login")) {
+      csrf = data.csrf;
+    } else if (method === "POST" && path === "/auth/logout") {
+      csrf = "";
+    }
+    return data;
+  });
+  sessionRequests = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function request(path: string, method: string, body?: unknown) {
   const r = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",

@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { api, ApiError, malaysiaTime, setCsrf } from "./api";
+import { api, ApiError, malaysiaTime } from "./api";
 import { applicationDraftSchema } from "../../../packages/shared/src/index";
 import { Loading, Notice } from "./main";
 import { DraftDocumentReadiness } from "./DraftDocumentReadiness";
@@ -400,11 +400,7 @@ export function ApplicantDraftWorkspace({
     qc = useQueryClient();
   const meQuery = useQuery({
     queryKey: ["me"],
-    queryFn: async () => {
-      const result = await api("/auth/me");
-      setCsrf(result.csrf);
-      return result;
-    },
+    queryFn: () => api("/auth/me"),
     retry: false,
     staleTime: 0,
   });

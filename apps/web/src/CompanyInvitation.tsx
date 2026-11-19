@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, setCsrf } from "./api";
+import { api } from "./api";
 import { Notice, Loading } from "./main";
 export function CompanyInvitation() {
   const [params] = useSearchParams(),
@@ -13,11 +13,7 @@ export function CompanyInvitation() {
     [error, setError] = React.useState("");
   const me = useQuery({
     queryKey: ["invitation-me"],
-    queryFn: async () => {
-      const r = await api("/auth/me");
-      setCsrf(r.csrf);
-      return r;
-    },
+    queryFn: () => api("/auth/me"),
     retry: false,
   });
   const preview = useQuery({

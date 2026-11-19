@@ -39,7 +39,7 @@ import {
   UserRound,
   ChevronRight,
 } from "lucide-react";
-import { api, setCsrf } from "./api";
+import { api } from "./api";
 import {
   registerSchema,
   safeApplicantReturnPath,
@@ -586,9 +586,8 @@ function Auth({
         setMessage((await api("/auth/register", "POST", b)).message);
       }
       if (mode === "login") {
-        const data = await api("/auth/login", "POST", b);
+        await api("/auth/login", "POST", b);
         client.clear();
-        setCsrf(data.csrf);
         const next = params.get("next");
         nav(safeApplicantReturnPath(next) || "/dashboard");
       }
