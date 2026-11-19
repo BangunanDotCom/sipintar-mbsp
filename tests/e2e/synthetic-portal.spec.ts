@@ -1,3 +1,4 @@
+import { awaitDraftRequestBudget } from "./request-budget";
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { syntheticPortalDatabase } from "../../apps/api/src/synthetic-portal-gate";
@@ -16,7 +17,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       !process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID ||
       !process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY,
   );
-  test.setTimeout(120000);
+  test.setTimeout(150000);
   const [active] = await db.$queryRaw<
     { name: string }[]
   >`SELECT current_database()::text AS name`;
@@ -82,6 +83,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       "PPSK",
       process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID!,
     );
+    await awaitDraftRequestBudget(applicant.request, 110);
     const session = await applicant.request.get("/api/auth/me");
     expect(session.ok()).toBe(true);
     const headers = {

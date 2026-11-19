@@ -2208,6 +2208,7 @@ describe("Issue 31 integrated synthetic portal", () => {
     postcode: "13000",
     lotNumber: "LOT-SINTETIK",
     locality: "Mukim latihan",
+    locationSource: "USER_PIN",
     latitude: 5.42,
     longitude: 100.4,
     currentUse: "Latihan",

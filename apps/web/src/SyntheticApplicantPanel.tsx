@@ -35,7 +35,21 @@ export function SyntheticApplicantPanel({
       await api(`${root}/${path}`, "POST", body);
       setAcceptedFor(null);
       setMessage(success);
-      await qc.invalidateQueries();
+      await query.refetch();
+      if (path === "evidence") {
+        await Promise.all([
+          qc.invalidateQueries({
+            queryKey: ["application-documents", userId, draftId],
+          }),
+          qc.invalidateQueries({
+            queryKey: ["draft-document-readiness", userId, draftId],
+          }),
+          qc.invalidateQueries({
+            queryKey: ["premises", draftId],
+            refetchType: "none",
+          }),
+        ]);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Simulasi gagal.");
       await query.refetch();

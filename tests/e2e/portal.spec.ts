@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { awaitDraftRequestBudget } from "./request-budget";
+import { test, expect } from "@playwright/test";
 import { randomUUID, randomBytes } from "node:crypto";
 import { totp } from "../../apps/api/src/auth";
 async function activationLink(email: string) {
@@ -464,22 +465,6 @@ test("Phase 2A: applicant can recover access through a real test email and log i
 
 // The full suite intentionally keeps production rate limits. Wait for a fresh
 // request budget instead of sending the final draft flows into an expected 429.
-async function awaitDraftRequestBudget(request: APIRequestContext) {
-  await expect
-    .poll(
-      async () => {
-        const response = await request.get("/api/health");
-        return Number(response.headers()["x-ratelimit-remaining"] || 0);
-      },
-      {
-        timeout: 90000,
-        intervals: [1000, 5000, 10000],
-        message: "Waiting for the development API request budget to reset",
-      },
-    )
-    .toBeGreaterThanOrEqual(50);
-}
-
 // Synthetic fixture avoids exhausting per-IP login limits in an eight-flow browser suite.
 // Email verification itself is exercised through Mailpit in the Phase 2A flows above.
 async function draftApplicantFixture() {
