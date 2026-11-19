@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SyntheticReviewState } from "../../../packages/shared/src/synthetic-review.js";
 
 const UNIT_FEE_SEN = 5000;
-const callbackSchema = z.strictObject({
+export const callbackSchema = z.strictObject({
   invoiceId: z.uuid(),
   eventId: z.uuid(),
   providerReference: z.string().regex(/^SYNTHETIC-[A-Za-z0-9-]{1,80}$/),
@@ -11,18 +11,21 @@ const callbackSchema = z.strictObject({
   amountSen: z.number().int().positive(),
   outcome: z.literal("SETTLED"),
 });
-type Invoice = {
-  id: string;
-  caseId: string;
-  submissionId: string;
-  officialReference: string;
+export const mockInvoiceSchema = z.strictObject({
+  id: z.uuid(),
+  caseId: z.string(),
+  submissionId: z.string(),
+  officialReference: z.string(),
+  unitIds: z.array(z.uuid()).min(1),
+  amountSen: z.number().int().positive(),
+  currency: z.literal("MYR"),
+  expiresAt: z.number().int().positive(),
+});
+type Invoice = Omit<z.infer<typeof mockInvoiceSchema>, "unitIds"> & {
   unitIds: readonly string[];
-  amountSen: number;
-  currency: "MYR";
-  expiresAt: number;
 };
 type Settlement = z.infer<typeof callbackSchema>;
-type MockLedger = {
+export type MockLedger = {
   invoices: readonly Invoice[];
   settlements: readonly Settlement[];
 };
@@ -49,7 +52,9 @@ export function issueMockInvoice(
     verified.unitIds.some((id) => !z.uuid().safeParse(id).success)
   )
     return { status: "INVALID_INVENTORY" as const };
-  const unitIds = [...new Set(verified.unitIds)].sort();
+  const unitIds = [
+    ...new Set(verified.unitIds.map((id) => id.toLowerCase())),
+  ].sort();
   const existing = ledger.invoices.find(
     (invoice) => invoice.caseId === review.caseId,
   );
@@ -86,15 +91,11 @@ export function issueMockInvoice(
   };
 }
 
-export function reconcileMockCallback(
-  enabled: boolean,
-  ledger: MockLedger,
+export function verifyMockCallback(
   payload: string,
   signature: string,
   secret: Buffer,
-  now: number,
 ) {
-  if (enabled !== true) return { status: "DISABLED" as const };
   if (
     secret.length < 32 ||
     payload.length > 4096 ||
@@ -113,7 +114,21 @@ export function reconcileMockCallback(
   }
   const parsed = callbackSchema.safeParse(decoded);
   if (!parsed.success) return { status: "INVALID_CALLBACK" as const };
-  const event = parsed.data;
+  return { status: "VERIFIED" as const, event: parsed.data };
+}
+
+export function reconcileMockCallback(
+  enabled: boolean,
+  ledger: MockLedger,
+  payload: string,
+  signature: string,
+  secret: Buffer,
+  now: number,
+) {
+  if (enabled !== true) return { status: "DISABLED" as const };
+  const result = verifyMockCallback(payload, signature, secret);
+  if (result.status !== "VERIFIED") return result;
+  const { event } = result;
   const seen = ledger.settlements.find((row) => row.eventId === event.eventId);
   if (seen) {
     const matches =

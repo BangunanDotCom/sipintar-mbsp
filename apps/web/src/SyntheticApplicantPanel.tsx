@@ -1,3 +1,4 @@
+import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
@@ -16,22 +17,39 @@ export function SyntheticApplicantPanel({
     queryFn: () => api(root),
     retry: false,
   });
-  const [accepted, setAccepted] = useState(false);
+  const [acceptedFor, setAcceptedFor] = useState<string | null>(null);
   const [verdict, setVerdict] = useState("CLEAN");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const key = useRef<{ context: string; value: string } | null>(null);
   const state = query.data;
   if (!state || query.isError) return null;
+  const previousId = state.latest?.id ?? null;
+  const context = `${draftId}:${state.draftVersion}:${state.declaration.version}:${previousId}`;
+  const accepted = acceptedFor === context;
 
   async function act(path: string, body: unknown, success: string) {
     setPending(true);
     setMessage("");
     try {
       await api(`${root}/${path}`, "POST", body);
-      setAccepted(false);
+      setAcceptedFor(null);
       setMessage(success);
-      await qc.invalidateQueries();
+      await query.refetch();
+      if (path === "evidence") {
+        await Promise.all([
+          qc.invalidateQueries({
+            queryKey: ["application-documents", userId, draftId],
+          }),
+          qc.invalidateQueries({
+            queryKey: ["draft-document-readiness", userId, draftId],
+          }),
+          qc.invalidateQueries({
+            queryKey: ["premises", draftId],
+            refetchType: "none",
+          }),
+        ]);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Simulasi gagal.");
       await query.refetch();
@@ -41,8 +59,6 @@ export function SyntheticApplicantPanel({
   }
 
   function submit() {
-    const previousId = state.latest?.id ?? null;
-    const context = `${draftId}:${state.draftVersion}:${state.declaration.version}:${previousId}`;
     if (key.current?.context !== context)
       key.current = { context, value: crypto.randomUUID() };
     void act(
@@ -136,7 +152,9 @@ export function SyntheticApplicantPanel({
           type="checkbox"
           checked={accepted}
           disabled={!state.ready || pending}
-          onChange={(event) => setAccepted(event.target.checked)}
+          onChange={(event) =>
+            setAcceptedFor(event.target.checked ? context : null)
+          }
         />{" "}
         {state.declaration.text} ({state.declaration.version})
       </label>
@@ -153,6 +171,9 @@ export function SyntheticApplicantPanel({
         </button>
       </p>
       {message && <p role="status">{message}</p>}
+      {state.reviewStatus === "REGISTERED" && (
+        <SyntheticInvoice path={`${root}/billing`} identity={userId} />
+      )}
     </section>
   );
 }

@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
-import { companyAuthority } from "./application-drafts.js";
+import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
 import { isCurrent } from "../../../packages/shared/src/index.js";
 import {
   applySyntheticReview,
@@ -171,26 +171,19 @@ export async function lockSyntheticReview(
 ) {
   await lockSyntheticOfficer(tx, officer);
   // One lock per immutable submission serializes review and billing state writes.
-  await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id}
+    AND snapshot->>'districtId' = ${officer.district} AND "actorId" <> ${officer.operator.userId}
+    FOR UPDATE`;
   const row = await tx.syntheticSubmission.findFirst({
     where: {
       id,
       correction: null,
       snapshot: { path: ["districtId"], equals: officer.district },
     },
-    include: { draft: { select: { companyId: true } } },
   });
   if (!row || row.actorId === officer.operator.userId)
     fail(404, "Tugasan sintetik tidak ditemui.");
-  if (row.draft.companyId) {
-    const authority = await companyAuthority(
-      tx,
-      row.actorId,
-      row.draft.companyId,
-    );
-    if (authority.status !== "VERIFIED")
-      fail(409, "Kuasa wakil sintetik belum disahkan.");
-  }
+  await requireSyntheticSnapshotAuthority(tx, row);
   return loadSyntheticReview(tx, row);
 }
 
@@ -214,6 +207,17 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
           district: officer.district,
           reviews: await Promise.all(
             rows.map(async (row) => {
+              try {
+                await requireSyntheticSnapshotAuthority(tx, row);
+              } catch (error) {
+                if (
+                  error instanceof Error &&
+                  "statusCode" in error &&
+                  (error.statusCode === 404 || error.statusCode === 409)
+                )
+                  return null;
+                throw error;
+              }
               const { state, snapshot, correctionReason } =
                 await loadSyntheticReview(tx, row);
               const { units, floors, evidence } = snapshot;
@@ -239,7 +243,7 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
                 }),
               };
             }),
-          ),
+          ).then((reviews) => reviews.filter((review) => review !== null)),
         };
       },
       { isolationLevel: "RepeatableRead" },

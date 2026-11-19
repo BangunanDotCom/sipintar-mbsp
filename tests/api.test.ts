@@ -2183,3 +2183,421 @@ describe("Issue 24 synthetic document scopes and submissions", () => {
     },
   );
 });
+
+describe("Issue 31 integrated synthetic portal", () => {
+  const enabled =
+    process.env.STAYLINK_SYNTHETIC_PORTAL === "true" &&
+    /\/staylink_issue31_[a-z0-9_]+_test$/.test(
+      process.env.TEST_DATABASE_URL ?? "",
+    );
+  const root = "/api/synthetic-portal";
+  const facilities = {
+    toilets: 1,
+    bathrooms: 1,
+    sinks: 1,
+    diningTables: 0,
+    diningChairs: 0,
+    fireExtinguishers: 1,
+  };
+  const readyPremises = (draftId: string, count: number) => ({
+    draftId,
+    buildingType: "SHOP",
+    accommodationUnits: 1,
+    districtId: "SPU",
+    address: "Alamat latihan",
+    postcode: "13000",
+    lotNumber: "LOT-SINTETIK",
+    locality: "Mukim latihan",
+    locationSource: "USER_PIN",
+    latitude: 5.42,
+    longitude: 100.4,
+    currentUse: "Latihan",
+    certificateType: "NOT_APPLICABLE",
+    involvedFloors: count,
+    totalRooms: count,
+    proposedWorkers: count,
+    floorAreaSqm: 12 * count,
+  });
+
+  it.runIf(enabled)(
+    "isolates roles and drafts and persists the correction-to-reconciliation journey",
+    async () => {
+      const { createHmac } = await import("node:crypto");
+      process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+      process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+      const other = await actor("PEMOHON");
+      const outsider = await actor("PIC_KAWASAN", "SPT");
+      const newDraft = await request(
+        applicant,
+        "/api/application-drafts",
+        "POST",
+        { capacity: "INDIVIDUAL" },
+      );
+      expect(newDraft.statusCode).toBe(201);
+      const id = newDraft.json().id as string;
+      const path = `${root}/drafts/${id}`;
+      const draftVersion = newDraft.json().version as number;
+      const premises = await db.applicationPremises.create({
+        data: readyPremises(id, 2),
+      });
+      const floors = await Promise.all(
+        ["G", "1"].map((floorLabel, position) =>
+          db.premiseFloor.create({
+            data: {
+              draftId: id,
+              floorLabel,
+              position,
+              rooms: 1,
+              beds: 1,
+              workers: 1,
+              facilities,
+              areaSqm: 12,
+            },
+          }),
+        ),
+      );
+      const unit = await db.premiseUnit.create({
+        data: {
+          draftId: id,
+          premiseId: premises.id,
+          unitLabel: "A",
+          normalizedLabel: "a",
+        },
+      });
+      await db.premiseUnitFloor.createMany({
+        data: floors.map((floor) => ({
+          draftId: id,
+          unitId: unit.id,
+          floorId: floor.id,
+        })),
+      });
+
+      expect((await request(other, path)).statusCode).toBe(404);
+      expect((await request(pic, path)).statusCode).toBe(403);
+      expect((await request(outsider, `${root}/reviews`)).statusCode).toBe(404);
+      expect((await request(applicant, `${root}/reviews`)).statusCode).toBe(
+        403,
+      );
+      expect((await request(applicant, path)).json().ready).toBe(false);
+      await db.session.update({
+        where: { id: hash(pic.cookie.slice("staylink=".length)) },
+        data: { mfaVerified: false },
+      });
+      expect((await request(pic, `${root}/reviews`)).statusCode).toBe(403);
+      await db.session.update({
+        where: { id: hash(pic.cookie.slice("staylink=".length)) },
+        data: { mfaVerified: true },
+      });
+      let version = draftVersion;
+      for (const verdict of ["PENDING", "FAILED", "INFECTED", "CLEAN"]) {
+        const evidence = await request(applicant, `${path}/evidence`, "POST", {
+          version,
+          verdict,
+        });
+        expect(evidence.statusCode, evidence.body).toBe(200);
+        version = evidence.json().version;
+        const state = (await request(applicant, path)).json();
+        expect(state.ready).toBe(verdict === "CLEAN");
+        expect(state.evidence).toHaveLength(2);
+        expect(state.evidence[0]).not.toHaveProperty("storageKey");
+      }
+      const submit = {
+        version,
+        accepted: true,
+        key: randomUUID(),
+        previousId: null,
+        declarationVersion: "SYNTHETIC-K05-v1",
+      };
+      expect(
+        (
+          await app.inject({
+            url: `${path}/submit`,
+            method: "POST",
+            headers: {
+              cookie: applicant.cookie,
+              origin: "http://localhost:5173",
+            },
+            payload: submit,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await request(applicant, `${path}/submit`, "POST", {
+            ...submit,
+            version: version - 1,
+          })
+        ).statusCode,
+      ).toBe(409);
+      const responses = await Promise.all([
+        request(applicant, `${path}/submit`, "POST", submit),
+        request(applicant, `${path}/submit`, "POST", submit),
+      ]);
+      for (const response of responses)
+        expect(response.statusCode, response.body).toBe(200);
+      const first = responses[0].json().id as string;
+      expect(responses[1].json().id).toBe(first);
+      const firstPath = `${root}/reviews/${first}`;
+      expect(
+        (
+          await request(ppsk, `${firstPath}/billing`, "POST", {
+            action: "ISSUE",
+          })
+        ).statusCode,
+      ).toBe(409);
+      const correction = {
+        action: "REQUEST_CORRECTION",
+        version: 1,
+        reason: "Kemaskini latihan.",
+      };
+      expect(
+        (await request(ppsk, firstPath, "POST", correction)).statusCode,
+      ).toBe(403);
+      const returned = await request(pic, firstPath, "POST", correction);
+      expect(returned.statusCode, returned.body).toBe(200);
+      expect(
+        (await request(pic, firstPath, "POST", correction)).statusCode,
+      ).toBe(409);
+      expect((await request(applicant, path)).json().correctionReason).toBe(
+        correction.reason,
+      );
+      const reedited = await request(
+        applicant,
+        `/api/application-drafts/${id}`,
+        "PATCH",
+        { capacity: "INDIVIDUAL", version, notes: "Pembetulan latihan." },
+      );
+      expect(reedited.statusCode).toBe(200);
+      const next = await request(applicant, `${path}/submit`, "POST", {
+        ...submit,
+        version: reedited.json().version,
+        key: randomUUID(),
+        previousId: first,
+      });
+      expect(next.statusCode, next.body).toBe(200);
+      const second = next.json().id as string;
+      const secondPath = `${root}/reviews/${second}`;
+      await expect(
+        db.syntheticSubmission.update({
+          where: { id: first },
+          data: { snapshot: {} },
+        }),
+      ).rejects.toThrow();
+      expect(
+        (await request(pic, firstPath, "POST", correction)).statusCode,
+      ).toBe(404);
+      const reviews = (await request(pic, `${root}/reviews`)).json().reviews;
+      expect(
+        reviews.find((row: { id: string }) => row.id === second),
+      ).toMatchObject({
+        status: "SUBMITTED",
+        advice: { advisoryOnly: true },
+        units: [{ label: "A", floorCount: 2 }],
+      });
+      const complete = {
+        action: "CONFIRM_COMPLETE",
+        version: 1,
+        reason: "Bukti latihan lengkap.",
+      };
+      expect(
+        (await request(pic, secondPath, "POST", complete)).statusCode,
+      ).toBe(200);
+      const register = {
+        action: "REGISTER",
+        version: 2,
+        reason: "Selesai semakan penyelia.",
+      };
+      expect(
+        (await request(pic, secondPath, "POST", register)).statusCode,
+      ).toBe(403);
+      expect(
+        (await request(ppsk, secondPath, "POST", register)).statusCode,
+      ).toBe(200);
+
+      const billPath = `${secondPath}/billing`;
+      expect(
+        (await request(pic, billPath, "POST", { action: "ISSUE" })).statusCode,
+      ).toBe(403);
+      const billed = await Promise.all(
+        [0, 1].map(() => request(ppsk, billPath, "POST", { action: "ISSUE" })),
+      );
+      const invoice = billed[0].json().invoice;
+      expect(invoice).toMatchObject({
+        unitCount: 1,
+        amountSen: 5000,
+        status: "ISSUED",
+      });
+      expect(billed[1].json().invoice.id).toBe(invoice.id);
+      expect((await request(other, `${path}/billing`)).statusCode).toBe(404);
+      const message = {
+        invoiceId: invoice.id,
+        eventId: invoice.id,
+        providerReference: `SYNTHETIC-${invoice.id}`,
+        currency: "MYR",
+        amountSen: 5000,
+        outcome: "SETTLED",
+      };
+      const callback = (amountSen: number, valid: boolean) => {
+        const payload = JSON.stringify({ ...message, amountSen });
+        const signature = createHmac(
+          "sha256",
+          Buffer.from(process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY!, "hex"),
+        )
+          .update(payload)
+          .digest("hex");
+        return app.inject({
+          url: `${root}/callbacks/payment/${second}`,
+          method: "POST",
+          headers: {
+            "x-staylink-synthetic-signature": valid ? signature : "invalid",
+          },
+          payload: { payload },
+        });
+      };
+      expect((await callback(5000, false)).statusCode).toBe(401);
+      expect((await callback(1, true)).statusCode).toBe(409);
+      const settled = await callback(5000, true);
+      expect(settled.json()).toMatchObject({
+        invoice: { status: "SETTLED" },
+        result: "SETTLED",
+      });
+      expect((await callback(5000, true)).json().result).toBe("REPLAY");
+      expect(
+        (await request(applicant, `${path}/billing`)).json().invoice.status,
+      ).toBe("SETTLED");
+      expect(
+        await db.auditLog.count({
+          where: { action: "SYNTHETIC_PORTAL_INVOICE_SETTLED", target: second },
+        }),
+      ).toBe(1);
+      expect(
+        (
+          await request(
+            applicant,
+            `/api/application-drafts/${id}/submit`,
+            "POST",
+            {},
+          )
+        ).statusCode,
+      ).toBe(409);
+    },
+  );
+
+  it.runIf(enabled)(
+    "denies a revoked representative even with an existing synthetic draft",
+    async () => {
+      const company = await request(applicant, "/api/companies", "POST", {
+        name: "Syarikat latihan",
+        registrationNumber: `UJIAN${randomBytes(7).toString("hex")}`,
+        address: "Alamat simulasi",
+        phone: "0000000000",
+        email: "fixture@example.test",
+        authorityType: "PENGARAH",
+      });
+      expect(company.statusCode).toBe(201);
+      const companyId = company.json().id as string;
+      const where = { userId_companyId: { userId: applicant.id, companyId } };
+      await db.companyRepresentative.update({
+        where,
+        data: { status: "VERIFIED" },
+      });
+      const created = await request(
+        applicant,
+        "/api/application-drafts",
+        "POST",
+        { capacity: "COMPANY", companyId },
+      );
+      expect(created.statusCode).toBe(201);
+      const id = created.json().id as string;
+      const draftPath = `${root}/drafts/${id}`;
+      expect((await request(applicant, draftPath)).statusCode).toBe(200);
+      const floor = await db.premiseFloor.create({
+        data: {
+          draftId: id,
+          floorLabel: "G",
+          position: 0,
+          rooms: 1,
+          beds: 1,
+          workers: 1,
+          areaSqm: 12,
+          facilities,
+        },
+      });
+      const premises = await db.applicationPremises.create({
+        data: readyPremises(id, 1),
+      });
+      const unit = await db.premiseUnit.create({
+        data: {
+          draftId: id,
+          premiseId: premises.id,
+          unitLabel: "B",
+          normalizedLabel: "b",
+        },
+      });
+      await db.premiseUnitFloor.create({
+        data: { draftId: id, unitId: unit.id, floorId: floor.id },
+      });
+      const evidence = await request(
+        applicant,
+        `${draftPath}/evidence`,
+        "POST",
+        { verdict: "CLEAN", version: created.json().version },
+      );
+      expect(evidence.statusCode, evidence.body).toBe(200);
+      const submitted = await request(
+        applicant,
+        `${draftPath}/submit`,
+        "POST",
+        {
+          version: evidence.json().version,
+          accepted: true,
+          key: randomUUID(),
+          declarationVersion: "SYNTHETIC-K05-v1",
+          previousId: null,
+        },
+      );
+      expect(submitted.statusCode, submitted.body).toBe(200);
+      const switchCapacity = await request(
+        applicant,
+        `/api/application-drafts/${id}`,
+        "PATCH",
+        {
+          capacity: "INDIVIDUAL",
+          version: evidence.json().version,
+          notes: "Tukar kapasiti draf latihan.",
+        },
+      );
+      expect(switchCapacity.statusCode).toBe(200);
+      await db.companyRepresentative.update({
+        where,
+        data: { status: "REVOKED" },
+      });
+      expect((await request(applicant, draftPath)).statusCode).toBe(404);
+      expect(
+        (
+          await request(applicant, `${draftPath}/evidence`, "POST", {
+            version: switchCapacity.json().version,
+            verdict: "CLEAN",
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (await request(applicant, `${draftPath}/billing`)).statusCode,
+      ).toBe(404);
+      const reviews = await request(pic, `${root}/reviews`);
+      expect(reviews.statusCode, reviews.body).toBe(200);
+      expect(reviews.json().reviews).not.toContainEqual(
+        expect.objectContaining({ id: submitted.json().id }),
+      );
+      expect(
+        (
+          await request(pic, `${root}/reviews/${submitted.json().id}`, "POST", {
+            action: "CONFIRM_COMPLETE",
+            version: 1,
+            reason: "Latihan sekatan.",
+          })
+        ).statusCode,
+      ).toBe(404);
+    },
+  );
+});

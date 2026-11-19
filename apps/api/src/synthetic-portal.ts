@@ -1,3 +1,4 @@
+import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
   loadSyntheticReview,
@@ -15,6 +16,7 @@ import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import {
   captureSyntheticSubmission,
   loadSyntheticReadiness,
+  requireSyntheticSnapshotAuthority,
 } from "./synthetic-submissions.js";
 
 const params = z.strictObject({ id: z.uuid() });
@@ -99,6 +101,9 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
                 draftVersion: true,
               },
             });
+            const original = latest
+              ? await requireSyntheticSnapshotAuthority(tx, latest)
+              : null;
             const review = latest
               ? await loadSyntheticReview(tx, latest)
               : null;
@@ -134,6 +139,13 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               blocker = correction
                 ? "Simpan pembetulan sebelum membuat serahan semula."
                 : "Serahan sudah diterima untuk semakan.";
+            if (
+              original &&
+              (original.capacity !== draft.capacity ||
+                original.companyId !== draft.companyId)
+            )
+              blocker =
+                "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.";
             return {
               declaration,
               policyVersion: policy.documents.version,
@@ -160,6 +172,8 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         const input = evidenceBody.parse(req.body);
         return db.$transaction(async (tx) => {
           const draft = await authorizedDraft(tx, userId, id);
+          if (draft.version !== input.version)
+            fail(409, "Versi draf telah berubah.");
           if (draft.companyId) {
             const authority = await companyAuthority(
               tx,
@@ -177,10 +191,24 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           const current = await tx.syntheticSubmission.findFirst({
             where: { draftId: id },
             orderBy: { draftVersion: "desc" },
-            select: { id: true },
+            select: { id: true, actorId: true, snapshot: true },
           });
-          if (current && !(await correctionRequested(tx, current.id)))
-            fail(409, "Tiada pembetulan dibuka.");
+          if (current) {
+            const original = await requireSyntheticSnapshotAuthority(
+              tx,
+              current,
+            );
+            if (
+              original.capacity !== draft.capacity ||
+              original.companyId !== draft.companyId
+            )
+              fail(
+                409,
+                "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
+              );
+            if (!(await correctionRequested(tx, current.id)))
+              fail(409, "Tiada pembetulan dibuka.");
+          }
           const floors = await tx.premiseFloor.findMany({
             where: { draftId: id },
             select: { id: true },
@@ -265,6 +293,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         );
       });
       await syntheticReviewRoutes(portal);
+      await syntheticBillingRoutes(portal);
     },
     { prefix: "/api/synthetic-portal" },
   );

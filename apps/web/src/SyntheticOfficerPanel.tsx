@@ -1,3 +1,4 @@
+import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
@@ -46,6 +47,7 @@ export function SyntheticOfficerPanel({
           key={review.id}
           review={review}
           role={role}
+          userId={userId}
           refresh={async () => {
             await query.refetch();
           }}
@@ -59,10 +61,12 @@ function SyntheticReviewCard({
   review,
   role,
   refresh,
+  userId,
 }: {
   review: Review;
   role: string;
   refresh: () => Promise<void>;
+  userId: string;
 }) {
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
@@ -173,6 +177,13 @@ function SyntheticReviewCard({
         </div>
       )}
       {message && <p role="status">{message}</p>}
+      {review.status === "REGISTERED" && (
+        <SyntheticInvoice
+          path={`/synthetic-portal/reviews/${review.id}/billing`}
+          identity={userId + role}
+          manage={role === "PPSK"}
+        />
+      )}
     </article>
   );
 }
