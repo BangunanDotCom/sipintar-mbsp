@@ -22,7 +22,7 @@ import {
   ScrollText,
   Activity,
 } from "lucide-react";
-import { api, setCsrf, malaysiaTime } from "./api";
+import { api, malaysiaTime } from "./api";
 import {
   roles,
   permissions,
@@ -230,11 +230,7 @@ export default function Dashboard() {
     [error, setError] = React.useState("");
   const meQuery = useQuery({
     queryKey: ["me"],
-    queryFn: async () => {
-      const result = await api("/auth/me");
-      setCsrf(result.csrf);
-      return result;
-    },
+    queryFn: () => api("/auth/me"),
     staleTime: 60000,
   });
   const me = meQuery.data;
