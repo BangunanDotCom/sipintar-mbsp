@@ -1,3 +1,4 @@
+import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate";
 import { emptyPremises } from "../packages/shared/src/premises";
 import { protectIdentification } from "../apps/api/src/identity";
 import argon2 from "argon2";
@@ -2185,11 +2186,7 @@ describe("Issue 24 synthetic document scopes and submissions", () => {
 });
 
 describe("Issue 31 integrated synthetic portal", () => {
-  const enabled =
-    process.env.STAYLINK_SYNTHETIC_PORTAL === "true" &&
-    /\/staylink_issue31_[a-z0-9_]+_test$/.test(
-      process.env.TEST_DATABASE_URL ?? "",
-    );
+  const enabled = Boolean(syntheticPortalDatabase());
   const root = "/api/synthetic-portal";
   const facilities = {
     toilets: 1,
@@ -2273,6 +2270,19 @@ describe("Issue 31 integrated synthetic portal", () => {
       });
 
       expect((await request(other, path)).statusCode).toBe(404);
+      for (const section of ["units", "floors", "documents"])
+        expect(
+          (await request(other, `/api/application-drafts/${id}/${section}`))
+            .statusCode,
+        ).toBe(404);
+      expect(
+        (
+          await request(other, `${path}/evidence`, "POST", {
+            version: draftVersion,
+            verdict: "CLEAN",
+          })
+        ).statusCode,
+      ).toBe(404);
       expect((await request(pic, path)).statusCode).toBe(403);
       expect((await request(outsider, `${root}/reviews`)).statusCode).toBe(404);
       expect((await request(applicant, `${root}/reviews`)).statusCode).toBe(
@@ -2316,6 +2326,20 @@ describe("Issue 31 integrated synthetic portal", () => {
             headers: {
               cookie: applicant.cookie,
               origin: "http://localhost:5173",
+            },
+            payload: submit,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            url: `${path}/submit`,
+            method: "POST",
+            headers: {
+              cookie: applicant.cookie,
+              origin: "https://other.example.test",
+              "x-csrf-token": applicant.csrf,
             },
             payload: submit,
           })
@@ -2410,6 +2434,29 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(
         (await request(pic, secondPath, "POST", register)).statusCode,
       ).toBe(403);
+      const document = await db.applicationDocument.findFirstOrThrow({
+        where: { draftId: id, category: "floor_layout", supersededAt: null },
+      });
+      await db.applicationDocument.update({
+        where: { id: document.id },
+        data: { scanStatus: "FAILED" },
+      });
+      const restricted = await request(pic, `${root}/reviews`);
+      expect(
+        restricted
+          .json()
+          .reviews.find((row: { id: string }) => row.id === second),
+      ).toMatchObject({
+        evidenceEligible: false,
+        evidence: [expect.objectContaining({ scanStatus: "CLEAN" })],
+      });
+      expect(
+        (await request(ppsk, secondPath, "POST", register)).statusCode,
+      ).toBe(409);
+      await db.applicationDocument.update({
+        where: { id: document.id },
+        data: { scanStatus: "CLEAN" },
+      });
       expect(
         (await request(ppsk, secondPath, "POST", register)).statusCode,
       ).toBe(200);
@@ -2418,6 +2465,21 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(
         (await request(pic, billPath, "POST", { action: "ISSUE" })).statusCode,
       ).toBe(403);
+      const scope = await db.draftDocumentScope.findUniqueOrThrow({
+        where: { documentId: document.id },
+      });
+      const otherFloor = floors.find((floor) => floor.id !== scope.floorId)!;
+      await db.draftDocumentScope.update({
+        where: { documentId: document.id },
+        data: { floorId: otherFloor.id },
+      });
+      expect(
+        (await request(ppsk, billPath, "POST", { action: "ISSUE" })).statusCode,
+      ).toBe(409);
+      await db.draftDocumentScope.update({
+        where: { documentId: document.id },
+        data: { floorId: scope.floorId },
+      });
       const billed = await Promise.all(
         [0, 1].map(() => request(ppsk, billPath, "POST", { action: "ISSUE" })),
       );
@@ -2456,12 +2518,17 @@ describe("Issue 31 integrated synthetic portal", () => {
       };
       expect((await callback(5000, false)).statusCode).toBe(401);
       expect((await callback(1, true)).statusCode).toBe(409);
-      const settled = await callback(5000, true);
-      expect(settled.json()).toMatchObject({
-        invoice: { status: "SETTLED" },
-        result: "SETTLED",
-      });
-      expect((await callback(5000, true)).json().result).toBe("REPLAY");
+      const settlements = await Promise.all([
+        callback(5000, true),
+        callback(5000, true),
+      ]);
+      for (const response of settlements) {
+        expect(response.statusCode).toBe(200);
+        expect(response.json().invoice.status).toBe("SETTLED");
+      }
+      expect(
+        settlements.map((response) => response.json().result).sort(),
+      ).toEqual(["REPLAY", "SETTLED"]);
       expect(
         (await request(applicant, `${path}/billing`)).json().invoice.status,
       ).toBe("SETTLED");
@@ -2510,6 +2577,17 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(created.statusCode).toBe(201);
       const id = created.json().id as string;
       const draftPath = `${root}/drafts/${id}`;
+      const expiredAt = new Date(Date.now() - 60_000);
+      await db.companyRepresentative.update({
+        where,
+        data: {
+          startsAt: new Date(Date.now() - 120_000),
+          endsAt: expiredAt,
+        },
+      });
+      expect((await request(applicant, draftPath)).statusCode).toBe(404);
+      await db.companyRepresentative.update({ where, data: { endsAt: null } });
+
       expect((await request(applicant, draftPath)).statusCode).toBe(200);
       const floor = await db.premiseFloor.create({
         data: {
@@ -2600,4 +2678,42 @@ describe("Issue 31 integrated synthetic portal", () => {
       ).toBe(404);
     },
   );
+});
+
+it("does not register synthetic endpoints in production and preserves the request limit", async () => {
+  const previousMode = process.env.NODE_ENV;
+  let productionApp: FastifyInstance | undefined;
+  try {
+    process.env.NODE_ENV = "production";
+    productionApp = await buildApp();
+    expect(
+      productionApp.hasRoute({
+        method: "GET",
+        url: "/api/synthetic-portal/drafts/:id",
+      }),
+    ).toBe(false);
+    expect(
+      productionApp.hasRoute({
+        method: "POST",
+        url: "/api/synthetic-portal/callbacks/payment/:id",
+      }),
+    ).toBe(false);
+  } finally {
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+    await productionApp?.close();
+  }
+  for (let count = 0; count < 120; count++) {
+    const response = await app.inject({
+      url: "/api/health",
+      remoteAddress: "2001:db8::36",
+    });
+    expect(response.statusCode).toBe(200);
+  }
+  const limited = await app.inject({
+    url: "/api/health",
+    remoteAddress: "2001:db8::36",
+  });
+  expect(limited.statusCode).toBe(429);
+  expect(Number(limited.headers["retry-after"])).toBeGreaterThan(0);
 });

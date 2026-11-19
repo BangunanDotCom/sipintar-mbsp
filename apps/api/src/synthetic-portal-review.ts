@@ -120,16 +120,96 @@ type Submission = {
   snapshot: Prisma.JsonValue;
 };
 
+type SnapshotEvidence = z.infer<typeof snapshotSchema>["evidence"][number];
+
+function evidenceRows(tx: Prisma.TransactionClient, ids: string[]) {
+  return tx.applicationDocument.findMany({
+    where: {
+      id: { in: ids },
+      supersededAt: null,
+      scanStatus: "CLEAN",
+      storageKey: { startsWith: "issue31-fixture/" },
+      verificationStatus: { in: ["UNVERIFIED", "VERIFIED"] },
+    },
+    select: {
+      id: true,
+      draftId: true,
+      category: true,
+      version: true,
+      verificationStatus: true,
+      scope: { select: { unitId: true, floorId: true } },
+    },
+  });
+}
+
+type CurrentEvidence = Awaited<ReturnType<typeof evidenceRows>>[number];
+
+function eligibleEvidence(
+  draftId: string,
+  expected: SnapshotEvidence[],
+  current: Map<string, CurrentEvidence>,
+) {
+  return expected.filter((item) => {
+    const doc = current.get(item.id);
+    if (
+      !doc ||
+      doc.draftId !== draftId ||
+      doc.category !== item.category ||
+      doc.version !== item.version ||
+      (item.verificationStatus === "VERIFIED" &&
+        doc.verificationStatus !== "VERIFIED")
+    )
+      return false;
+    const scope = doc.scope?.unitId
+      ? "UNIT"
+      : doc.scope?.floorId
+        ? "FLOOR"
+        : "DRAFT";
+    const target = doc.scope?.unitId ?? doc.scope?.floorId ?? draftId;
+    return item.scope === scope && item.targetId === target;
+  });
+}
+
+export async function requireCurrentSyntheticEvidence(
+  tx: Prisma.TransactionClient,
+  draftId: string,
+  expected: SnapshotEvidence[],
+) {
+  await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
+  await tx.$queryRaw`SELECT "documentId" FROM draft_document_scopes WHERE "draftId" = ${draftId} FOR SHARE`;
+  const rows = await evidenceRows(
+    tx,
+    expected.map(({ id }) => id),
+  );
+  if (
+    rows.length !== expected.length ||
+    eligibleEvidence(
+      draftId,
+      expected,
+      new Map(rows.map((row) => [row.id, row])),
+    ).length !== expected.length
+  )
+    fail(409, "Bukti sintetik tidak lagi layak.");
+}
+
+function reviewEvents(tx: Prisma.TransactionClient, ids: string[]) {
+  return tx.auditLog.findMany({
+    where: { target: { in: ids }, action: { in: actions }, outcome: "SUCCESS" },
+    select: { target: true, action: true, actorId: true, metadata: true },
+  });
+}
+type ReviewEvent = Awaited<ReturnType<typeof reviewEvents>>[number];
+
 export async function loadSyntheticReview(
   tx: Prisma.TransactionClient,
   row: Submission,
 ) {
+  return assembleSyntheticReview(row, await reviewEvents(tx, [row.id]));
+}
+
+function assembleSyntheticReview(row: Submission, events: ReviewEvent[]) {
   const snapshot = snapshotSchema.safeParse(row.snapshot);
   if (!snapshot.success) fail(409, "Snapshot semakan sintetik tidak lengkap.");
-  const events = await tx.auditLog.findMany({
-    where: { target: row.id, action: { in: actions }, outcome: "SUCCESS" },
-    select: { action: true, actorId: true, metadata: true },
-  });
   const returned = events.find((item) => item.action === correctionAction);
   const completed = events.find((item) => item.action === completeAction);
   const registered = events.find((item) => item.action === registerAction);
@@ -192,6 +272,7 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
     const officer = await syntheticReviewOfficer(req);
     return db.$transaction(
       async (tx) => {
+        await lockSyntheticOfficer(tx, officer);
         const rows = await tx.syntheticSubmission.findMany({
           where: {
             correction: null,
@@ -202,48 +283,73 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 50,
         });
+        const authorized: Submission[] = [];
+        for (const row of rows) {
+          try {
+            await requireSyntheticSnapshotAuthority(tx, row);
+            authorized.push(row);
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              !("statusCode" in error) ||
+              (error.statusCode !== 404 && error.statusCode !== 409)
+            )
+              throw error;
+          }
+        }
+        const events = await reviewEvents(
+          tx,
+          authorized.map(({ id }) => id),
+        );
+        const grouped = new Map<string | null, ReviewEvent[]>();
+        for (const event of events) {
+          const group = grouped.get(event.target) ?? [];
+          group.push(event);
+          grouped.set(event.target, group);
+        }
+        const reviews = authorized.map((row) =>
+          assembleSyntheticReview(row, grouped.get(row.id) ?? []),
+        );
+        const documents = await evidenceRows(tx, [
+          ...new Set(
+            reviews.flatMap(({ snapshot }) =>
+              snapshot.evidence.map(({ id }) => id),
+            ),
+          ),
+        ]);
+        const current = new Map(documents.map((doc) => [doc.id, doc]));
         return {
           role: officer.role,
           district: officer.district,
-          reviews: await Promise.all(
-            rows.map(async (row) => {
-              try {
-                await requireSyntheticSnapshotAuthority(tx, row);
-              } catch (error) {
-                if (
-                  error instanceof Error &&
-                  "statusCode" in error &&
-                  (error.statusCode === 404 || error.statusCode === 409)
-                )
-                  return null;
-                throw error;
-              }
-              const { state, snapshot, correctionReason } =
-                await loadSyntheticReview(tx, row);
-              const { units, floors, evidence } = snapshot;
-              return {
-                id: row.id,
-                status: state.status,
-                version: state.version,
-                reference: state.officialReference,
-                correctionReason,
-                units: units.map(({ unitLabel, floorIds }) => ({
-                  label: unitLabel,
-                  floorCount: floorIds.length,
-                })),
-                evidence: evidence.map(({ category, version, scanStatus }) => ({
-                  category,
-                  version,
-                  scanStatus,
-                })),
-                advice: mockPrecheck({
-                  unitCount: units.length,
-                  floorCount: floors.length,
-                  evidenceCount: evidence.length,
-                }),
-              };
-            }),
-          ).then((reviews) => reviews.filter((review) => review !== null)),
+          reviews: reviews.map(({ state, snapshot, correctionReason }) => {
+            const evidence = eligibleEvidence(
+              state.caseId,
+              snapshot.evidence,
+              current,
+            );
+            return {
+              id: state.submissionId,
+              status: state.status,
+              version: state.version,
+              reference: state.officialReference,
+              correctionReason,
+              units: snapshot.units.map(({ unitLabel, floorIds }) => ({
+                label: unitLabel,
+                floorCount: floorIds.length,
+              })),
+              evidenceEligible: evidence.length === snapshot.evidence.length,
+              evidence: evidence.map(({ category, version, scanStatus }) => ({
+                category,
+                version,
+                scanStatus,
+              })),
+              advice: mockPrecheck({
+                unitCount: snapshot.units.length,
+                floorCount: snapshot.floors.length,
+                evidenceCount: evidence.length,
+              }),
+            };
+          }),
         };
       },
       { isolationLevel: "RepeatableRead" },
@@ -284,22 +390,12 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
         fail(403, "Tindakan semakan tidak dibenarkan.");
       if (decision.status !== "APPLIED")
         fail(409, "Versi atau peralihan semakan tidak sah.");
-      if (input.action === "CONFIRM_COMPLETE") {
-        const documentIds = snapshot.evidence.map((item) => item.id);
-        await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${state.caseId} FOR SHARE`;
-        const available = await tx.applicationDocument.count({
-          where: {
-            id: { in: documentIds },
-            draftId: state.caseId,
-            scanStatus: "CLEAN",
-            verificationStatus: { in: ["VERIFIED", "UNVERIFIED"] },
-            storageKey: { startsWith: "issue31-fixture/" },
-            supersededAt: null,
-          },
-        });
-        if (available !== documentIds.length)
-          fail(409, "Bukti sintetik tidak lagi layak.");
-      }
+      if (input.action !== "REQUEST_CORRECTION")
+        await requireCurrentSyntheticEvidence(
+          tx,
+          state.caseId,
+          snapshot.evidence,
+        );
       await tx.auditLog.create({
         data: {
           actorId: officer.operator.userId,
