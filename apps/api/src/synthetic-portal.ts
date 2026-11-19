@@ -1,3 +1,8 @@
+import {
+  correctionAction,
+  loadSyntheticReview,
+  syntheticReviewRoutes,
+} from "./synthetic-portal-review.js";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
@@ -32,7 +37,7 @@ const policy = {
     ],
   },
 };
-export const correctionAction = "SYNTHETIC_PORTAL_CORRECTION_REQUESTED";
+
 const verdict = z.enum(["PENDING", "CLEAN", "FAILED", "INFECTED"]);
 const evidenceBody = z.strictObject({ version, verdict });
 const submitBody = z.strictObject({
@@ -86,12 +91,18 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
             const latest = await tx.syntheticSubmission.findFirst({
               where: { draftId: id },
               orderBy: { draftVersion: "desc" },
-              select: { id: true, draftVersion: true },
+              select: {
+                id: true,
+                draftId: true,
+                actorId: true,
+                snapshot: true,
+                draftVersion: true,
+              },
             });
-            const correction = await correctionRequested(
-              tx,
-              latest?.id ?? null,
-            );
+            const review = latest
+              ? await loadSyntheticReview(tx, latest)
+              : null;
+            const correction = review?.state.status === "CORRECTION_REQUESTED";
             const evidence = await tx.applicationDocument.findMany({
               where: {
                 draftId: id,
@@ -127,7 +138,12 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               declaration,
               policyVersion: policy.documents.version,
               draftVersion: draft.version,
-              latest,
+              latest: latest
+                ? { id: latest.id, draftVersion: latest.draftVersion }
+                : null,
+              reviewStatus: review?.state.status ?? null,
+              reference: review?.state.officialReference ?? null,
+              correctionReason: review?.correctionReason ?? null,
               correctionRequested: correction,
               evidence,
               blocker,
@@ -248,6 +264,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           },
         );
       });
+      await syntheticReviewRoutes(portal);
     },
     { prefix: "/api/synthetic-portal" },
   );
