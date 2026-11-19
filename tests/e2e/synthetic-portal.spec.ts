@@ -169,6 +169,18 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: "Serahan latihan sintetik",
     });
     await expect(panel).toBeVisible();
+    for (const width of [320, 390]) {
+      await applicant.setViewportSize({ width, height: 850 });
+      expect(
+        await panel.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+    }
+    const scanChoice = panel.getByLabel("Keputusan imbasan tiruan");
+    await scanChoice.focus();
+    await expect(scanChoice).toBeFocused();
+
     const submit = panel.getByRole("button", {
       name: "Serah permohonan sintetik",
     });
@@ -195,6 +207,17 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: `Serahan sintetik ${first.id}`,
     });
     await expect(firstCard.getByText(/Nasihat AI tiruan sahaja/)).toBeVisible();
+    await pic.setViewportSize({ width: 390, height: 850 });
+    const tasks = pic.getByRole("region", { name: "Tugasan semakan sintetik" });
+    await tasks.getByLabel("Penapis tugasan").selectOption("action");
+    await expect(firstCard).toBeVisible();
+    await tasks.getByLabel("Penapis tugasan").selectOption("all");
+    expect(
+      await firstCard.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+
     await firstCard
       .getByLabel("Alasan keputusan sintetik")
       .fill("Betulkan bukti latihan.");
@@ -235,6 +258,14 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       secondCard.getByRole("button", { name: "Daftar keputusan sintetik" }),
     ).toHaveCount(0);
 
+    let billingReads = 0;
+    supervisor.on("request", (req) => {
+      if (
+        req.method() === "GET" &&
+        req.url().endsWith(`/reviews/${second.id}/billing`)
+      )
+        billingReads++;
+    });
     await supervisor.goto("/dashboard");
     const supervisorCard = supervisor.getByRole("article", {
       name: `Serahan sintetik ${second.id}`,
@@ -245,6 +276,12 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await supervisorCard
       .getByRole("button", { name: "Daftar keputusan sintetik" })
       .click();
+    const invoiceDetails = supervisorCard.getByRole("button", {
+      name: "Buka butiran invois",
+    });
+    await expect(invoiceDetails).toHaveAttribute("aria-expanded", "false");
+    expect(billingReads).toBe(0);
+    await invoiceDetails.click();
     await supervisorCard
       .getByRole("button", { name: "Jana invois tiruan" })
       .click();
