@@ -59,10 +59,12 @@ export function applySyntheticReview(
   reviewer: Reviewer,
   action: ReviewAction,
   now: Date,
+  registrationRole: "PIC_KAWASAN" | "PPSK" = "PIC_KAWASAN",
 ) {
   if (enabled !== true) return { status: "DISABLED" as const };
   if (
-    reviewer.activeRole !== "PIC_KAWASAN" ||
+    reviewer.activeRole !==
+      (action.action === "REGISTER" ? registrationRole : "PIC_KAWASAN") ||
     reviewer.mfaVerified !== true ||
     reviewer.reviewGranted !== true ||
     reviewer.id === current.initiatorId ||

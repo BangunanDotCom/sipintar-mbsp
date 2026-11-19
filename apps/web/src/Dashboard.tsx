@@ -1,3 +1,4 @@
+import { SyntheticOfficerPanel } from "./SyntheticOfficerPanel";
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -523,6 +524,9 @@ export default function Dashboard() {
                       </button>
                     </section>
                   </div>
+                )}
+                {["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
+                  <SyntheticOfficerPanel key={me.user.id + me.activeRole} userId={me.user.id} activeRole={me.activeRole} />
                 )}
                 {me.activeRole === "PIC_KAWASAN" && (
                   <section className="panel">

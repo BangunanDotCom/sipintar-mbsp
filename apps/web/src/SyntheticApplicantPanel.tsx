@@ -116,6 +116,14 @@ export function SyntheticApplicantPanel({
           Resit sintetik <code>{state.latest.id}</code>
         </p>
       )}
+      {state.reference && (
+        <p>
+          Rujukan simulasi <code>{state.reference}</code>
+        </p>
+      )}
+      {state.correctionReason && (
+        <p>Alasan pembetulan: {state.correctionReason}</p>
+      )}
       {state.correctionRequested && (
         <p>
           Pembetulan diminta. Simpan pembetulan pada draf ini dan sahkan akuan
