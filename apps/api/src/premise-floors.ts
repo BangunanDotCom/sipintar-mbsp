@@ -6,6 +6,7 @@ import { db } from "./core.js";
 import { fail } from "./auth.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { premiseFloorsSchema, summarizePremiseFloors } from "../../../packages/shared/src/floor-summary.js";
+import { reconcileFloorIds } from "../../../packages/shared/src/floor-identity.js";
 import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
 
 const paramsSchema = z.object({ id: z.uuid() });
@@ -31,6 +32,7 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         where: { draftId: id }, orderBy: { position: "asc" },
       });
       const floors = stored.map((row) => ({
+        id: row.id,
         floorLabel: row.floorLabel,
         rooms: row.rooms, beds: row.beds, workers: row.workers,
         areaSqm: Number(row.areaSqm),
@@ -67,15 +69,33 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         data: { version: { increment: 1 } },
       });
       if (claim.count !== 1) fail(409, "Draf telah dikemas kini. Muat semula sebelum menyimpan.");
-      await tx.premiseFloor.deleteMany({ where: { draftId: id } });
-      await tx.premiseFloor.createMany({
-        data: input.floors.map((floor, position) => ({
-          id: randomUUID(), draftId: id, position, floorLabel: floor.floorLabel,
-          rooms: floor.rooms, beds: floor.beds, workers: floor.workers,
-          areaSqm: new Prisma.Decimal(floor.areaSqm),
-          facilities: floor.facilities,
-        })),
+      const existing = await tx.premiseFloor.findMany({ where: { draftId: id } });
+      const ids = reconcileFloorIds(existing, input.floors, randomUUID);
+      const retained = new Set(ids);
+      await tx.premiseFloor.deleteMany({
+        where: { draftId: id, id: { notIn: [...retained] } },
       });
+      // Move existing rows to temporary unique positions and labels before
+      // applying reordered/renamed rows, avoiding compound-unique conflicts.
+      for (const row of existing.filter((floor) => retained.has(floor.id))) {
+        await tx.premiseFloor.update({
+          where: { id: row.id },
+          data: { position: -(row.position + 1), floorLabel: `__pending_${row.id}` },
+        });
+      }
+      const existingIds = new Set(existing.map((floor) => floor.id));
+      for (const [position, floor] of input.floors.entries()) {
+        const data = {
+          position, floorLabel: floor.floorLabel,
+          rooms: floor.rooms, beds: floor.beds, workers: floor.workers,
+          areaSqm: new Prisma.Decimal(floor.areaSqm), facilities: floor.facilities,
+        };
+        if (existingIds.has(ids[position])) {
+          await tx.premiseFloor.update({ where: { id: ids[position] }, data });
+        } else {
+          await tx.premiseFloor.create({ data: { ...data, id: ids[position], draftId: id } });
+        }
+      }
       await tx.auditLog.create({
         data: {
           actorId: s.userId, activeRole: s.activeRole,
@@ -90,7 +110,7 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         proposedWorkers: premises.proposedWorkers,
         floorAreaSqm: premises.floorAreaSqm === null ? null : Number(premises.floorAreaSqm),
       } : null, totals);
-      return { draftId: id, version: input.version + 1, totals, mismatches };
+      return { draftId: id, version: input.version + 1, floors: input.floors.map((floor, position) => ({ ...floor, id: ids[position] })), totals, mismatches };
     });
   });
 }
