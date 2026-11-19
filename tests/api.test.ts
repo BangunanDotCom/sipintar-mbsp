@@ -2574,6 +2574,14 @@ describe("Issue 31 integrated synthetic portal", () => {
       });
       expect((await request(applicant, draftPath)).statusCode).toBe(404);
       expect(
+        (
+          await request(applicant, `${draftPath}/evidence`, "POST", {
+            version: switchCapacity.json().version,
+            verdict: "CLEAN",
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
         (await request(applicant, `${draftPath}/billing`)).statusCode,
       ).toBe(404);
       const reviews = await request(pic, `${root}/reviews`);

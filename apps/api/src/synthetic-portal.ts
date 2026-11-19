@@ -172,6 +172,8 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         const input = evidenceBody.parse(req.body);
         return db.$transaction(async (tx) => {
           const draft = await authorizedDraft(tx, userId, id);
+          if (draft.version !== input.version)
+            fail(409, "Versi draf telah berubah.");
           if (draft.companyId) {
             const authority = await companyAuthority(
               tx,
@@ -189,10 +191,24 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           const current = await tx.syntheticSubmission.findFirst({
             where: { draftId: id },
             orderBy: { draftVersion: "desc" },
-            select: { id: true },
+            select: { id: true, actorId: true, snapshot: true },
           });
-          if (current && !(await correctionRequested(tx, current.id)))
-            fail(409, "Tiada pembetulan dibuka.");
+          if (current) {
+            const original = await requireSyntheticSnapshotAuthority(
+              tx,
+              current,
+            );
+            if (
+              original.capacity !== draft.capacity ||
+              original.companyId !== draft.companyId
+            )
+              fail(
+                409,
+                "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
+              );
+            if (!(await correctionRequested(tx, current.id)))
+              fail(409, "Tiada pembetulan dibuka.");
+          }
           const floors = await tx.premiseFloor.findMany({
             where: { draftId: id },
             select: { id: true },
