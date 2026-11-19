@@ -25,7 +25,7 @@ async function own(
   if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
   return d;
 }
-function fields(p: ApplicationPremises | null): PremisesFields {
+export function premisesFields(p: ApplicationPremises | null): PremisesFields {
   if (!p) return { ...emptyPremises };
   return {
     address: p.address,
@@ -57,7 +57,7 @@ function response(
   },
   p: ApplicationPremises | null,
 ) {
-  const values = fields(p);
+  const values = premisesFields(p);
   return {
     draftId: d.id,
     version: d.version,
@@ -94,8 +94,8 @@ export async function premisesRoutes(app: FastifyInstance) {
       })));
       const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
       return { ...response(d, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [],
-        readiness: evaluateDraftReadiness({ premises: fields(p), floors: parsed.success ? parsed.data : [] }) };
+        floorMismatches: totals ? comparePremisesTotals(premisesFields(p), totals) : [],
+        readiness: evaluateDraftReadiness({ premises: premisesFields(p), floors: parsed.success ? parsed.data : [] }) };
     });
   });
   app.put("/api/application-drafts/:id/premises", async (req) => {
@@ -152,8 +152,8 @@ export async function premisesRoutes(app: FastifyInstance) {
       })));
       const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
       return { ...response({ ...d, version: b.version + 1 }, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(fields(p), totals) : [],
-        readiness: evaluateDraftReadiness({ premises: fields(p), floors: parsed.success ? parsed.data : [] }) };
+        floorMismatches: totals ? comparePremisesTotals(premisesFields(p), totals) : [],
+        readiness: evaluateDraftReadiness({ premises: premisesFields(p), floors: parsed.success ? parsed.data : [] }) };
     });
   });
 }

@@ -1,3 +1,4 @@
+import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
   loadSyntheticReview,
@@ -15,6 +16,7 @@ import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import {
   captureSyntheticSubmission,
   loadSyntheticReadiness,
+  requireSyntheticSnapshotAuthority,
 } from "./synthetic-submissions.js";
 
 const params = z.strictObject({ id: z.uuid() });
@@ -99,6 +101,9 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
                 draftVersion: true,
               },
             });
+            const original = latest
+              ? await requireSyntheticSnapshotAuthority(tx, latest)
+              : null;
             const review = latest
               ? await loadSyntheticReview(tx, latest)
               : null;
@@ -134,6 +139,13 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               blocker = correction
                 ? "Simpan pembetulan sebelum membuat serahan semula."
                 : "Serahan sudah diterima untuk semakan.";
+            if (
+              original &&
+              (original.capacity !== draft.capacity ||
+                original.companyId !== draft.companyId)
+            )
+              blocker =
+                "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.";
             return {
               declaration,
               policyVersion: policy.documents.version,
@@ -265,6 +277,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         );
       });
       await syntheticReviewRoutes(portal);
+      await syntheticBillingRoutes(portal);
     },
     { prefix: "/api/synthetic-portal" },
   );

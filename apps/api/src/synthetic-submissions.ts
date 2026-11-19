@@ -5,6 +5,8 @@ import { db } from "./core.js";
 import { fail } from "./auth.js";
 import { authorizedDraft } from "./premise-floors.js";
 import { validDraftApplicantContext } from "./draft-applicant-context.js";
+import { premisesFields } from "./premises.js";
+import { evaluateDraftReadiness } from "../../../packages/shared/src/draft-readiness.js";
 import { companyAuthority } from "./application-drafts.js";
 import {
   evaluateDocumentPolicy,
@@ -74,6 +76,8 @@ export async function captureSyntheticSubmission(
       where: { draftId_key: { draftId: draft.id, key: input.key } },
     });
     if (prior) {
+      if (syntheticPortalDatabase())
+        await requireSyntheticSnapshotAuthority(tx, prior);
       if (
         prior.actorId !== userId ||
         prior.draftVersion !== input.version ||
@@ -101,6 +105,17 @@ export async function captureSyntheticSubmission(
           policy.correctionFor !== latest.id))
     )
       fail(409, "Pembetulan sintetik belum dibenarkan.");
+    if (latest && syntheticPortalDatabase()) {
+      const original = await requireSyntheticSnapshotAuthority(tx, latest);
+      if (
+        original.capacity !== draft.capacity ||
+        original.companyId !== draft.companyId
+      )
+        fail(
+          409,
+          "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
+        );
+    }
 
     // A scan-state change cannot invalidate these rows until the capture commits.
     await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draft.id} FOR SHARE`;
@@ -217,8 +232,6 @@ export async function loadSyntheticReadiness(
   });
   if (
     !premises?.buildingType ||
-    (syntheticPortalDatabase() &&
-      !["SPU", "SPT", "SPS"].includes(premises.districtId ?? "")) ||
     !floors.length ||
     !premises.units.length ||
     premises.accommodationUnits !== premises.units.length ||
@@ -230,6 +243,28 @@ export async function loadSyntheticReadiness(
     ).size !== floors.length
   )
     fail(409, "Inventori premis sintetik belum lengkap.");
+
+  if (syntheticPortalDatabase()) {
+    const inventory = evaluateDraftReadiness({
+      premises: premisesFields(premises),
+      floors: floors.map(
+        ({ id, floorLabel, rooms, beds, workers, areaSqm, facilities }) => ({
+          id,
+          floorLabel,
+          rooms,
+          beds,
+          workers,
+          areaSqm: Number(areaSqm),
+          facilities,
+        }),
+      ),
+    });
+    if (!inventory.readyForNextStage)
+      fail(
+        409,
+        inventory.issues[0] ?? "Butiran premis sintetik belum lengkap.",
+      );
+  }
 
   const documents = await tx.applicationDocument.findMany({
     where: {
@@ -287,4 +322,31 @@ export async function loadSyntheticReadiness(
     fail(409, "Bukti dokumen sintetik belum lengkap.");
 
   return { premises, floors, eligible, evidence, readiness };
+}
+
+export async function requireSyntheticSnapshotAuthority(
+  tx: Prisma.TransactionClient,
+  row: { snapshot: Prisma.JsonValue; actorId: string },
+) {
+  const context = z
+    .object({
+      capacity: z.enum(["INDIVIDUAL", "COMPANY"]),
+      companyId: z.uuid().nullable(),
+    })
+    .safeParse(row.snapshot);
+  if (
+    !context.success ||
+    (context.data.capacity === "COMPANY") !== Boolean(context.data.companyId)
+  )
+    fail(409, "Konteks kuasa serahan sintetik tidak sah.");
+  if (context.data.companyId) {
+    const authority = await companyAuthority(
+      tx,
+      row.actorId,
+      context.data.companyId,
+    );
+    if (authority.status !== "VERIFIED")
+      fail(409, "Kuasa serahan sintetik tidak lagi disahkan.");
+  }
+  return context.data;
 }
