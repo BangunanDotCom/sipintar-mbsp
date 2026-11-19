@@ -86,6 +86,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
             version, floors: result.data,
           });
           setVersion(saved.version);
+          qc.setQueryData(["draft-floors", draftId], saved);
           setMismatches(saved.mismatches || []);
           setDirty(false);
           setMessage("Maklumat tingkat berjaya disimpan sebagai draf.");
