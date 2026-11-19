@@ -81,3 +81,14 @@ CSRF/Origin, verified email, pengenalan dan permission peranan aktif diwajibkan.
 - Versi lapuk atau padanan label lama yang tak tunggal memulangkan 409. ID asing, tidak dikenali atau berganda memulangkan 400 untuk pemilik sah. Bukan pemilik kekal 404. Kegagalan tidak menukar versi, baris atau audit. Set aktif draf dikemas kini secara transaksi; aras yang ditinggalkan dalam PUT dikeluarkan menurut semantik sedia ada.
 
 UUID ini mengenal pasti **tingkat**, sementara model unit premis fizikal dan pautan unit–tingkat memerlukan migrasi berasingan. Tiada perubahan pada sumber data caj atau status penghantaran.
+
+## Identiti unit fizikal K02
+
+| Laluan | Kontrak |
+| --- | --- |
+| `GET /api/application-drafts/:id/units` | `200 {version,premiseId,floors,units,totals,inventoryStatus}`. Pilihan tingkat ialah `{floorId,floorLabel}`; unit ialah `{unitId,unitLabel,floorIds}`. Premis belum disimpan memberi `premiseId:null`. |
+| `PUT /api/application-drafts/:id/units` | `{version,units:[{unitId?,unitLabel,floorIds}]}`; memulangkan bentuk GET pada versi baharu. Pelayan menjana UUID untuk unit baharu. Kekalkan UUID semasa menukar label atau pautan. Label ternormal unik dalam skop premis. |
+
+Kedua-dua laluan menggunakan pemilik draf dan kuasa wakil semasa serta `Cache-Control: private, no-store`. Mutasi mensyaratkan sesi, Origin dan CSRF yang sah. Bilangan unit dikira daripada rekod unit, termasuk unit yang merentas beberapa tingkat. `totals.declaredCount` kekal angka warisan premis, dan `totals.unitCount` ialah jumlah unit yang direkod. Tiada pengisian automatik. `inventoryStatus` ialah `NOT_RECORDED`, `NOT_DECLARED`, `MATCHED` atau `MISMATCH`.
+
+Unit boleh disimpan dalam keadaan draf tanpa pautan. Untuk membuang unit berangkai, simpan versi dengan `floorIds:[]` sebelum mengeluarkan unit daripada senarai. Percubaan membuang unit atau tingkat yang masih dipaut memberi 409, termasuk PUT tingkat daripada klien lama. Versi lapuk turut memberi 409. ID asing, label pendua dan pautan pendua memberi 400. Pautan boleh disunting secara transaksi; status penciptaan bil dan penghantaran berada di luar aliran ini.

@@ -1,3 +1,4 @@
+import { emptyPremises } from "../packages/shared/src/premises";
 import { protectIdentification } from "../apps/api/src/identity";
 import argon2 from "argon2";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
@@ -1839,4 +1840,154 @@ describe("K02 stable floor identity", () => {
     expect(await db.auditLog.count({ where: { target: draft.id, action: "APPLICATION_FLOORS_SAVED" } }))
       .toBe(1);
   });
+});
+
+describe("K02 physical units and floor links", () => {
+  async function fixture(owner: Actor, companyId?: string) {
+    const draft = await request(owner, "/api/application-drafts", "POST", companyId
+      ? { capacity: "COMPANY", companyId } : { capacity: "INDIVIDUAL" });
+    expect(draft.statusCode).toBe(201);
+    const { id, version } = draft.json();
+    const root = `/api/application-drafts/${id}`;
+    const area = await request(owner, root + "/premises", "PUT", {
+      version, premises: { ...emptyPremises, accommodationUnits: 5 },
+    });
+    expect(area.statusCode).toBe(200);
+    const floors = await request(owner, root + "/floors", "PUT", {
+      version: area.json().version,
+      floors: ["Bawah", "Aras 1"].map((floorLabel) => ({
+        floorLabel, rooms: 1, beds: 2, workers: 2, areaSqm: 50,
+        facilities: { toilets: 1, bathrooms: 1, sinks: 1, diningTables: 0, diningChairs: 0, fireExtinguishers: 1 },
+      })),
+    });
+    expect(floors.statusCode).toBe(200);
+    return { id, root, ...floors.json() };
+  }
+
+  it("counts a linked unit once and preserves UUID, legacy aggregate and rollback guard", async () => {
+    const owner = await actor("PEMOHON");
+    const draft = await fixture(owner);
+    const url = draft.root + "/units";
+    const legacy = await request(owner, url);
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.headers["cache-control"]).toContain("no-store");
+    expect(legacy.json()).toMatchObject({
+      units: [], inventoryStatus: "NOT_RECORDED", totals: { unitCount: 0, declaredCount: 5 },
+    });
+    const floorIds = draft.floors.map(({ id }: { id: string }) => id);
+    const put = (version: number, units: unknown[]) => request(owner, url, "PUT", { version, units });
+    const first = await put(draft.version, [{ unitLabel: "Kedai A", floorIds }]);
+    expect(first.statusCode).toBe(200);
+    const result = first.json();
+    expect(result).toMatchObject({ units: [{ unitLabel: "Kedai A", floorIds }], totals: { unitCount: 1, declaredCount: 5 }, inventoryStatus: "MISMATCH" });
+    const unitId = result.units[0].unitId;
+    const savedAt = (await db.premiseUnit.findUniqueOrThrow({ where: { id: unitId } })).createdAt;
+    expect(await db.premiseUnitFloor.count({ where: { unitId } })).toBe(2);
+
+    const floorUrl = draft.root + "/floors";
+    expect((await request(owner, floorUrl, "PUT", {
+      version: result.version, floors: [draft.floors[0]],
+    })).statusCode).toBe(409);
+    expect((await put(result.version, [])).statusCode).toBe(409);
+    await expect(db.premiseFloor.delete({ where: { id: floorIds[0] } })).rejects.toMatchObject({ code: "P2003" });
+    await expect(db.premiseUnit.delete({ where: { id: unitId } })).rejects.toMatchObject({ code: "P2003" });
+    expect((await request(owner, url)).json()).toEqual(result);
+    expect(await db.auditLog.count({ where: { target: draft.id, action: "APPLICATION_UNITS_SAVED" } })).toBe(1);
+
+    const rename = await put(result.version, [{ unitId, unitLabel: "Kedai A Baharu", floorIds }]);
+    expect(rename.statusCode).toBe(200);
+    expect(rename.json().units[0]).toMatchObject({ unitId, unitLabel: "Kedai A Baharu" });
+    expect((await db.premiseUnit.findUniqueOrThrow({ where: { id: unitId } })).createdAt).toEqual(savedAt);
+    const unlink = await put(rename.json().version, [{ unitId, unitLabel: "Kedai A Baharu", floorIds: [] }]);
+    expect(unlink.statusCode).toBe(200);
+    const remove = await put(unlink.json().version, []);
+    expect(remove.statusCode).toBe(200);
+    expect(remove.json().totals).toEqual({ unitCount: 0, declaredCount: 5 });
+    expect((await request(owner, floorUrl, "PUT", {
+      version: remove.json().version,
+      floors: [{ ...draft.floors[0], id: undefined }],
+    })).statusCode).toBe(200);
+  });
+
+  it("enforces session, same-draft constraints and one shared-version winner", async () => {
+    const owner = await actor("PEMOHON");
+    const other = await actor("PEMOHON");
+    const draft = await fixture(owner);
+    const foreign = await fixture(other);
+    const url = draft.root + "/units";
+    const payload = {
+      version: draft.version, units: [{ unitLabel: "Kedai A", floorIds: [draft.floors[0].id] }],
+    };
+    expect((await app.inject(url)).statusCode).toBe(401);
+    expect((await app.inject({ url, method: "PUT", headers: {
+      cookie: owner.cookie, origin: "http://localhost:5173",
+    }, payload })).statusCode).toBe(403);
+    expect((await request(other, url)).statusCode).toBe(404);
+    expect((await request(other, url, "PUT", payload)).statusCode).toBe(404);
+    expect((await request(owner, url, "PUT", { ...payload, units: [
+      { unitLabel: "A", floorIds: [foreign.floors[0].id] },
+    ] })).statusCode).toBe(400);
+
+    const [units, floors] = await Promise.all([
+      request(owner, url, "PUT", payload),
+      request(owner, draft.root + "/floors", "PUT", {
+        version: draft.version, floors: [...draft.floors].reverse(),
+      }),
+    ]);
+    expect([units.statusCode, floors.statusCode].sort()).toEqual([200, 409]);
+    let current = (await request(owner, url)).json();
+    if (units.statusCode === 409) {
+      const retry = await request(owner, url, "PUT", { ...payload, version: current.version });
+      expect(retry.statusCode).toBe(200);
+      current = retry.json();
+    }
+    const unitId = current.units[0].unitId;
+    const foreignSaved = await request(other, foreign.root + "/units", "PUT", {
+      version: foreign.version, units: [{ unitLabel: "Kedai A", floorIds: [] }],
+    });
+    expect(foreignSaved.statusCode).toBe(200);
+    expect((await request(owner, url, "PUT", { version: current.version, units: [
+      { unitId: foreignSaved.json().units[0].unitId, unitLabel: "A", floorIds: [] },
+    ] })).statusCode).toBe(400);
+    expect((await request(owner, url, "PUT", { version: current.version, units: [
+      current.units[0], { unitLabel: "ＫＥＤＡＩ  Ａ", floorIds: [] },
+    ] })).statusCode).toBe(400);
+
+    await expect(db.premiseUnitFloor.create({
+      data: { unitId, floorId: foreign.floors[0].id, draftId: draft.id },
+    })).rejects.toMatchObject({ code: "P2003" });
+    await expect(db.premiseUnitFloor.create({
+      data: { unitId, floorId: foreign.floors[0].id, draftId: foreign.id },
+    })).rejects.toMatchObject({ code: "P2003" });
+    await expect(db.premiseUnitFloor.create({
+      data: { unitId, floorId: current.units[0].floorIds[0], draftId: draft.id },
+    })).rejects.toMatchObject({ code: "P2002" });
+    expect((await request(owner, url)).json()).toEqual(current);
+  });
+  it("rechecks company authority and protects units from a same-company colleague", async () => {
+    const owner = await actor("PEMOHON");
+    const colleague = await actor("PEMOHON");
+    const company = await db.company.create({ data: {
+      name: "DATA UJIAN K02", registrationNumber: `K02-${randomUUID()}`,
+      address: "DATA UJIAN", phone: "0000000000", email: `${randomUUID()}@example.test`,
+      representatives: { create: [
+        { userId: owner.id, authorityType: "PEKERJA" },
+        { userId: colleague.id, authorityType: "PEKERJA" },
+      ] },
+    } });
+    const draft = await fixture(owner, company.id);
+    const url = draft.root + "/units";
+    const data = { version: draft.version, units: [{ unitLabel: "Kedai A", floorIds: [] }] };
+    const saved = await request(owner, url, "PUT", data);
+    expect(saved.statusCode).toBe(200);
+    expect((await request(colleague, url)).statusCode).toBe(404);
+    await db.companyRepresentative.update({
+      where: { userId_companyId: { userId: owner.id, companyId: company.id } },
+      data: { status: "REVOKED" },
+    });
+    expect((await request(owner, url)).statusCode).toBe(404);
+    expect((await request(owner, url, "PUT", { ...data, version: saved.json().version })).statusCode).toBe(404);
+    expect(await db.premiseUnit.count({ where: { draftId: draft.id } })).toBe(1);
+  });
+
 });

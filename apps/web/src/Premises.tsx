@@ -68,7 +68,8 @@ function Steps({
         2 · Maklumat premis
       </Link>
       <Link to={`/permohonan/draf/${draftId}/tingkat`}>3 · Butiran tingkat</Link>
-      <span aria-current={review ? "step" : undefined}>4 · Semakan draf</span>
+      <Link to={`/permohonan/draf/${draftId}/unit`}>4 · Unit fizikal</Link>
+      <span aria-current={review ? "step" : undefined}>5 · Semakan draf</span>
     </nav>
   );
 }
@@ -271,6 +272,7 @@ function PremisesEditor({ record }: { record: any }) {
         old?.id === record.draftId ? { ...old, version: data.version } : old,
       );
       await qc.invalidateQueries({ queryKey: ["application-drafts"] });
+      await qc.invalidateQueries({ queryKey: ["draft-units", record.draftId] });
       if (continueNext) nav(`/permohonan/draf/${record.draftId}/tingkat`);
       else if (previous) nav(`/permohonan/draf/${record.draftId}`);
     } catch (e: any) {

@@ -1,5 +1,6 @@
 import { premisesRoutes } from "./premises.js";
 import { premiseFloorRoutes } from "./premise-floors.js";
+import { premiseUnitRoutes } from "./premise-units.js";
 import { applicationDocumentRoutes } from "./application-documents.js";
 import { delegationLimitMiB, validateDelegationPdf, UPLOAD_CATEGORIES, uploadLimitMiB, uploadPolicyKey, uploadCategoryForKey } from "./upload-policy.js";
 import { applicationDraftRoutes } from "./application-drafts.js";
@@ -50,6 +51,7 @@ export async function routes(app: FastifyInstance) {
   await applicationDraftRoutes(app);
   await premisesRoutes(app);
   await premiseFloorRoutes(app);
+  await premiseUnitRoutes(app);
   await applicationDocumentRoutes(app);
   app.post("/api/profile/identification", async (req) => {
     const s = await session(req);

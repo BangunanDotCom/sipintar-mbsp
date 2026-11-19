@@ -10,7 +10,7 @@ import { FloorIdentityError, reconcileFloorIds } from "../../../packages/shared/
 import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
 
 const paramsSchema = z.object({ id: z.uuid() });
-async function authorizedDraft(
+export async function authorizedDraft(
   tx: Prisma.TransactionClient,
   userId: string,
   draftId: string,
@@ -82,6 +82,10 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
           fail(400, "ID tingkat tidak sah atau berulang.");
         }
       })();
+      const linked = await tx.premiseUnitFloor.findFirst({
+        where: { draftId: id, floorId: { notIn: ids } }, select: { floorId: true },
+      });
+      if (linked) fail(409, "Buang pautan unit sebelum membuang tingkat.");
       await tx.premiseFloor.deleteMany({
         where: { draftId: id, id: { notIn: ids } },
       });

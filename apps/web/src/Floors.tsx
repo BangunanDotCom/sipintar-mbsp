@@ -69,6 +69,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
         <h1>Butiran penginapan mengikut tingkat</h1>
         <p>Isi maklumat setiap aras untuk menjana jadual konsolidasi. Ini bukan pengesahan kapasiti pekerja oleh JTK.</p>
         <Link to={`/permohonan/draf/${draftId}/premis`}>Kembali ke maklumat premis</Link>
+        <Link to={`/permohonan/draf/${draftId}/unit`}>Urus unit fizikal</Link>
       </div>
       <Notice>Maklumat masih berstatus draf. Penghantaran rasmi kepada MBSP belum diaktifkan.</Notice>
       <form className="panel" onSubmit={async (event) => {
@@ -93,6 +94,7 @@ function FloorEditor({ draftId }: { draftId: string }) {
           await qc.invalidateQueries({ queryKey: ["draft-floors", draftId] });
           await qc.invalidateQueries({ queryKey: ["application-drafts"] });
           await qc.invalidateQueries({ queryKey: ["premises", draftId] });
+          await qc.invalidateQueries({ queryKey: ["draft-units", draftId] });
           if (continueNext) navigate(`/permohonan/draf/${draftId}/semakan`);
         } catch (cause: any) {
           setConflict(cause instanceof ApiError && cause.status === 409);
