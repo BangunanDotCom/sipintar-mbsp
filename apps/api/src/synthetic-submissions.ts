@@ -1,3 +1,5 @@
+import type { ApplicationDraft, Prisma } from "@prisma/client";
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { z } from "zod";
 import { db } from "./core.js";
 import { fail } from "./auth.js";
@@ -18,13 +20,15 @@ const inputSchema = z.strictObject({
   previousId: z.uuid().nullable(),
 });
 
-type SyntheticPolicy = {
+export type SyntheticPolicy = {
   declarationVersion: string;
   documents: unknown;
   correctionFor?: string;
 };
 
 function assertSandbox() {
+  const portalDatabase = syntheticPortalDatabase();
+  if (portalDatabase) return portalDatabase;
   const configured = process.env.TEST_DATABASE_URL;
   const actual = process.env.DATABASE_URL;
   if (process.env.NODE_ENV !== "test" || !configured || actual !== configured)
@@ -42,7 +46,7 @@ function assertSandbox() {
   return local.pathname.slice(1);
 }
 
-// Internal test fixture. No HTTP handler is registered for synthetic submissions.
+// The caller supplies a server-owned policy; this service only writes to eligible synthetic databases.
 export async function captureSyntheticSubmission(
   userId: string,
   payload: unknown,
@@ -62,21 +66,7 @@ export async function captureSyntheticSubmission(
     const authority = draft.companyId
       ? await companyAuthority(tx, userId, draft.companyId)
       : null;
-    if (
-      (draft.capacity === "COMPANY" &&
-        (!authority || authority.status !== "VERIFIED")) ||
-      (draft.capacity !== "INDIVIDUAL" && draft.capacity !== "COMPANY")
-    )
-      fail(409, "Kuasa wakil sintetik belum disahkan.");
-    if (
-      !validDraftApplicantContext(
-        draft.capacity,
-        draft.companyId,
-        draft.officialApplicantUserId,
-        draft.initiatedByUserId,
-      )
-    )
-      fail(409, "Konteks pemohon sintetik tidak sah.");
+    assertSyntheticCapacity(draft, authority);
     // Serializes submission, correction and existing versioned draft edits.
     const [current] = await tx.$queryRaw<{ version: number }[]>`
       SELECT version FROM application_drafts WHERE id = ${draft.id} FOR UPDATE`;
@@ -112,82 +102,10 @@ export async function captureSyntheticSubmission(
     )
       fail(409, "Pembetulan sintetik belum dibenarkan.");
 
-    const premises = await tx.applicationPremises.findUnique({
-      where: { draftId: draft.id },
-      include: {
-        units: {
-          orderBy: { id: "asc" },
-          include: { floorLinks: { orderBy: { floorId: "asc" } } },
-        },
-      },
-    });
-    const floors = await tx.premiseFloor.findMany({
-      where: { draftId: draft.id },
-      orderBy: { position: "asc" },
-    });
-    if (
-      !premises?.buildingType ||
-      !floors.length ||
-      !premises.units.length ||
-      premises.accommodationUnits !== premises.units.length ||
-      premises.units.some((unit) => !unit.floorLinks.length) ||
-      new Set(
-        premises.units.flatMap((unit) =>
-          unit.floorLinks.map((link) => link.floorId),
-        ),
-      ).size !== floors.length
-    )
-      fail(409, "Inventori premis sintetik belum lengkap.");
-
     // A scan-state change cannot invalidate these rows until the capture commits.
     await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draft.id} FOR SHARE`;
-    const documents = await tx.applicationDocument.findMany({
-      where: { draftId: draft.id, supersededAt: null },
-      include: { scope: true },
-      orderBy: { id: "asc" },
-    });
-    const eligible = documents.filter(
-      (item) =>
-        item.scanStatus === "CLEAN" &&
-        ["VERIFIED", "UNVERIFIED"].includes(item.verificationStatus),
-    );
-    const evidence = eligible.map((item): Evidence => ({
-      scope: item.scope?.unitId
-        ? "UNIT"
-        : item.scope?.floorId
-          ? "FLOOR"
-          : "DRAFT",
-      targetId: item.scope?.unitId ?? item.scope?.floorId ?? draft.id,
-      category: item.category,
-      scanStatus: item.scanStatus,
-      verificationStatus: item.verificationStatus,
-    }));
-    if (
-      authority &&
-      !evidence.some(
-        (item) =>
-          item.scope === "DRAFT" &&
-          item.category === "company_authority" &&
-          item.verificationStatus === "VERIFIED",
-      )
-    )
-      fail(409, "Bukti kuasa wakil sintetik belum disahkan.");
-    const readiness = evaluateDocumentPolicy(policy.documents, {
-      capacity: draft.capacity,
-      premiseType: premises.buildingType,
-      facts: {},
-      targets: {
-        DRAFT: [draft.id],
-        UNIT: premises.units.map(({ id }) => id),
-        FLOOR: floors.map(({ id }) => id),
-      },
-      evidence,
-    });
-    if (
-      readiness.status !== "READY" ||
-      !readiness.version?.startsWith("SYNTHETIC-")
-    )
-      fail(409, "Bukti dokumen sintetik belum lengkap.");
+    const { premises, floors, eligible, evidence, readiness } =
+      await loadSyntheticReadiness(tx, draft, authority, policy);
 
     const row = await tx.syntheticSubmission.create({
       data: {
@@ -203,6 +121,7 @@ export async function captureSyntheticSubmission(
           companyId: draft.companyId,
           premisesId: premises.id,
           buildingType: premises.buildingType,
+          districtId: premises.districtId,
           representativeId: authority?.id ?? null,
           authorityType: authority?.authorityType ?? null,
           floors: floors.map(
@@ -251,4 +170,121 @@ export async function captureSyntheticSubmission(
     });
     return { id: row.id, version: row.draftVersion };
   });
+}
+
+type Authority = Awaited<ReturnType<typeof companyAuthority>> | null;
+
+function assertSyntheticCapacity(
+  draft: ApplicationDraft,
+  authority: Authority,
+) {
+  if (
+    (draft.capacity === "COMPANY" &&
+      (!authority || authority.status !== "VERIFIED")) ||
+    (draft.capacity !== "INDIVIDUAL" && draft.capacity !== "COMPANY")
+  )
+    fail(409, "Kuasa wakil sintetik belum disahkan.");
+  if (
+    !validDraftApplicantContext(
+      draft.capacity,
+      draft.companyId,
+      draft.officialApplicantUserId,
+      draft.initiatedByUserId,
+    )
+  )
+    fail(409, "Konteks pemohon sintetik tidak sah.");
+}
+
+export async function loadSyntheticReadiness(
+  tx: Prisma.TransactionClient,
+  draft: ApplicationDraft,
+  authority: Authority,
+  policy: SyntheticPolicy,
+) {
+  assertSyntheticCapacity(draft, authority);
+  const premises = await tx.applicationPremises.findUnique({
+    where: { draftId: draft.id },
+    include: {
+      units: {
+        orderBy: { id: "asc" },
+        include: { floorLinks: { orderBy: { floorId: "asc" } } },
+      },
+    },
+  });
+  const floors = await tx.premiseFloor.findMany({
+    where: { draftId: draft.id },
+    orderBy: { position: "asc" },
+  });
+  if (
+    !premises?.buildingType ||
+    (syntheticPortalDatabase() &&
+      !["SPU", "SPT", "SPS"].includes(premises.districtId ?? "")) ||
+    !floors.length ||
+    !premises.units.length ||
+    premises.accommodationUnits !== premises.units.length ||
+    premises.units.some((unit) => !unit.floorLinks.length) ||
+    new Set(
+      premises.units.flatMap((unit) =>
+        unit.floorLinks.map((link) => link.floorId),
+      ),
+    ).size !== floors.length
+  )
+    fail(409, "Inventori premis sintetik belum lengkap.");
+
+  const documents = await tx.applicationDocument.findMany({
+    where: {
+      draftId: draft.id,
+      supersededAt: null,
+      ...(syntheticPortalDatabase()
+        ? { storageKey: { startsWith: "issue31-fixture/" } }
+        : {}),
+    },
+    include: { scope: true },
+    orderBy: { id: "asc" },
+  });
+  const eligible = documents.filter(
+    (item) =>
+      item.scanStatus === "CLEAN" &&
+      ["VERIFIED", "UNVERIFIED"].includes(item.verificationStatus),
+  );
+  const evidence = eligible.map((item): Evidence => ({
+    scope: item.scope?.unitId
+      ? "UNIT"
+      : item.scope?.floorId
+        ? "FLOOR"
+        : "DRAFT",
+    targetId: item.scope?.unitId ?? item.scope?.floorId ?? draft.id,
+    category: item.category,
+    scanStatus: item.scanStatus,
+    verificationStatus: item.verificationStatus,
+  }));
+  if (
+    authority &&
+    !evidence.some(
+      (item) =>
+        item.scope === "DRAFT" &&
+        item.category === "company_authority" &&
+        item.verificationStatus === "VERIFIED",
+    )
+  )
+    fail(409, "Bukti kuasa wakil sintetik belum disahkan.");
+  const capacity = draft.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL";
+  const readiness = evaluateDocumentPolicy(policy.documents, {
+    capacity,
+    premiseType: premises.buildingType,
+    facts: {},
+    targets: {
+      DRAFT: [draft.id],
+      UNIT: premises.units.map(({ id }) => id),
+      FLOOR: floors.map(({ id }) => id),
+    },
+    evidence,
+  });
+  if (
+    readiness.status !== "READY" ||
+    !readiness.version?.startsWith("SYNTHETIC-")
+  )
+    fail(409, "Bukti dokumen sintetik belum lengkap.");
+
+  return { premises, floors, eligible, evidence, readiness };
 }
