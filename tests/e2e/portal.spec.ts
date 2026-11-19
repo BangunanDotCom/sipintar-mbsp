@@ -942,3 +942,30 @@ test("Phase 2B.2: keyboard pin, previous autosave, resume and premises login ret
     page.getByLabel("Alamat penuh premis", { exact: true }),
   ).toHaveValue("DATA UJIAN catatan alamat separa");
 });
+
+test("floor UUID survives an editor rename and reload", async ({ page }) => {
+  await awaitDraftRequestBudget(page.request);
+  const { id } = await premisesSession(page);
+  await page.goto(`/permohonan/draf/${id}/tingkat`);
+  const label = page.getByLabel("Nama tingkat", { exact: true });
+  const save = async () => {
+    const result = page.waitForResponse(
+      (response) => response.url().endsWith("/floors") &&
+        response.request().method() === "PUT",
+    );
+    await page.getByRole("button", { name: "Simpan draf tingkat", exact: true }).click();
+    const response = await result;
+    expect(response.status()).toBe(200);
+    return (await response.json()).floors[0].id as string;
+  };
+
+  await label.fill("Aras Ujian");
+  const floorId = await save();
+  await expect(page.getByText("Maklumat tingkat berjaya disimpan sebagai draf.")).toBeVisible();
+  await label.fill("Aras Ujian Dikemas Kini");
+  expect(await save()).toBe(floorId);
+  await page.reload();
+  await expect(label).toHaveValue("Aras Ujian Dikemas Kini");
+  const result = await page.request.get(`/api/application-drafts/${id}/floors`);
+  expect((await result.json()).floors[0].id).toBe(floorId);
+});

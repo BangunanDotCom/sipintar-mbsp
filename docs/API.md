@@ -73,3 +73,11 @@ Semua endpoint berikut memerlukan pemohon aktif, e-mel disahkan, pengenalan leng
 - `PUT /api/application-drafts/:id/premises`: `{version,action:"SAVE"|"CONTINUE",premises:{...}}`. `action` lalai SAVE. Semua 17 medan `premises` diperlukan dalam badan, tetapi nullable untuk draf separa. CONTINUE mewajibkan medan asas/pin lengkap dan nombor sijil jika CCC/CFO/OC dipilih. Baca OpenAPI untuk nama dan had tepat.
 
 CSRF/Origin, verified email, pengenalan dan permission peranan aktif diwajibkan. Satu versi dikongsi bahagian pemohon dan premis; konflik 409 tidak menyimpan sebahagian data. 404 bagi bukan pemilik/kuasa syarikat tidak sah; 400 bagi validasi. Data lokasi/sijil/owner/status GIS tambahan ditolak jika di luar schema. `complete` menandakan kelengkapan medan sahaja; bukan pengesahan MBSP atau penghantaran. Tiada API geocoding/sempadan GIS atau penghantaran rasmi baharu.
+
+## Identiti tingkat draf
+
+- `GET /api/application-drafts/:id/floors` memulangkan `{draftId,version,floors,totals,mismatches}`. Setiap aras yang disimpan mempunyai UUID `id`; respons dibaca dalam satu snapshot pangkalan data dengan `Cache-Control: private, no-store`. `totals:null` menunjukkan senarai kosong atau rekod lama yang perlu dibetulkan.
+- `PUT /api/application-drafts/:id/floors` menerima `{version,floors}` dan memulangkan bentuk respons yang sama. Setiap item menerima `id?` bersama medan tingkat sedia ada. Klien mesti menghantar semula UUID untuk penamaan semula. Aras baharu menerima UUID pelayan. Untuk klien lama, padanan label ternormal mengekalkan ID yang belum dituntut secara eksplisit; nama yang bertukar tanpa ID dianggap aras baharu jika tiada padanan.
+- Versi lapuk atau padanan label lama yang tak tunggal memulangkan 409. ID asing, tidak dikenali atau berganda memulangkan 400 untuk pemilik sah. Bukan pemilik kekal 404. Kegagalan tidak menukar versi, baris atau audit. Set aktif draf dikemas kini secara transaksi; aras yang ditinggalkan dalam PUT dikeluarkan menurut semantik sedia ada.
+
+UUID ini mengenal pasti **tingkat**, sementara model unit premis fizikal dan pautan unit–tingkat memerlukan migrasi berasingan. Tiada perubahan pada sumber data caj atau status penghantaran.

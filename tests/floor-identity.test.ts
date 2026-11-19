@@ -28,4 +28,21 @@ describe("reconcileFloorIds", () => {
       { id: "floor-a", floorLabel: "A" }, { id: "floor-a", floorLabel: "B" },
     ], () => "new")).toThrow("twice");
   });
+  it("reserves explicit IDs before matching labels from older clients", () => {
+    expect(reconcileFloorIds(stored, [
+      { floorLabel: "Tingkat 1" }, { id: "floor-b", floorLabel: "Aras 2" },
+    ], () => "new")).toEqual(["new", "floor-b"]);
+  });
+  it("requires explicit IDs only when the legacy label is ambiguous", () => {
+    const floors = [
+      { id: "floor-a", floorLabel: "Tingkat 1" },
+      { id: "floor-b", floorLabel: "tingkat  1" },
+    ];
+    expect(() => reconcileFloorIds(floors, [{ floorLabel: "Tingkat 1" }], () => "new"))
+      .toThrow("ambiguous");
+    expect(reconcileFloorIds(floors, [
+      { id: "floor-a", floorLabel: "Aras 1" },
+      { id: "floor-b", floorLabel: "Aras 2" },
+    ], () => "new")).toEqual(["floor-a", "floor-b"]);
+  });
 });

@@ -1747,3 +1747,96 @@ describe("Phase 2B.2 premises aggregate persistence and access", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("K02 stable floor identity", () => {
+  const floor = (floorLabel: string) => ({
+    floorLabel, rooms: 1, beds: 2, workers: 2, areaSqm: 50,
+    facilities: {
+      toilets: 1, bathrooms: 1, sinks: 1,
+      diningTables: 0, diningChairs: 0, fireExtinguishers: 1,
+    },
+  });
+
+  async function draftFor(owner: Actor) {
+    const response = await request(owner, "/api/application-drafts", "POST", {
+      capacity: "INDIVIDUAL",
+    });
+    expect(response.statusCode).toBe(201);
+    return response.json();
+  }
+
+  it("retains IDs and creation dates through legacy saves, swaps, and mixed old/new entries", async () => {
+    const owner = await actor("PEMOHON");
+    const draft = await draftFor(owner);
+    const url = `/api/application-drafts/${draft.id}/floors`;
+    const lower = floor("Tingkat Bawah");
+    const upper = floor("Tingkat 1");
+    const put = (version: number, floors: unknown[]) =>
+      request(owner, url, "PUT", { version, floors });
+
+    const created = await put(draft.version, [lower, upper]);
+    expect(created.statusCode).toBe(200);
+    const initial = created.json();
+    const [lowerId, upperId] = initial.floors.map((item: { id: string }) => item.id);
+    const before = await db.premiseFloor.findUniqueOrThrow({ where: { id: upperId } });
+
+    const legacy = await put(initial.version, [floor("tingkat  1"), lower]);
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().floors.map((item: { id: string }) => item.id)).toEqual([upperId, lowerId]);
+    const swapped = await put(legacy.json().version, [
+      { ...upper, id: lowerId }, { ...lower, id: upperId },
+    ]);
+    expect(swapped.statusCode).toBe(200);
+    expect(swapped.json().floors).toEqual([
+      { ...upper, id: lowerId }, { ...lower, id: upperId },
+    ]);
+
+    const mixed = await put(swapped.json().version, [
+      lower, { ...floor(`__pending_${upperId}`), id: upperId },
+    ]);
+    expect(mixed.statusCode).toBe(200);
+    const read = await request(owner, url);
+    expect(read.statusCode).toBe(200);
+    expect(read.headers["cache-control"]).toContain("no-store");
+    expect(read.json()).toEqual(mixed.json());
+    expect(read.json().floors[0].id).not.toBe(upperId);
+    expect(read.json().floors[1].id).toBe(upperId);
+    const after = await db.premiseFloor.findUniqueOrThrow({ where: { id: upperId } });
+    expect(after.createdAt).toEqual(before.createdAt);
+    expect(await db.premiseFloor.findUnique({ where: { id: lowerId } })).toBeNull();
+  });
+
+  it("rejects invalid IDs and stale writes without changing floors, version, or audit", async () => {
+    const owner = await actor("PEMOHON");
+    const other = await actor("PEMOHON");
+    const draft = await draftFor(owner);
+    const foreign = await draftFor(other);
+    const url = `/api/application-drafts/${draft.id}/floors`;
+    const otherUrl = `/api/application-drafts/${foreign.id}/floors`;
+    const put = (version: number, floors: unknown[]) =>
+      request(owner, url, "PUT", { version, floors });
+    const first = await put(draft.version, [floor("Aras 1")]);
+    expect(first.statusCode).toBe(200);
+    const before = first.json();
+    const otherFloors = await request(other, otherUrl, "PUT", {
+      version: foreign.version, floors: [floor("Aras 2")],
+    });
+    expect(otherFloors.statusCode).toBe(200);
+    const id = before.floors[0].id;
+    const foreignId = otherFloors.json().floors[0].id;
+
+    for (const floors of [
+      [{ ...floor("Aras 2"), id: foreignId }],
+      [{ ...floor("Aras 2"), id: randomUUID() }],
+      [{ ...floor("Aras 2"), id }, { ...floor("Aras 3"), id }],
+    ]) {
+      expect((await put(before.version, floors)).statusCode).toBe(400);
+    }
+    expect((await request(other, url)).statusCode).toBe(404);
+    expect((await request(other, url, "PUT", { version: before.version, floors: before.floors })).statusCode).toBe(404);
+    expect((await put(draft.version, [floor("Aras 3")])).statusCode).toBe(409);
+    expect((await request(owner, url)).json()).toEqual(before);
+    expect(await db.auditLog.count({ where: { target: draft.id, action: "APPLICATION_FLOORS_SAVED" } }))
+      .toBe(1);
+  });
+});

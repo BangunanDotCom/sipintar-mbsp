@@ -6,7 +6,7 @@ import { db } from "./core.js";
 import { fail } from "./auth.js";
 import { applicant, companyAuthority } from "./application-drafts.js";
 import { premiseFloorsSchema, summarizePremiseFloors } from "../../../packages/shared/src/floor-summary.js";
-import { reconcileFloorIds } from "../../../packages/shared/src/floor-identity.js";
+import { FloorIdentityError, reconcileFloorIds } from "../../../packages/shared/src/floor-identity.js";
 import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
 
 const paramsSchema = z.object({ id: z.uuid() });
@@ -23,7 +23,8 @@ async function authorizedDraft(
   return draft;
 }
 export async function premiseFloorRoutes(app: FastifyInstance) {
-  app.get("/api/application-drafts/:id/floors", async (req) => {
+  app.get("/api/application-drafts/:id/floors", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store, max-age=0");
     const s = await applicant(req);
     const { id } = paramsSchema.parse(req.params);
     return db.$transaction(async (tx) => {
@@ -38,7 +39,8 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         areaSqm: Number(row.areaSqm),
         facilities: row.facilities,
       }));
-      const totals = floors.length ? summarizePremiseFloors(premiseFloorsSchema.parse(floors)) : null;
+      const parsed = premiseFloorsSchema.safeParse(floors);
+      const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
       const premises = await tx.applicationPremises.findUnique({ where: { draftId: id } });
       const mismatches = totals ? comparePremisesTotals(premises ? {
         involvedFloors: premises.involvedFloors,
@@ -52,7 +54,7 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         floors,
         totals, mismatches,
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   });
   app.put("/api/application-drafts/:id/floors", async (req) => {
     const s = await applicant(req);
@@ -70,27 +72,44 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
       });
       if (claim.count !== 1) fail(409, "Draf telah dikemas kini. Muat semula sebelum menyimpan.");
       const existing = await tx.premiseFloor.findMany({ where: { draftId: id } });
-      const ids = reconcileFloorIds(existing, input.floors, randomUUID);
-      const retained = new Set(ids);
+      const ids = (() => {
+        try {
+          return reconcileFloorIds(existing, input.floors, randomUUID);
+        } catch (error) {
+          if (!(error instanceof FloorIdentityError)) throw error;
+          if (error.reason === "ambiguous")
+            fail(409, "Nama tingkat sedia ada tidak unik. Muat semula dan betulkan nama menggunakan ID tingkat.");
+          fail(400, "ID tingkat tidak sah atau berulang.");
+        }
+      })();
       await tx.premiseFloor.deleteMany({
-        where: { draftId: id, id: { notIn: [...retained] } },
+        where: { draftId: id, id: { notIn: ids } },
       });
-      // Move existing rows to temporary unique positions and labels before
-      // applying reordered/renamed rows, avoiding compound-unique conflicts.
-      for (const row of existing.filter((floor) => retained.has(floor.id))) {
+      const existingById = new Map(existing.map((floor) => [floor.id, floor]));
+      const reservedLabels = new Set([...existing, ...input.floors].map((floor) => floor.floorLabel));
+      const reservedPositions = new Set(existing.map((floor) => floor.position));
+      let temporaryPosition = -1;
+      // Park reordered or renamed rows outside both layouts so unique
+      // constraints stay valid even during a label or position swap.
+      for (const [position, floor] of input.floors.entries()) {
+        const row = existingById.get(ids[position]);
+        if (!row || (row.position === position && row.floorLabel === floor.floorLabel)) continue;
+        let temporaryLabel = `__pending_${row.id}`;
+        while (reservedLabels.has(temporaryLabel)) temporaryLabel += "_";
+        reservedLabels.add(temporaryLabel);
+        while (reservedPositions.has(temporaryPosition)) temporaryPosition--;
         await tx.premiseFloor.update({
           where: { id: row.id },
-          data: { position: -(row.position + 1), floorLabel: `__pending_${row.id}` },
+          data: { position: temporaryPosition--, floorLabel: temporaryLabel },
         });
       }
-      const existingIds = new Set(existing.map((floor) => floor.id));
       for (const [position, floor] of input.floors.entries()) {
         const data = {
           position, floorLabel: floor.floorLabel,
           rooms: floor.rooms, beds: floor.beds, workers: floor.workers,
           areaSqm: new Prisma.Decimal(floor.areaSqm), facilities: floor.facilities,
         };
-        if (existingIds.has(ids[position])) {
+        if (existingById.has(ids[position])) {
           await tx.premiseFloor.update({ where: { id: ids[position] }, data });
         } else {
           await tx.premiseFloor.create({ data: { ...data, id: ids[position], draftId: id } });

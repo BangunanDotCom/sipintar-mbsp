@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeFloorLabel } from "./floor-identity.js";
 
 // Building Department records premises totals only. Employer-specific allocation
 // and worker capacity determinations belong to JTK.
@@ -27,7 +28,7 @@ export const premiseFloorsSchema = z.array(premiseFloorSchema)
     const seen = new Set<string>();
     floors.forEach((floor, index) => {
       // Treat visually equivalent labels as the same floor (Unicode width and whitespace).
-      const key = floor.floorLabel.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("ms-MY");
+      const key = normalizeFloorLabel(floor.floorLabel);
       if (seen.has(key)) ctx.addIssue({
         code: "custom", path: [index, "floorLabel"],
         message: "Nama tingkat tidak boleh berulang.",
