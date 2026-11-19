@@ -142,6 +142,9 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
       if (omitted.some((unit) => unit.floorLinks.length > 0))
         fail(409, "Simpan unit tanpa pautan tingkat sebelum membuangnya.");
 
+      if (await tx.draftDocumentScope.findFirst({
+        where: { draftId: id, unitId: { in: omitted.map(({ id }) => id) } }, select: { documentId: true },
+      })) fail(409, "Alihkan pautan bukti dokumen sebelum membuang rekod ini.");
       await tx.premiseUnit.deleteMany({
         where: {
           premiseId: premise.id,

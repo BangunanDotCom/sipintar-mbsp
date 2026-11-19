@@ -32,6 +32,7 @@ export async function applicationDocumentRoutes(app: FastifyInstance) {
           id: true, category: true, version: true, fileName: true,
           mimeType: true, byteSize: true, scanStatus: true,
           verificationStatus: true, uploadedAt: true, supersededAt: true,
+          scope: { select: { unitId: true, floorId: true } },
         },
         orderBy: [{ category: "asc" }, { version: "desc" }],
       });
