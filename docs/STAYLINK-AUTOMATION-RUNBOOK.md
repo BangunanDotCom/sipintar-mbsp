@@ -19,3 +19,10 @@ Patuhi `AGENTS.md`. Perubahan pangkalan data/migrasi, keselamatan, akses, pembay
 
 ## Nota
 Dokumen ini ialah pelan konfigurasi. Jangan laporkan agen pembangunan autonomi telah aktif sehingga bukti pelaksanaan lengkap tersedia.
+
+## Keputusan platform agen (19 November 2026)
+Pengguna memilih **OpenAI Codex** sebagai agen pembangunan STAYLink MBSP buat masa ini.
+- Codex perlu menggunakan arahan `AGENTS.md` dan tugasan GitHub Issue yang telah diluluskan.
+- Mulakan dengan PR #17: jalankan ujian, semak integrasi API dan identiti tingkat, kemudian bangunkan model unit fizikal serta hubungan unit-tingkat pada branch tugas baharu. Jangan gabung PR tanpa semakan.
+- Penggunaan Codex dalam perbualan atau melalui akses GitHub sedia ada **tidak bermaksud** Codex telah dipasang sebagai runner tanpa pengawasan. Sambungan Codex-ke-GitHub, akses agen, pencetus tugasan dan had penggunaan perlu disahkan oleh pentadbir.
+- Semua PR kekal draf sehingga ujian disahkan dan semakan manusia dibuat. Tiada akses produksi, rahsia, bayaran sebenar atau Worker `dashboard-bangunan-mbsp`.
