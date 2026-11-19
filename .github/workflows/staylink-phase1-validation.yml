@@ -1,0 +1,39 @@
+name: STAYLink Phase 1 - automated validation
+on:
+  push:
+    branches:
+      - staylink-phase1-unit-identity
+      - 'staylink-agent/**'
+  pull_request:
+    branches:
+      - staylink-mbsp-phase1
+  workflow_dispatch:
+  schedule:
+    - cron: '15 2 * * 1-5'
+permissions:
+  contents: read
+concurrency:
+  group: staylink-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npm run db:generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests (without database-backed API suite)
+        run: npx vitest run --exclude tests/api.test.ts
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
