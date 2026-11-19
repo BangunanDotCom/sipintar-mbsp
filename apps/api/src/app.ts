@@ -10,6 +10,7 @@ import { ZodError } from "zod";
 import { authRoutes } from "./auth.js";
 import { routes } from "./routes.js";
 import { safeServerFailure } from "./errors.js";
+import { syntheticPortalRoutes } from "./synthetic-portal.js";
 export async function buildApp() {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.
@@ -93,5 +94,6 @@ export async function buildApp() {
   });
   await authRoutes(app);
   await routes(app);
+  await syntheticPortalRoutes(app);
   return app;
 }
