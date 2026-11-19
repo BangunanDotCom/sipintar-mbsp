@@ -292,6 +292,7 @@ model ApplicationDraft {
 }
 
 model ApplicationPremises {
+ units PremiseUnit[]
  id String @id @default(uuid())
  draftId String @unique
  draft ApplicationDraft @relation(fields:[draftId],references:[id])
@@ -316,10 +317,12 @@ model ApplicationPremises {
  certificateDate DateTime? @db.Date
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
+ @@unique([id, draftId], map: "application_premises_id_draft_unique")
  @@map("application_premises")
 }
 
 model PremiseFloor {
+ unitLinks PremiseUnitFloor[]
  id String @id @default(uuid())
  draftId String
  draft ApplicationDraft @relation(fields:[draftId], references:[id], onDelete: Cascade)
@@ -334,8 +337,35 @@ model PremiseFloor {
  updatedAt DateTime @updatedAt
  @@unique([draftId, floorLabel])
  @@unique([draftId, position])
+ @@unique([id, draftId], map: "premise_floors_id_draft_unique")
  @@index([draftId])
  @@map("premise_floors")
+}
+
+model PremiseUnit {
+ id String @id @default(uuid())
+ premiseId String
+ draftId String
+ premise ApplicationPremises @relation(fields: [premiseId, draftId], references: [id, draftId], onDelete: Restrict, map: "premise_units_premise_draft_fkey")
+ unitLabel String
+ normalizedLabel String
+ floorLinks PremiseUnitFloor[]
+ createdAt DateTime @default(now()) @db.Timestamptz(6)
+ updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+ @@unique([premiseId, normalizedLabel], map: "premise_units_label_unique")
+ @@unique([id, draftId], map: "premise_units_id_draft_unique")
+ @@map("premise_units")
+}
+
+model PremiseUnitFloor {
+ unitId String
+ floorId String
+ draftId String
+ unit PremiseUnit @relation(fields: [unitId, draftId], references: [id, draftId], onDelete: Restrict, map: "premise_unit_floors_unit_draft_fkey")
+ floor PremiseFloor @relation(fields: [floorId, draftId], references: [id, draftId], onDelete: Restrict, map: "premise_unit_floors_floor_draft_fkey")
+ @@id([unitId, floorId], map: "premise_unit_floors_pkey")
+ @@index([floorId, draftId], map: "premise_unit_floors_floor_draft_idx")
+ @@map("premise_unit_floors")
 }
 
 
