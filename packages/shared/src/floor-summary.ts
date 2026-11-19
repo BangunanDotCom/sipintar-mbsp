@@ -12,6 +12,7 @@ export const floorFacilitySchema = z.object({
 }).strict();
 
 export const premiseFloorSchema = z.object({
+  id: z.uuid().optional(),
   floorLabel: z.string().trim().min(1).max(80),
   rooms: z.number().int().min(0).max(100000),
   beds: z.number().int().min(0).max(100000),
