@@ -969,3 +969,54 @@ test("floor UUID survives an editor rename and reload", async ({ page }) => {
   const result = await page.request.get(`/api/application-drafts/${id}/floors`);
   expect((await result.json()).floors[0].id).toBe(floorId);
 });
+
+test("K02 records one physical unit across two floors and keeps its UUID", async ({ page }) => {
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  const { id } = await premisesSession(page);
+  const root = `/api/application-drafts/${id}`;
+  const session = await page.request.get("/api/auth/me");
+  const headers = { Origin: "http://localhost:5173", "X-CSRF-Token": (await session.json()).csrf };
+  const draft = await page.request.get(root);
+  const { emptyPremises } = await import("../../packages/shared/src/premises");
+  const premise = await page.request.put(root + "/premises", {
+    headers,
+    data: { version: (await draft.json()).version, premises: { ...emptyPremises, accommodationUnits: 3 } },
+  });
+  expect(premise.status()).toBe(200);
+  const floors = await page.request.put(root + "/floors", {
+    headers,
+    data: { version: (await premise.json()).version, floors: ["Tingkat Bawah", "Tingkat 1"].map((floorLabel) => ({
+      floorLabel, rooms: 1, beds: 2, workers: 2, areaSqm: 50,
+      facilities: { toilets: 1, bathrooms: 1, sinks: 1, diningTables: 0, diningChairs: 0, fireExtinguishers: 1 },
+    })) },
+  });
+  expect(floors.status()).toBe(200);
+
+  await page.getByRole("link", { name: "4 · Unit fizikal" }).click();
+  await expect(page.getByRole("heading", { name: "Unit fizikal premis" })).toBeVisible();
+  await expect(page.getByText("Bilangan diisytiharkan: 3")).toBeVisible();
+  await expect(page.getByText("Inventori unit belum direkod.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Tambah unit" }).click();
+  const label = page.getByRole("textbox", { name: "Label unit" });
+  await label.fill("Kedai Ujian");
+  await page.getByRole("checkbox", { name: "Tingkat Bawah" }).check();
+  await page.getByRole("checkbox", { name: "Tingkat 1", exact: true }).check();
+  const save = async () => {
+    const pending = page.waitForResponse((response) =>
+      response.url().endsWith("/units") && response.request().method() === "PUT",
+    );
+    await page.getByRole("button", { name: "Simpan draf unit" }).click();
+    const result = await pending;
+    expect(result.status()).toBe(200);
+    return (await result.json()).units[0].unitId;
+  };
+  const unitId = await save();
+  await expect(page.getByText("Unit berdaftar dalam draf: 1")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Buang unit" })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Tingkat Bawah" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Tingkat 1", exact: true })).toBeChecked();
+  await label.fill("Kedai Ujian Baharu");
+  expect(await save()).toBe(unitId);
+});
