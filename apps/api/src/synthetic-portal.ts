@@ -1,3 +1,4 @@
+import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
@@ -167,10 +168,12 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
       });
 
       portal.post("/drafts/:id/evidence", { bodyLimit: 1024 }, async (req) => {
-        const { userId } = await applicant(req);
+        const operator = await applicant(req);
+        const { userId } = operator;
         const { id } = params.parse(req.params);
         const input = evidenceBody.parse(req.body);
         return db.$transaction(async (tx) => {
+          await lockSyntheticPortalSession(tx, operator, "PEMOHON");
           const draft = await authorizedDraft(tx, userId, id);
           if (draft.version !== input.version)
             fail(409, "Versi draf telah berubah.");
@@ -277,12 +280,12 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
       });
 
       portal.post("/drafts/:id/submit", { bodyLimit: 2048 }, async (req) => {
-        const { userId } = await applicant(req);
+        const operator = await applicant(req);
         const { id } = params.parse(req.params);
         const input = submitBody.parse(req.body);
         const correction = await correctionRequested(db, input.previousId);
         return captureSyntheticSubmission(
-          userId,
+          operator.userId,
           { ...input, draftId: id },
           {
             ...policy,
@@ -290,6 +293,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               ? (input.previousId ?? undefined)
               : undefined,
           },
+          operator,
         );
       });
       await syntheticReviewRoutes(portal);

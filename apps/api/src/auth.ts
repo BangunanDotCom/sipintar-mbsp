@@ -5,7 +5,7 @@ import { z } from "zod";
 import argon2 from "argon2";
 import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import {
   db,
   hash,
@@ -81,9 +81,15 @@ export const totp = (secret: string) =>
     period: 30,
     secret: OTPAuth.Secret.fromBase32(secret),
   });
+// The HttpOnly session secret keys a separate token for same-origin requests.
+function sessionCsrf(sessionSecret: string) {
+  return createHmac("sha256", sessionSecret).update("staylink.csrf.v1").digest("hex");
+}
+
 async function makeSession(app: FastifyInstance, reply: any, user: any) {
-  const raw = token(),
-    csrf = token();
+  const raw = token();
+  const csrf = sessionCsrf(raw);
+  reply.header("Cache-Control", "private, no-store");
   await db.session.create({
     data: {
       id: hash(raw),
@@ -162,13 +168,18 @@ export async function authRoutes(app: FastifyInstance) {
     await audit(u.id, null, "LOGIN", u.id);
     return makeSession(app, reply, u);
   });
-  app.get("/api/auth/me", async (req) => {
+  app.get("/api/auth/me", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
     const s = await session(req, false);
-    const csrf = token();
-    await db.session.update({
-      where: { id: s.id },
-      data: { csrfHash: hash(csrf) },
-    });
+    const csrf = sessionCsrf(req.cookies.staylink!);
+    const csrfHash = hash(csrf);
+    // Existing sessions migrate once. All tabs compute the same token.
+    if (s.csrfHash !== csrfHash) {
+      await db.session.updateMany({
+        where: { id: s.id, csrfHash: s.csrfHash },
+        data: { csrfHash },
+      });
+    }
     const factor = await db.mfaFactor.findUnique({
       where: { userId: s.userId },
     });

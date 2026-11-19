@@ -19,6 +19,14 @@ it("requires an explicit opt-in and a dedicated local test database", () => {
       TEST_DATABASE_URL: uat,
     }),
   ).toBe("staylink_issue36_browser_test");
+  const acceptance = url.replace("issue31_api", "issue40_browser");
+  expect(
+    syntheticPortalDatabase({
+      ...eligible,
+      DATABASE_URL: acceptance,
+      TEST_DATABASE_URL: acceptance,
+    }),
+  ).toBe("staylink_issue40_browser_test");
   for (const override of [
     { STAYLINK_SYNTHETIC_PORTAL: "false" },
     { NODE_ENV: "production" },

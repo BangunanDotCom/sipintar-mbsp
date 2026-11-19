@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
 import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
-import { isCurrent } from "../../../packages/shared/src/index.js";
+import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import {
   applySyntheticReview,
   mockPrecheck,
@@ -78,39 +78,12 @@ export async function lockSyntheticOfficer(
   tx: Prisma.TransactionClient,
   officer: ReviewOfficer,
 ) {
-  const { operator, district, role: roleId } = officer;
-  await tx.$queryRaw`SELECT id FROM "users" WHERE id = ${operator.userId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM "user_role_assignments"
-      WHERE "userId" = ${operator.userId} AND "roleId" = ${roleId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM "sessions" WHERE id = ${operator.id} FOR SHARE`;
-  const active = await tx.session.findUnique({
-    where: { id: operator.id },
-    include: {
-      user: {
-        include: {
-          roles: { include: { role: { include: { permissions: true } } } },
-        },
-      },
-    },
-  });
-  if (
-    !active ||
-    active.user.status !== "ACTIVE" ||
-    !active.user.emailVerified ||
-    active.expiresAt <= new Date() ||
-    active.activeRole !== roleId ||
-    !active.mfaVerified ||
-    !active.user.roles.some(
-      (item) =>
-        item.roleId === roleId &&
-        item.districtId === district &&
-        isCurrent(item) &&
-        item.role.permissions.some(
-          (permission) => permission.action === "areas.read",
-        ),
-    )
-  )
-    fail(403, "Tugasan atau sesi pegawai sudah berubah.");
+  await lockSyntheticPortalSession(
+    tx,
+    officer.operator,
+    officer.role,
+    officer.district,
+  );
 }
 
 type Submission = {

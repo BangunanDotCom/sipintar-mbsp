@@ -2680,6 +2680,46 @@ describe("Issue 31 integrated synthetic portal", () => {
   );
 });
 
+it("keeps the same CSRF token across tabs and separates it from other sessions", async () => {
+  const a = await actor("PEMOHON");
+  const b = await actor("PEMOHON");
+  const tabs = await Promise.all([
+    request(a, "/api/auth/me"),
+    request(a, "/api/auth/me"),
+  ]);
+  for (const tab of tabs) {
+    expect(tab.statusCode).toBe(200);
+    expect(tab.headers["cache-control"]).toContain("no-store");
+  }
+  const csrf = tabs[0].json().csrf as string;
+  expect(tabs[1].json().csrf).toBe(csrf);
+  expect((await request(b, "/api/auth/me")).json().csrf).not.toBe(csrf);
+  expect((await request(a, "/api/auth/me")).json().csrf).toBe(csrf);
+  for (const tab of tabs) {
+    const saved = await request(
+      { ...a, csrf: tab.json().csrf },
+      "/api/application-drafts",
+      "POST",
+      { capacity: "INDIVIDUAL" },
+    );
+    expect(saved.statusCode).toBe(201);
+  }
+  expect(
+    (
+      await request(a, "/api/application-drafts", "POST", {
+        capacity: "INDIVIDUAL",
+      })
+    ).statusCode,
+  ).toBe(403);
+  expect(
+    (
+      await request({ ...b, csrf }, "/api/application-drafts", "POST", {
+        capacity: "INDIVIDUAL",
+      })
+    ).statusCode,
+  ).toBe(403);
+});
+
 it("does not register synthetic endpoints in production and preserves the request limit", async () => {
   const previousMode = process.env.NODE_ENV;
   let productionApp: FastifyInstance | undefined;
