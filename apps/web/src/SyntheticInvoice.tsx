@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, malaysiaTime } from "./api";
+import {
+  SyntheticFeedback,
+  SyntheticLoadError,
+  syntheticErrorMessage,
+  type ActionFeedback,
+} from "./synthetic-portal-ui";
 
 type Invoice = {
   id: string;
   unitCount: number;
   amountSen: number;
   currency: "MYR";
+  expiresAt: number;
   status: "ISSUED" | "SETTLED" | "EXPIRED";
   providerReference: string | null;
 };
@@ -35,20 +42,26 @@ export function SyntheticInvoice({
     retry: false,
   });
   const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState("");
-  if (!query.data || query.isError) return null;
+  const [message, setMessage] = useState<ActionFeedback | null>(null);
+  if (query.isError)
+    return (
+      <SyntheticLoadError
+        title="Invois tiruan"
+        error={query.error}
+        retry={() => void query.refetch()}
+      />
+    );
+  if (!query.data) return <p role="status">Memuatkan invois latihan…</p>;
   const invoice = query.data.invoice;
   if (!invoice && !manage) return null;
 
   async function next(action: "ISSUE" | "SIMULATE_SETTLEMENT") {
     setPending(true);
-    setMessage("");
+    setMessage(null);
     try {
       await api(path, "POST", { action });
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Tindakan invois gagal.",
-      );
+      setMessage({ text: syntheticErrorMessage(error), error: true });
     } finally {
       await query.refetch();
       setPending(false);
@@ -56,7 +69,11 @@ export function SyntheticInvoice({
   }
 
   return (
-    <section aria-label="Invois tiruan" className="panel">
+    <section
+      aria-label="Invois tiruan"
+      className="panel synthetic-panel"
+      aria-busy={pending}
+    >
       <h4>Invois tiruan</h4>
       {invoice ? (
         <>
@@ -64,7 +81,15 @@ export function SyntheticInvoice({
             {invoice.unitCount} unit fizikal × RM50 ·{" "}
             {ringgit.format(invoice.amountSen / 100)}
           </p>
-          <p>{titles[invoice.status]}</p>
+          <p className="synthetic-status" role="status">
+            {titles[invoice.status]}
+          </p>
+          {invoice.status === "ISSUED" && (
+            <p>
+              Tamat tempoh{" "}
+              {malaysiaTime(new Date(invoice.expiresAt).toISOString())} (MYT)
+            </p>
+          )}
           {invoice.providerReference && (
             <p>
               Rujukan tiruan <code>{invoice.providerReference}</code>
@@ -95,7 +120,7 @@ export function SyntheticInvoice({
           Rekonsiliasi tiruan
         </button>
       )}
-      {message && <p role="status">{message}</p>}
+      <SyntheticFeedback feedback={message} />
     </section>
   );
 }

@@ -44,7 +44,7 @@ import {
   registerSchema,
   safeApplicantReturnPath,
 } from "../../../packages/shared/src/index";
-import Dashboard from "./Dashboard";
+const Dashboard = React.lazy(() => import("./Dashboard"));
 import ApplicationDraft from "./ApplicationDraft";
 const Premises = React.lazy(() => import("./Premises"));
 const Floors = React.lazy(() => import("./Floors"));
@@ -939,7 +939,14 @@ function App() {
           <Route path="/log-masuk" element={<Auth mode="login" />} />
           <Route path="/pulih-akaun" element={<Auth mode="recover" />} />
           <Route path="/aktifkan" element={<Auth mode="activate" />} />
-          <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route
+            path="/dashboard/*"
+            element={
+              <React.Suspense fallback={<Loading />}>
+                <Dashboard />
+              </React.Suspense>
+            }
+          />
           <Route path="/permohonan/baharu" element={<ApplicationDraft />} />
           <Route path="/permohonan/draf/:id" element={<ApplicationDraft />} />
           <Route
