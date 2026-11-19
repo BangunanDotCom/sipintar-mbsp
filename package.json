@@ -22,6 +22,7 @@
     "admin:bootstrap": "tsx scripts/bootstrap.ts",
     "mail:retry": "tsx scripts/retry-email.ts",
     "documents:scan": "tsx scripts/scan-documents.ts",
+    "db:uat-demo": "tsx scripts/synthetic-uat-demo.ts",
     "db:demo": "tsx scripts/demo.ts",
     "db:test:migrate": "tsx scripts/migrate.ts --test",
     "format": "prettier --write apps packages scripts tests prisma/*.ts *.ts *.js *.json",

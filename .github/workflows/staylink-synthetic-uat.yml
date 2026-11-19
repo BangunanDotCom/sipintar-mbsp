@@ -1,0 +1,121 @@
+name: STAYLink synthetic portal UAT
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'issue-36-uat-ict-readiness'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staylink-synthetic-uat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx vitest run --exclude tests/api.test.ts
+      - run: npm run build
+      - run: npm audit
+
+  integrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [api, browser]
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue36_${{ matrix.suite }}_test
+      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue36_${{ matrix.suite }}_test
+      APP_ORIGIN: http://localhost:5173
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      STAYLINK_DOCUMENT_STORE: disabled
+      STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED: 'false'
+      STAYLINK_CLAMAV_ENABLED: 'false'
+      STAYLINK_SYNTHETIC_PORTAL: 'true'
+      STAYLINK_SYNTHETIC_DISTRICT: SPU
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: staylink_fixture
+          POSTGRES_PASSWORD: staylink_fixture
+          POSTGRES_DB: staylink_issue36_${{ matrix.suite }}_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U staylink_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+          - 8025:8025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Generate isolated fixture keys and officer identifiers
+        run: |
+          set -euo pipefail
+          for key in MFA_ENCRYPTION_KEY IDENTITY_DATA_KEY STAYLINK_SYNTHETIC_CALLBACK_KEY; do
+            value=$(openssl rand -hex 32)
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+          done
+          for key in STAYLINK_SYNTHETIC_PIC_ID STAYLINK_SYNTHETIC_SUPERVISOR_ID; do
+            printf '%s=%s\n' "$key" "$(node -p 'crypto.randomUUID()')" >> "$GITHUB_ENV"
+          done
+      - name: Wait for isolated Mailpit
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8025/api/v1/messages >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: npm run db:test:migrate
+      - run: npm run db:seed
+      - name: Run PostgreSQL API integration tests
+        if: matrix.suite == 'api'
+        run: npx vitest run tests/api.test.ts
+      - name: Install Playwright Chromium
+        if: matrix.suite == 'browser'
+        run: npx playwright install --with-deps chromium
+      - name: Run integrated browser UAT
+        if: matrix.suite == 'browser'
+        shell: bash
+        env:
+          NODE_ENV: development
+        run: |
+          set -euo pipefail
+          npx concurrently -k 'npm:dev:api' 'vite --config apps/web/vite.config.ts --host 127.0.0.1 --strictPort' &
+          server=$!
+          trap 'kill -TERM "$server" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5173/api/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5173/api/health >/dev/null
+          npm run test:e2e
