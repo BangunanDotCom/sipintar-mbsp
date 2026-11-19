@@ -322,6 +322,7 @@ model ApplicationPremises {
 }
 
 model PremiseFloor {
+ documentScopes DraftDocumentScope[]
  unitLinks PremiseUnitFloor[]
  id String @id @default(uuid())
  draftId String
@@ -343,6 +344,7 @@ model PremiseFloor {
 }
 
 model PremiseUnit {
+ documentScopes DraftDocumentScope[]
  id String @id @default(uuid())
  premiseId String
  draftId String
@@ -371,6 +373,7 @@ model PremiseUnitFloor {
 
 // Metadata only. Object bytes must remain in private, malware-scanned storage.
 model ApplicationDocument {
+ scope DraftDocumentScope?
  id String @id @default(uuid())
  draftId String
  draft ApplicationDraft @relation(fields:[draftId], references:[id], onDelete: Cascade)
@@ -393,5 +396,21 @@ model ApplicationDocument {
  @@unique([draftId, category, version])
  @@index([draftId, category, uploadedAt])
  @@index([scanStatus, scanLeaseExpiresAt])
+ @@unique([id, draftId], map: "application_documents_id_draft_unique")
  @@map("application_documents")
+}
+
+
+model DraftDocumentScope {
+ documentId String @id
+ draftId String
+ unitId String?
+ floorId String?
+ document ApplicationDocument @relation(fields: [documentId, draftId], references: [id, draftId], onDelete: Cascade, map: "draft_document_scopes_document_fkey")
+ unit PremiseUnit? @relation(fields: [unitId, draftId], references: [id, draftId], onDelete: Restrict, map: "draft_document_scopes_unit_fkey")
+ floor PremiseFloor? @relation(fields: [floorId, draftId], references: [id, draftId], onDelete: Restrict, map: "draft_document_scopes_floor_fkey")
+ @@unique([documentId, draftId], map: "draft_document_scopes_document_unique")
+ @@index([unitId, draftId], map: "draft_document_scopes_unit_idx")
+ @@index([floorId, draftId], map: "draft_document_scopes_floor_idx")
+ @@map("draft_document_scopes")
 }

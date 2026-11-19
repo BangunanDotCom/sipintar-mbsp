@@ -86,6 +86,9 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
         where: { draftId: id, floorId: { notIn: ids } }, select: { floorId: true },
       });
       if (linked) fail(409, "Buang pautan unit sebelum membuang tingkat.");
+      if (await tx.draftDocumentScope.findFirst({
+        where: { draftId: id, floorId: { notIn: ids, not: null } }, select: { documentId: true },
+      })) fail(409, "Alihkan pautan bukti dokumen sebelum membuang rekod ini.");
       await tx.premiseFloor.deleteMany({
         where: { draftId: id, id: { notIn: ids } },
       });
