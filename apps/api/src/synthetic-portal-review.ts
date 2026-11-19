@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authorize, fail } from "./auth.js";
@@ -240,24 +240,94 @@ export async function lockSyntheticReview(
   return loadSyntheticReview(tx, row);
 }
 
+const reviewPageSize = 20;
+const reviewQuery = z.strictObject({
+  view: z.enum(["all", "action"]).default("all"),
+  cursor: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .max(128)
+    .optional(),
+});
+const cursorSchema = z.tuple([z.iso.datetime().max(32), uuid]);
+
+function readCursor(input: string | undefined) {
+  if (!input) return null;
+  try {
+    return cursorSchema.parse(
+      JSON.parse(Buffer.from(input, "base64url").toString("utf8")),
+    );
+  } catch {
+    fail(400, "Kedudukan halaman tidak sah. Buka halaman pertama.");
+  }
+}
+
+async function findReviewPage(
+  tx: Prisma.TransactionClient,
+  officer: ReviewOfficer,
+  input: z.infer<typeof reviewQuery>,
+) {
+  const cursor = readCursor(input.cursor);
+  const range = cursor
+    ? Prisma.sql`AND (s."createdAt", s.id) < (${cursor[0]}::timestamptz, ${cursor[1]}::text)`
+    : Prisma.empty;
+  const event = (kinds: string[]) => Prisma.sql`EXISTS (
+    SELECT 1 FROM audit_logs a
+    WHERE a.target = s.id AND a.outcome = 'SUCCESS' AND a.action IN (${Prisma.join(kinds)})
+  )`;
+  const filter =
+    input.view === "all"
+      ? Prisma.empty
+      : officer.role === "PIC_KAWASAN"
+        ? Prisma.sql`AND NOT ${event(actions)}`
+        : Prisma.sql`AND ${event([completeAction])} AND NOT ${event([registerAction, correctionAction])}`;
+  // Apply district, assignment context and live company eligibility before
+  // the page limit. A revoked case cannot fill the page or leak a cursor.
+  return tx.$queryRaw<(Submission & { cursorTime: string })[]>`
+    SELECT s.id, s."draftId", s."actorId", s.snapshot,
+      to_char(s."createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursorTime"
+    FROM synthetic_submissions s
+    WHERE s.snapshot->>'districtId' = ${officer.district}
+      AND s."actorId" <> ${officer.operator.userId}
+      AND NOT EXISTS (
+        SELECT 1 FROM synthetic_submissions next
+        WHERE next."draftId" = s."draftId" AND next."previousId" = s.id
+      )
+      AND (
+        (s.snapshot->>'capacity' = 'INDIVIDUAL' AND s.snapshot->'companyId' = 'null'::jsonb)
+        OR (s.snapshot->>'capacity' = 'COMPANY' AND EXISTS (
+          SELECT 1 FROM company_representatives r
+          JOIN companies company ON company.id = r."companyId"
+          WHERE r."userId" = s."actorId" AND r."companyId" = s.snapshot->>'companyId'
+            AND company.status = 'ACTIVE' AND r.status = 'VERIFIED'
+            AND r."startsAt" <= now() AND (r."endsAt" IS NULL OR r."endsAt" > now())
+        ))
+      )
+      ${range}
+      ${filter}
+    ORDER BY s."createdAt" DESC, s.id DESC
+    LIMIT ${reviewPageSize + 1}
+  `;
+}
+
 export async function syntheticReviewRoutes(portal: FastifyInstance) {
   portal.get("/reviews", async (req) => {
     const officer = await syntheticReviewOfficer(req);
+    const input = reviewQuery.parse(req.query);
     return db.$transaction(
       async (tx) => {
         await lockSyntheticOfficer(tx, officer);
-        const rows = await tx.syntheticSubmission.findMany({
-          where: {
-            correction: null,
-            actorId: { not: officer.operator.userId },
-            snapshot: { path: ["districtId"], equals: officer.district },
-          },
-          select: { id: true, draftId: true, actorId: true, snapshot: true },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 50,
-        });
+        const rows = await findReviewPage(tx, officer, input);
+        const page = rows.slice(0, reviewPageSize);
+        const last = page.at(-1);
+        const nextCursor =
+          last && rows.length > reviewPageSize
+            ? Buffer.from(JSON.stringify([last.cursorTime, last.id])).toString(
+                "base64url",
+              )
+            : null;
         const authorized: Submission[] = [];
-        for (const row of rows) {
+        for (const row of page) {
           try {
             await requireSyntheticSnapshotAuthority(tx, row);
             authorized.push(row);
@@ -294,6 +364,7 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
         return {
           role: officer.role,
           district: officer.district,
+          nextCursor,
           reviews: reviews.map(({ state, snapshot, correctionReason }) => {
             const evidence = eligibleEvidence(
               state.caseId,

@@ -19,7 +19,9 @@ export function syntheticErrorMessage(error: unknown) {
   if (!(error instanceof ApiError) || error.status >= 500)
     return "Perkhidmatan latihan tidak dapat dimuatkan. Cuba lagi.";
   if (error.status === 429)
-    return "Had permintaan dicapai. Tunggu sebentar sebelum mencuba lagi.";
+    return error.retryAfterSeconds
+      ? `Had permintaan dicapai. Cuba lagi dalam ${error.retryAfterSeconds} saat.`
+      : "Had permintaan dicapai. Tunggu sebentar sebelum mencuba lagi.";
   if (error.status === 409) return `${error.message} Semak maklumat terkini.`;
   return error.message;
 }

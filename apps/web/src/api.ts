@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -42,12 +43,28 @@ async function request(path: string, method: string, body?: unknown) {
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await r.json();
-  if (!r.ok)
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    if (r.ok) throw new ApiError("Respons perkhidmatan tidak sah.", 502);
+  }
+  if (!r.ok) {
+    const retryHeader = r.headers.get("retry-after");
+    const retryAfter =
+      retryHeader && /^\d+$/.test(retryHeader)
+        ? Number(retryHeader)
+        : undefined;
     throw new ApiError(
-      data.message || "Perkhidmatan tidak tersedia.",
+      typeof data?.message === "string" && data.message.trim()
+        ? data.message
+        : "Perkhidmatan tidak tersedia.",
       r.status,
+      retryAfter !== undefined && Number.isSafeInteger(retryAfter)
+        ? retryAfter
+        : undefined,
     );
+  }
   return data;
 }
 export const malaysiaTime = (date: string) =>

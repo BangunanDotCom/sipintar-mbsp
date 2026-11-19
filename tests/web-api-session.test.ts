@@ -61,3 +61,26 @@ it("waits for an in-flight mutation and does not replay a rejected write", async
   expect(fetch).toHaveBeenCalledTimes(3);
   expect(fetch.mock.calls[2][0]).toBe("/api/auth/me");
 });
+
+it("preserves status and retry guidance when a gateway returns a non-JSON response", async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      new Response("gateway message", {
+        status: 429,
+        headers: { "Retry-After": "12" },
+      }),
+    )
+    .mockResolvedValueOnce(new Response("unexpected HTML", { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  const { api } = await import("../apps/web/src/api");
+  await expect(api("/synthetic-portal/reviews")).rejects.toMatchObject({
+    status: 429,
+    retryAfterSeconds: 12,
+    message: "Perkhidmatan tidak tersedia.",
+  });
+  await expect(api("/synthetic-portal/reviews")).rejects.toMatchObject({
+    status: 502,
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
