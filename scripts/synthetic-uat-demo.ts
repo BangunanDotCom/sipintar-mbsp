@@ -11,9 +11,9 @@ import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate.j
 
 async function prepareDemo() {
   const expected = syntheticPortalDatabase();
-  if (!expected || !/^staylink_issue(?:36|40)_/.test(expected))
+  if (!expected || !/^staylink_issue(?:36|40|45)_/.test(expected))
     throw Error(
-      "Gunakan PostgreSQL loopback staylink_issue36_<label>_test atau staylink_issue40_<label>_test dengan opt-in portal sintetik.",
+      "Gunakan PostgreSQL loopback staylink_issue36_<label>_test atau staylink_issue45_<label>_test dengan opt-in portal sintetik.",
     );
   const [actual] = await db.$queryRaw<
     { name: string }[]

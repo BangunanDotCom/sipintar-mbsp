@@ -1,3 +1,4 @@
+import { syntheticDocumentFacts } from "./synthetic-owner-policy.js";
 import {
   lockSyntheticPortalSession,
   type ObservedPortalSession,
@@ -30,6 +31,7 @@ export type SyntheticPolicy = {
   declarationVersion: string;
   documents: unknown;
   correctionFor?: string;
+  owner?: { version: string; fingerprint: string };
 };
 
 function assertSandbox() {
@@ -86,6 +88,16 @@ export async function captureSyntheticSubmission(
       where: { draftId_key: { draftId: draft.id, key: input.key } },
     });
     if (prior) {
+      const savedPolicy = z
+        .object({ policyFingerprint: z.string().optional() })
+        .safeParse(prior.snapshot);
+      if (
+        policy.owner &&
+        savedPolicy.success &&
+        savedPolicy.data.policyFingerprint &&
+        savedPolicy.data.policyFingerprint !== policy.owner.fingerprint
+      )
+        fail(409, "Serahan latihan ini menggunakan polisi terdahulu.");
       if (syntheticPortalDatabase())
         await requireSyntheticSnapshotAuthority(tx, prior);
       if (
@@ -146,6 +158,10 @@ export async function captureSyntheticSubmission(
           companyId: draft.companyId,
           premisesId: premises.id,
           buildingType: premises.buildingType,
+          ...(policy.owner && {
+            ownerPolicyVersion: policy.owner.version,
+            policyFingerprint: policy.owner.fingerprint,
+          }),
           districtId: premises.districtId,
           representativeId: authority?.id ?? null,
           authorityType: authority?.authorityType ?? null,
@@ -190,6 +206,10 @@ export async function captureSyntheticSubmission(
         metadata: {
           draftVersion: row.draftVersion,
           previousId: input.previousId,
+          ...(policy.owner && {
+            ownerPolicyVersion: policy.owner.version,
+            policyFingerprint: policy.owner.fingerprint,
+          }),
         },
       },
     });
@@ -317,7 +337,10 @@ export async function loadSyntheticReadiness(
   const readiness = evaluateDocumentPolicy(policy.documents, {
     capacity,
     premiseType: premises.buildingType,
-    facts: {},
+    facts: syntheticDocumentFacts(
+      premises.units.length,
+      premises.certificateType,
+    ),
     targets: {
       DRAFT: [draft.id],
       UNIT: premises.units.map(({ id }) => id),
