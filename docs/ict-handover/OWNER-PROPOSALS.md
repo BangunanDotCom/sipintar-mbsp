@@ -18,3 +18,53 @@ Dokumen untuk semakan Jabatan Bangunan, ICT, Unit Rekod dan Kewangan. Semua bari
 Bagi setiap ID, catat pilihan diterima, ditolak atau dikembalikan, sebab, versi dasar, pelulus dan kuasanya, tarikh kuat kuasa MYT, rujukan minit/SOP, pemilik pelaksanaan, bukti UAT, pelan undur dan semakan bebas. Laluan rasmi memerlukan rekod dasar serta kuasa yang sah, pengesahan manusia dan kelulusan pengaktifan. Konfigurasi latihan tiada medan untuk mengisytiharkan kelulusan tersebut.
 
 **Jabatan Bangunan** semak MBSP-01 hingga MBSP-04 dan MBSP-08. **ICT** mengesahkan sempadan test/dev, pengasingan, pengoperasian keselamatan dan pemulihan. **Unit Rekod** meluluskan jadual rekod, tahanan dan pelupusan. **Kewangan** meluluskan unit bercaj, model lejar, sandbox dan tindakan pembatalan/refund. [Laporan pra-staging dan UAT](PRESTAGING-ASSURANCE.md)
+
+## Konfigurasi sintetik dan bukti kawalan
+
+`STAYLINK_SYNTHETIC_POLICY_JSON` dibaca ketika API bermula selepas gerbang `STAYLINK_SYNTHETIC_PORTAL=true` dan syarat URL PostgreSQL loopback lulus. Pangkalan data Issue #45 dinamakan `staylink_issue45_<label>_test`. Kedua-dua URL mestilah sama dan nama sambungan sebenar diperiksa sebelum laluan didaftarkan. Tanpa opt-in, laluan latihan tiada. Jika JSON diberikan dan gagal semakan, portal latihan ditutup dan aplikasi sedia ada terus beroperasi. Gunakan konfigurasi persekitaran sendiri. Kecualikan kunci dan kelayakan daripada JSON dan repositori.
+
+Jika JSON tidak ditetapkan, portal yang telah diopt-in menggunakan fixture terdahulu untuk keserasian regresi. Berikut contoh konfigurasi untuk latihan bacaan bukti serta serahan sahaja.
+
+```json
+{
+  "mode": "SYNTHETIC",
+  "version": "SYNTHETIC-MBSP-MEETING-v1",
+  "documents": {
+    "version": "SYNTHETIC-DOCUMENTS-v1",
+    "rules": [
+      {
+        "requirement": "layout",
+        "scope": "FLOOR",
+        "alternatives": ["floor_layout"],
+        "requireVerified": false
+      },
+      {
+        "requirement": "property-permission",
+        "capacity": "INDIVIDUAL",
+        "premiseType": "SHOP",
+        "condition": "multipleUnits",
+        "scope": "UNIT",
+        "alternatives": ["ownership_or_tenancy"],
+        "requireVerified": false
+      }
+    ]
+  },
+  "declaration": {
+    "version": "SYNTHETIC-DECLARATION-v1",
+    "text": "Saya mengesahkan data latihan ini untuk simulasi STAYLink MBSP."
+  },
+  "review": { "enabled": false, "assignment": "DISTRICT_FIXTURE" },
+  "reference": { "strategy": "SYNTHETIC_UUID" },
+  "records": { "mode": "DISABLED" },
+  "security": { "mode": "ENFORCED" },
+  "billing": { "mode": "DISABLED" }
+}
+```
+
+- Naikkan versi setiap kali kandungan ditukar. API turut membandingkan SHA-256 konfigurasi efektif. Dengan konfigurasi tersuai, pemohon mesti menghantar `policyFingerprint` daripada DTO draf yang mengandungi akuan semasa. Dua teks dengan versi yang sama tetap mempunyai cap jari berbeza. Snapshot dan audit serahan merekodkan versi dan cap jari. Resit terdahulu kekal immutable.
+- Syarat yang disokong datang daripada inventori server. `multipleUnits` mengira unit fizikal. `hasBuildingCertificate` menggunakan jenis CCC/CFO/OC atau keputusan `NOT_APPLICABLE`. Fakta tidak diketahui, syarat bertindih, ketiadaan peraturan yang sesuai dan skop tiada menyekat tindakan. `premiseType` sepadan tepat dengan jenis bangunan tersimpan.
+- Bukti fixture dijana sebagai metadata bagi kategori pertama setiap peraturan yang sesuai dan dipaut kepada sasaran sebenar dalam draf. Alternatif yang layak masih dinilai. Semakan CLEAN wajib dan keperluan VERIFIED tambahan dikuatkuasakan. Generasi fixture hanya mengesahkan bukti kuasa syarikat apabila kuasa wakil sedia ada telah disahkan. Jenis bukti lain kekal belum disahkan.
+- Untuk latihan pegawai, tetapkan `review.enabled=true` bersama dua pelantikan daerah sintetik. Untuk latihan invois, gunakan `billing={"mode":"MOCK","currency":"MYR","unitFeeSen":5000,"ttlMinutes":60}` bersama semakan pegawai aktif dan kunci callback latihan. Tempoh dibenarkan 5–120 minit dan dikunci pada invois apabila dijana. SDK pembekal dan pembayaran sebenar tiada dalam konfigurasi ini.
+- Tiada generator nombor rasmi, adapter storan rasmi, enjin retensi, peluasan matriks kuasa atau pelepasan MFA daripada konfigurasi latihan. Laluan serahan rasmi masih mengembalikan konflik. Sebarang reka bentuk operasi selepas keputusan perlu mengikat versi dasar, bukti kuasa, pengesahan manusia, jejak audit dan gerbang pengaktifan secara berasingan.
+
+Regresi merangkumi JSON dan mod tidak sah, bukti khusus premis/unit, syarat tidak terpakai, versi akuan berubah, penyerahan ulang, gerbang pegawai dan callback tertutup, serta ujian aliran penuh fixture terdahulu. Workflow sintetik turut menjalankan latihan pemulihan Issue #45. [Skrip UAT dan gerbang keselamatan](PRESTAGING-ASSURANCE.md)
