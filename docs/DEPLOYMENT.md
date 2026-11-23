@@ -2,6 +2,8 @@
 
 Tiada deployment produksi dilakukan. Docker bukan syarat produksi dan Linux tidak diandaikan sebagai platform MBSP.
 
+Untuk hos latihan terasing, gunakan [pakej Demo Release 1.0](../deploy/demo/README.md) dengan profil runtime sintetik dan Mailpit loopback.
+
 ## Binaan dan runtime
 
 `npm run build` menghasilkan `apps/web/dist`. Sajikan fail ini menggunakan pelayan statik yang diluluskan, dengan fallback semua laluan React kepada `index.html`. Proksi `/api/*` kepada Fastify pada `127.0.0.1:3001`, mengekalkan HTTP method, cookie, origin dan header CSRF. Jangan guna Vite dev server untuk produksi.

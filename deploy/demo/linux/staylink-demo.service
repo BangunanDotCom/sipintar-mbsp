@@ -1,0 +1,22 @@
+# Template only. Use versioned release path and an approved unprivileged service account.
+[Unit]
+Description=STAYLink MBSP isolated demo API
+After=network.target
+
+[Service]
+Type=simple
+User=staylink-demo
+Group=staylink-demo
+WorkingDirectory=/srv/staylink-demo/current
+ExecStartPre=/usr/bin/node --env-file=/etc/staylink-demo/demo.env --env-file=/etc/staylink-demo/portal.env scripts/demo-host-readiness.mjs
+ExecStart=/usr/bin/node --env-file=/etc/staylink-demo/demo.env --env-file=/etc/staylink-demo/portal.env --import=tsx apps/api/src/index.ts
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

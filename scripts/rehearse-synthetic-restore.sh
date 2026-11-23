@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 if [[ $# != 4 ]] || [[ ! "$1" =~ ^[a-zA-Z0-9_.-]+$ ]] || [[ ! "$2" =~ ^[a-zA-Z0-9_]+$ ]] ||
-   [[ ! "$3" =~ ^staylink_issue(40|45|49|54|58)_[a-z0-9_]+_test$ ]] || [[ ! "$4" =~ ^staylink_issue(40|45|49|54|58)_restore[a-z0-9_]*_test$ ]] ||
+   [[ ! "$3" =~ ^staylink_issue(40|45|49|54|58|62)_[a-z0-9_]+_test$ ]] || [[ ! "$4" =~ ^staylink_issue(40|45|49|54|58|62)_restore[a-z0-9_]*_test$ ]] ||
    [[ "$3" == "$4" ]] || [[ "${3:0:16}" != "${4:0:16}" ]]; then
   echo "Usage: $0 <test-container> <fixture-role> <synthetic-source-test-db> <same-issue-empty-restore-test-db>" >&2
   exit 2

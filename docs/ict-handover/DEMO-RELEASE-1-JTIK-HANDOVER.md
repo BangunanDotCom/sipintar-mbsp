@@ -39,6 +39,37 @@ Fasilitator memainkan peranan pemohon individu/syarikat, PIC dan PPSK menggunaka
 
 
 ## Pemeriksaan konfigurasi statik (dibangunkan pada Issue #62)
-Skrip `node scripts/demo-host-readiness.mjs` ialah pemeriksaan **baca sahaja** untuk mod demo; ia tidak membuat sambungan pangkalan data, migrasi, pemasangan atau deployment dan tidak mencetak nilai rahsia. Jalankan selepas menetapkan environment latihan yang diluluskan (jangan commit fail `.env`). Skrip memeriksa synthetic portal gate, SMTP Mailpit loopback, storan dokumen dimatikan, URL DB `_test` pada loopback, kunci berasingan dan APP_ORIGIN HTTPS bagi bukan loopback. Status `READY_FOR_TECHNICAL_REVIEW` **bukan** kelulusan pemasangan; `CHECK` bermaksud artifak binaan/dependencies belum lengkap, `BLOCKED` bermaksud konfigurasi berisiko.
+Skrip `node scripts/demo-host-readiness.mjs --prepare` memeriksa konfigurasi statik sebelum kit dijana. Jalankan tanpa `--prepare` selepas menetapkan pemboleh ubah daripada kit. Kedua-dua mod mengembalikan kod gagal bagi konfigurasi tidak selamat atau artifak tidak lengkap. Pemeriksaan mengesahkan origin HTTPS tepat, opt-in demo, loopback, nama DB khusus Issue #62, tetapan Mailpit dan kunci berasingan. `npm run uat:preflight` mengesahkan perkhidmatan dan fixture secara baca sahaja.
 
-**Had:** pemeriksaan ini sengaja menghendaki DB loopback dan SMTP Mailpit loopback. Untuk pelayan MBSP dengan DB latihan di host berasingan, JTIK perlu menilai dan meluluskan model rangkaian serta pemeriksaan yang sesuai sebelum mengubah syarat ini. Jangan memintas pemeriksaan dengan menggunakan alamat atau data produksi. Pelaksanaan skrip dan CI masih perlu dibuktikan pada checkout kerja.
+
+## Pakej hos dan aliran latihan
+
+Gunakan [pakej pemasangan Demo Release 1.0](../../deploy/demo/README.md) untuk konfigurasi Linux/Nginx atau Windows Server/IIS. Pakej menyediakan gerbang runtime demo, templat tanpa rahsia, arahan membaca sahaja sebelum pemasangan dan langkah operasi/pemulihan. Ujian Nginx/TLS menggunakan hos loopback sementara. Templat IIS dan ACL perlu dibuktikan pada platform yang dipilih JTIK.
+
+| Fungsi | Skop demonstrasi |
+| --- | --- |
+| Pendaftaran dan log masuk | Daftar hanya dengan `@example.test`, aktifkan melalui Mailpit tempatan. Log masuk ke peranan kit dengan kata laluan unik. |
+| Akaun individu, wakil, PIC, PPSK, pentadbir | Enam akaun kit berasingan termasuk PIC SPT untuk semakan pengasingan. Akaun pegawai termasuk pentadbir menggunakan MFA. Pentadbir menunjukkan pengurusan akaun/pelantikan melalui kebenaran sedia ada. |
+| Permohonan dan bukti | Simpan draf, unit, tingkat dan akuan latihan. Jana bukti metadata CLEAN/FAILED melalui panel latihan. Ujian binary berjalan hanya dalam suite kuarantin lokal berasingan. Muat naik fail binary dan storan operasi pada hos demo kekal tertutup. |
+| Nasihat AI dan keputusan | Nasihat berasaskan fixture, semakan pegawai mandatori, pembetulan, serahan semula dan banding snapshot. PIC mengesahkan lengkap. PPSK berasingan mendaftar dengan rujukan sintetik. |
+| Status, notifikasi dan invois | Status di panel pemohon. Notifikasi dalam aplikasi bagi pembetulan, kelengkapan dan pendaftaran. Invois dan rekonsiliasi tiruan menggunakan RM50 bagi setiap UUID fizikal unik. |
+| Akaun rasmi dan operasi | SSO, keputusan rasmi, rekod operasi, storan dokumen dan MBSPPay menunggu keputusan pemilik serta kelulusan lain. |
+
+### Langkah ringkas peserta
+
+1. Gunakan profil pelayar berasingan dan akaun yang ditetapkan oleh fasilitator. Pengendali membaca kelayakan daripada kit privat serta menyediakan akses MFA. Jangan edarkan kit, rahsia atau tangkap layar masuk.
+2. Ikut urutan [enam senario dan skrip 25 minit](GUIDED-INTERNAL-UAT.md#skrip-teras-25-minit). Pada profil wakil, buka `company-active` dan `company-expired`. Dalam profil pentadbir, sahkan MFA, semak senarai pengguna dan pelantikan latihan. Gunakan DB baharu untuk sesi baharu.
+3. Isi [laporan maklum balas dan triage](UAT-FEEDBACK-TRIAGE.md) serta [senarai semak penerimaan](GUIDED-UAT-ACCEPTANCE.md). Catat SHA, masa MYT, peranan, PASS/FAIL/BLOCKED dan rujukan bukti. Rekod penerimaan bertandatangan hanya selepas sesi pegawai.
+
+### Keputusan JTIK dan penerimaan
+
+| Gerbang | Bukti yang diperlukan | Pemegang keputusan |
+| --- | --- | --- |
+| Kod siap untuk semakan | Commit, templat, hasil CI, had demo dan senarai risiko | Penyemak teknikal |
+| Pemasangan hos latihan | OS dan versi, akaun servis, TLS/DNS, rangkaian/VPN, sempadan log/rahsia/peta, sandaran dan ujian hos terpilih | JTIK |
+| UAT Jabatan Bangunan | Sesi pegawai, keputusan senario, pengesahan mudah alih dan rekod penutupan isu | Fasilitator dan pemegang kuasa Jabatan Bangunan |
+| Pengaktifan operasi | MBSP-01 hingga MBSP-08, rekod kelulusan sistem, kawalan dan penerimaan risiko | JTIK dan pemilik proses berkaitan |
+
+| SHA dan tarikh MYT | Hos / pelayar | Keputusan | Rujukan bukti / minit | Pelulus dan kuasa |
+| --- | --- | --- | --- | --- |
+| | | | | |
