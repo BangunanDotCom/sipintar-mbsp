@@ -221,12 +221,15 @@ export async function lockSyntheticReview(
   tx: Prisma.TransactionClient,
   id: string,
   officer: ReviewOfficer,
+  options: { forWrite: boolean } = { forWrite: true },
 ) {
   await lockSyntheticOfficer(tx, officer);
   // One lock per immutable submission serializes review and billing state writes.
-  await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id}
-    AND snapshot->>'districtId' = ${officer.district} AND "actorId" <> ${officer.operator.userId}
-    FOR UPDATE`;
+  if (options.forWrite) {
+    await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id}
+      AND snapshot->>'districtId' = ${officer.district} AND "actorId" <> ${officer.operator.userId}
+      FOR UPDATE`;
+  }
   const row = await tx.syntheticSubmission.findFirst({
     where: {
       id,
@@ -237,12 +240,31 @@ export async function lockSyntheticReview(
   if (!row || row.actorId === officer.operator.userId)
     fail(404, "Tugasan sintetik tidak ditemui.");
   await requireSyntheticSnapshotAuthority(tx, row);
-  return loadSyntheticReview(tx, row);
+  return {
+    ...(await loadSyntheticReview(tx, row)),
+    previousId: row.previousId,
+    draftVersion: row.draftVersion,
+    policyVersion: row.policyVersion,
+  };
 }
 
 const reviewPageSize = 20;
 const reviewQuery = z.strictObject({
-  view: z.enum(["all", "action"]).default("all"),
+  view: z
+    .enum([
+      "all",
+      "action",
+      "submitted",
+      "correction",
+      "complete",
+      "registered",
+    ])
+    .default("all"),
+  search: z
+    .string()
+    .trim()
+    .regex(/^(?:SYNTHETIC-)?[0-9a-f]{4}[0-9a-f-]{0,32}$/i)
+    .optional(),
   cursor: z
     .string()
     .regex(/^[A-Za-z0-9_-]+$/)
@@ -275,12 +297,23 @@ async function findReviewPage(
     SELECT 1 FROM audit_logs a
     WHERE a.target = s.id AND a.outcome = 'SUCCESS' AND a.action IN (${Prisma.join(kinds)})
   )`;
-  const filter =
-    input.view === "all"
-      ? Prisma.empty
-      : officer.role === "PIC_KAWASAN"
-        ? Prisma.sql`AND NOT ${event(actions)}`
-        : Prisma.sql`AND ${event([completeAction])} AND NOT ${event([registerAction, correctionAction])}`;
+  const submitted = Prisma.sql`AND NOT ${event(actions)}`;
+  const awaitingRegistration = Prisma.sql`AND ${event([completeAction])} AND NOT ${event([registerAction, correctionAction])}`;
+  const filter = {
+    all: Prisma.empty,
+    action: officer.role === "PIC_KAWASAN" ? submitted : awaitingRegistration,
+    submitted,
+    correction: Prisma.sql`AND ${event([correctionAction])}`,
+    complete: awaitingRegistration,
+    registered: Prisma.sql`AND ${event([registerAction])}`,
+  }[input.view];
+  const search = input.search?.toLowerCase();
+  const prefix = search?.replace(/^synthetic-/, "");
+  const matches = !prefix
+    ? Prisma.empty
+    : search?.startsWith("synthetic-")
+      ? Prisma.sql`AND s."draftId" LIKE ${prefix + "%"} AND ${event([registerAction])}`
+      : Prisma.sql`AND s.id LIKE ${prefix + "%"}`;
   // Apply district, assignment context and live company eligibility before
   // the page limit. A revoked case cannot fill the page or leak a cursor.
   return tx.$queryRaw<(Submission & { cursorTime: string })[]>`
@@ -305,9 +338,50 @@ async function findReviewPage(
       )
       ${range}
       ${filter}
+      ${matches}
     ORDER BY s."createdAt" DESC, s.id DESC
     LIMIT ${reviewPageSize + 1}
   `;
+}
+
+function comparisonSummary(
+  snapshot: z.infer<typeof snapshotSchema>,
+  draftVersion: number,
+  policyVersion: string,
+) {
+  return {
+    draftVersion,
+    policyVersion,
+    floorCount: snapshot.floors.length,
+    unitCount: snapshot.units.length,
+    evidenceCount: snapshot.evidence.length,
+  };
+}
+
+function compareUnits(
+  previous: z.infer<typeof snapshotSchema>["units"],
+  current: z.infer<typeof snapshotSchema>["units"],
+) {
+  const before = new Map(previous.map((unit) => [unit.id, unit]));
+  const after = new Map(current.map((unit) => [unit.id, unit]));
+  return [...new Set([...before.keys(), ...after.keys()])].flatMap((id) => {
+    const a = before.get(id),
+      b = after.get(id);
+    if (
+      a &&
+      b &&
+      a.unitLabel === b.unitLabel &&
+      [...a.floorIds].sort().join() === [...b.floorIds].sort().join()
+    )
+      return [];
+    return [
+      {
+        id,
+        before: a ? { label: a.unitLabel, floors: a.floorIds.length } : null,
+        after: b ? { label: b.unitLabel, floors: b.floorIds.length } : null,
+      },
+    ];
+  });
 }
 
 export async function syntheticReviewRoutes(portal: FastifyInstance) {
@@ -394,6 +468,74 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
               }),
             };
           }),
+        };
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
+  });
+
+  portal.get("/reviews/:id/comparison", async (req) => {
+    const officer = await syntheticReviewOfficer(req);
+    const { id } = params.parse(req.params);
+    return db.$transaction(
+      async (tx) => {
+        const visible = await lockSyntheticReview(tx, id, officer, {
+          forWrite: false,
+        });
+        const current = comparisonSummary(
+          visible.snapshot,
+          visible.draftVersion,
+          visible.policyVersion,
+        );
+        if (!visible.previousId)
+          return { current, previous: null, unitChanges: [], newEvidence: [] };
+        const previousRow = await tx.syntheticSubmission.findFirst({
+          where: {
+            id: visible.previousId,
+            draftId: visible.state.caseId,
+            actorId: { not: officer.operator.userId },
+            snapshot: { path: ["districtId"], equals: officer.district },
+          },
+          select: {
+            actorId: true,
+            draftVersion: true,
+            policyVersion: true,
+            snapshot: true,
+          },
+        });
+        if (!previousRow)
+          return { current, previous: null, unitChanges: [], newEvidence: [] };
+        try {
+          await requireSyntheticSnapshotAuthority(tx, previousRow);
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            "statusCode" in error &&
+            [404, 409].includes(Number(error.statusCode))
+          )
+            return {
+              current,
+              previous: null,
+              unitChanges: [],
+              newEvidence: [],
+            };
+          throw error;
+        }
+        const prior = snapshotSchema.safeParse(previousRow.snapshot);
+        if (!prior.success)
+          fail(409, "Snapshot terdahulu tidak tersedia untuk perbandingan.");
+        const evidenceIds = new Set(prior.data.evidence.map((item) => item.id));
+        return {
+          current,
+          previous: comparisonSummary(
+            prior.data,
+            previousRow.draftVersion,
+            previousRow.policyVersion,
+          ),
+          unitChanges: compareUnits(prior.data.units, visible.snapshot.units),
+          newEvidence: visible.snapshot.evidence
+            .filter((item) => !evidenceIds.has(item.id))
+            .map(({ id, category, version }) => ({ id, category, version })),
         };
       },
       { isolationLevel: "RepeatableRead" },

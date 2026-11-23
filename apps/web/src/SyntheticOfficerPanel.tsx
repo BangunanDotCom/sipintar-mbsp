@@ -1,3 +1,4 @@
+import { SyntheticReviewComparison } from "./SyntheticReviewComparison";
 import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -37,17 +38,28 @@ export function SyntheticOfficerPanel({
   activeRole: string;
 }) {
   const [filter, setFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchError, setSearchError] = useState(false);
   const [pages, setPages] = useState<(string | null)[]>([null]);
   const cursor = pages.at(-1);
   const search = new URLSearchParams({ view: filter });
   if (cursor) search.set("cursor", cursor);
+  if (searchTerm) search.set("search", searchTerm);
   const query = useQuery<{
     role: string;
     district: string;
     reviews: Review[];
     nextCursor: string | null;
   }>({
-    queryKey: ["synthetic-review", userId, activeRole, filter, cursor],
+    queryKey: [
+      "synthetic-review",
+      userId,
+      activeRole,
+      filter,
+      searchTerm,
+      cursor,
+    ],
     queryFn: () => api(`/synthetic-portal/reviews?${search}`),
     retry: false,
     placeholderData: keepPreviousData,
@@ -72,9 +84,60 @@ export function SyntheticOfficerPanel({
       className="panel synthetic-panel"
       aria-labelledby="synthetic-officer-title"
     >
+      <span className="synthetic-status">LATIHAN / SINTETIK</span>
       <h3 id="synthetic-officer-title">Tugasan semakan sintetik</h3>
       <p>
         Kawasan {district} · {role === "PPSK" ? "PPSK" : "PIC Kawasan"}
+      </p>
+      <form
+        className="synthetic-controls"
+        role="search"
+        aria-label="Carian tugasan latihan"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = searchInput.trim();
+          const invalid = Boolean(
+            value && !/^(?:SYNTHETIC-)?[0-9a-f]{4}[0-9a-f-]{0,32}$/i.test(value),
+          );
+          setSearchError(invalid);
+          if (invalid) return;
+          setSearchTerm(value);
+          setPages([null]);
+        }}
+      >
+        <label>
+          ID serahan atau rujukan latihan
+          <input
+            type="search"
+            value={searchInput}
+            maxLength={46}
+            onChange={(event) => setSearchInput(event.target.value)}
+            aria-invalid={searchError}
+            aria-describedby="uat-review-search-help"
+          />
+        </label>
+        <button className="button secondary small" type="submit">
+          Cari tugasan
+        </button>
+        {searchTerm && (
+          <button
+            type="button"
+            className="button secondary small"
+            onClick={() => {
+              setSearchInput("");
+              setSearchTerm("");
+              setSearchError(false);
+              setPages([null]);
+            }}
+          >
+            Kosongkan carian
+          </button>
+        )}
+      </form>
+      <p id="uat-review-search-help" role={searchError ? "alert" : undefined}>
+        {searchError
+          ? "Masukkan sekurang-kurangnya empat aksara ID yang sah."
+          : "Gunakan awal UUID serahan atau rujukan berawalan SYNTHETIC-."}
       </p>
       <div className="synthetic-controls">
         <label>
@@ -88,6 +151,10 @@ export function SyntheticOfficerPanel({
           >
             <option value="all">Semua</option>
             <option value="action">Perlu tindakan</option>
+            <option value="submitted">Menunggu PIC</option>
+            <option value="correction">Pembetulan diminta</option>
+            <option value="complete">Menunggu PPSK</option>
+            <option value="registered">Berdaftar dalam simulasi</option>
           </select>
         </label>
         <button
@@ -163,6 +230,7 @@ function SyntheticReviewCard({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<ActionFeedback | null>(null);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const picCanReview = role === "PIC_KAWASAN" && review.status === "SUBMITTED";
   const supervisorCanRegister = role === "PPSK" && review.status === "COMPLETE";
   async function decide(action: string) {
@@ -234,6 +302,32 @@ function SyntheticReviewCard({
               .join(" ")
           : "Tiada amaran berdasarkan kiraan."}
       </p>
+      <button
+        type="button"
+        className="button secondary small"
+        aria-expanded={comparisonOpen}
+        aria-controls={`synthetic-comparison-${review.id}`}
+        onClick={() => setComparisonOpen((open) => !open)}
+      >
+        {comparisonOpen ? "Tutup perbandingan" : "Bandingkan versi serahan"}
+      </button>
+      <div id={`synthetic-comparison-${review.id}`} hidden={!comparisonOpen}>
+        {comparisonOpen && (
+          <SyntheticReviewComparison
+            id={review.id}
+            identity={`${userId}:${role}`}
+          />
+        )}
+      </div>
+      {review.status === "SUBMITTED" && (
+        <p>Langkah seterusnya · PIC menyemak bukti dan mencatat keputusan.</p>
+      )}
+      {review.status === "CORRECTION_REQUESTED" && (
+        <p>Langkah seterusnya · Tunggu pemohon membuat serahan semula.</p>
+      )}
+      {review.status === "COMPLETE" && (
+        <p>Langkah seterusnya · PPSK mendaftar keputusan latihan.</p>
+      )}
       {(picCanReview || supervisorCanRegister) && (
         <div>
           <label htmlFor={`synthetic-reason-${review.id}`}>
