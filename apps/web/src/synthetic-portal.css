@@ -3,6 +3,7 @@
   border-inline-start: 3px solid #b08622;
 }
 .synthetic-panel > h2,
+.synthetic-journey-heading > h2,
 .synthetic-panel > h3,
 .synthetic-panel > h4 {
   color: #152440;

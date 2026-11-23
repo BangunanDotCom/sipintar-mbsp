@@ -147,10 +147,10 @@ export function SyntheticApplicantPanel({
       aria-labelledby="synthetic-applicant-title"
       aria-busy={pending}
     >
-      <header>
+      <div className="synthetic-journey-heading">
         <span className="synthetic-status">LATIHAN / SINTETIK</span>
         <h2 id="synthetic-applicant-title">Serahan latihan sintetik</h2>
-      </header>
+      </div>
       <nav aria-label="Langkah latihan pemohon" className="synthetic-steps">
         <ol>
           <li>
