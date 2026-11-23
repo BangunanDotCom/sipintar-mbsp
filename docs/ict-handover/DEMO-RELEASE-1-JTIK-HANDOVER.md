@@ -36,3 +36,9 @@ Fasilitator memainkan peranan pemohon individu/syarikat, PIC dan PPSK menggunaka
 4. **Produksi:** memerlukan keputusan pemilik MBSP-01..08, semakan keselamatan, kelulusan ICT dan kuasa berasingan.
 
 **Larangan:** jangan ubah Worker Cloudflare `dashboard-bangunan-mbsp`; jangan guna data sebenar, deploy, merge, kos baharu atau akses sensitif tanpa kelulusan khusus.
+
+
+## Pemeriksaan konfigurasi statik (dibangunkan pada Issue #62)
+Skrip `node scripts/demo-host-readiness.mjs` ialah pemeriksaan **baca sahaja** untuk mod demo; ia tidak membuat sambungan pangkalan data, migrasi, pemasangan atau deployment dan tidak mencetak nilai rahsia. Jalankan selepas menetapkan environment latihan yang diluluskan (jangan commit fail `.env`). Skrip memeriksa synthetic portal gate, SMTP Mailpit loopback, storan dokumen dimatikan, URL DB `_test` pada loopback, kunci berasingan dan APP_ORIGIN HTTPS bagi bukan loopback. Status `READY_FOR_TECHNICAL_REVIEW` **bukan** kelulusan pemasangan; `CHECK` bermaksud artifak binaan/dependencies belum lengkap, `BLOCKED` bermaksud konfigurasi berisiko.
+
+**Had:** pemeriksaan ini sengaja menghendaki DB loopback dan SMTP Mailpit loopback. Untuk pelayan MBSP dengan DB latihan di host berasingan, JTIK perlu menilai dan meluluskan model rangkaian serta pemeriksaan yang sesuai sebelum mengubah syarat ini. Jangan memintas pemeriksaan dengan menggunakan alamat atau data produksi. Pelaksanaan skrip dan CI masih perlu dibuktikan pada checkout kerja.
