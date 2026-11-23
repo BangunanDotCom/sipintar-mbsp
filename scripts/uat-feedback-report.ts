@@ -32,6 +32,7 @@ export function renderFeedbackReport(
     "Keputusan",
     "Keterukan",
     "Kebolehulangan",
+    "Langkah mengulang",
     "Bukti",
     "Penanggungjawab",
     "Pembetulan",
@@ -59,6 +60,7 @@ export function renderFeedbackReport(
       first.outcome,
       first.severity,
       first.reproducibility,
+      first.reproductionSteps,
       first.evidenceRef,
       assignment ? `${assignment.team} / ${assignment.assignee}` : null,
       fix?.resolution,
@@ -97,15 +99,18 @@ export function renderFeedbackReport(
     "",
     "## Liputan senario",
     "",
-    "| Senario | Direkod | Disahkan dalaman |",
-    "| --- | ---: | ---: |",
+    "| Senario | Direkod | Disahkan dalaman | Menunggu semakan / pembetulan |",
+    "| --- | ---: | ---: | ---: |",
     ...[
       ...new Set([...scenarios, ...summary.map(({ first }) => first.scenario)]),
     ].map((scenario) => {
       const matches = summary.filter(
         ({ first }) => first.scenario === scenario,
       );
-      return `| ${scenario} | ${matches.length || "Belum diuji"} | ${matches.filter(({ state }) => state === "VERIFIED_INTERNAL").length} |`;
+      const verified = matches.filter(
+        ({ state }) => state === "VERIFIED_INTERNAL",
+      ).length;
+      return `| ${scenario} | ${matches.length || "Belum diuji"} | ${verified} | ${matches.length - verified} |`;
     }),
     "",
     "## Jejak rekod dan pembetulan",

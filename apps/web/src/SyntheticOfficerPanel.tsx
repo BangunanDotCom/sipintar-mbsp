@@ -1,6 +1,6 @@
 import { SyntheticReviewComparison } from "./SyntheticReviewComparison";
 import { SyntheticInvoice } from "./SyntheticInvoice";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import {
@@ -42,6 +42,7 @@ export function SyntheticOfficerPanel({
   const [searchTerm, setSearchTerm] = useState("");
   const [searchError, setSearchError] = useState(false);
   const [pages, setPages] = useState<(string | null)[]>([null]);
+  const searchField = useRef<HTMLInputElement>(null);
   const cursor = pages.at(-1);
   const search = new URLSearchParams({ view: filter });
   if (cursor) search.set("cursor", cursor);
@@ -108,6 +109,7 @@ export function SyntheticOfficerPanel({
         <label>
           ID serahan atau rujukan latihan
           <input
+            ref={searchField}
             type="search"
             value={searchInput}
             maxLength={46}
@@ -128,6 +130,7 @@ export function SyntheticOfficerPanel({
               setSearchTerm("");
               setSearchError(false);
               setPages([null]);
+              searchField.current?.focus();
             }}
           >
             Kosongkan carian

@@ -325,9 +325,14 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: "ID serahan atau rujukan latihan",
     });
     await search.fill(first.id.slice(0, 8));
-    await tasks.getByRole("button", { name: "Cari tugasan" }).click();
+    await search.press("Enter");
+    await expect(search).toBeFocused();
     await expect(firstCard).toBeVisible();
-    await tasks.getByRole("button", { name: "Kosongkan carian" }).click();
+    const clear = tasks.getByRole("button", { name: "Kosongkan carian" });
+    await clear.focus();
+    await clear.press("Enter");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("");
 
     expect(
       await firstCard.evaluate(
