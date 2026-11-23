@@ -2,6 +2,9 @@ import { awaitDraftRequestBudget } from "./request-budget";
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { syntheticPortalDatabase } from "../../apps/api/src/synthetic-portal-gate";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { totp } from "../../apps/api/src/auth";
 import { db, hash, token } from "../../apps/api/src/core";
 import { protectIdentification } from "../../apps/api/src/identity";
 import { emptyPremises } from "../../packages/shared/src/premises";
@@ -23,8 +26,88 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
   >`SELECT current_database()::text AS name`;
   expect(active?.name).toBe(database);
   const contexts: BrowserContext[] = [];
+  type KitAccount = {
+    id: string;
+    role: string;
+    email: string;
+    password: string;
+    mfaSecretBase32: string | null;
+  };
+  const kitPath = process.env.STAYLINK_UAT_KIT_FILE;
+  const kit: { accounts: KitAccount[] } | null = kitPath
+    ? JSON.parse(await readFile(kitPath, "utf8"))
+    : null;
+  const evidenceDirectory = process.env.STAYLINK_UAT_EVIDENCE_DIR;
+  if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true });
+  const apiTimings: Record<string, number[]> = {};
+  const uiTimings: Record<string, number> = {};
+  function measure(page: import("@playwright/test").Page) {
+    if (!evidenceDirectory) return page;
+    page.on("requestfinished", (request) => {
+      const path = new URL(request.url()).pathname;
+      const duration = request.timing().responseEnd;
+      if (!path.startsWith("/api/synthetic-portal/") || duration < 0) return;
+      const label =
+        request.method() +
+        " " +
+        path.replace(/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}/gi, ":id");
+      (apiTimings[label] ??= []).push(Math.round(duration));
+    });
+    return page;
+  }
+  async function capture(
+    region: import("@playwright/test").Locator,
+    file: string,
+  ) {
+    if (!evidenceDirectory) return;
+    await region.screenshot({
+      path: join(evidenceDirectory, file),
+      animations: "disabled",
+    });
+  }
   async function signIn(role: "PEMOHON" | "PIC_KAWASAN" | "PPSK", id: string) {
     const applicant = role === "PEMOHON";
+    const context = await browser.newContext({ baseURL });
+    contexts.push(context);
+    if (kit) {
+      const account = kit.accounts.find(
+        (item) => item.role === role && item.id === id,
+      );
+      if (!account)
+        throw Error(
+          "Akaun kit latihan tidak sepadan dengan konfigurasi portal.",
+        );
+      const login = await context.request.post("/api/auth/login", {
+        data: {
+          email: account.email,
+          password: account.password,
+        },
+      });
+      expect(login.status(), role + " login").toBe(200);
+      const session = await login.json();
+      expect(session.mfaRequired).toBe(!applicant);
+      const headers = { Origin: baseURL!, "X-CSRF-Token": session.csrf };
+      if (!applicant) {
+        expect(
+          (await context.request.get("/api/synthetic-portal/reviews")).status(),
+        ).toBe(403);
+        if (!account.mfaSecretBase32)
+          throw Error("Kunci MFA latihan tidak tersedia.");
+        const verified = await context.request.post("/api/auth/mfa/verify", {
+          headers,
+          data: {
+            code: totp(account.mfaSecretBase32).generate(),
+          },
+        });
+        expect(verified.status(), role + " MFA").toBe(200);
+      }
+      const selected = await context.request.post("/api/auth/role", {
+        headers,
+        data: { roleId: role },
+      });
+      expect(selected.status(), role + " role").toBe(200);
+      return measure(await context.newPage());
+    }
     // Fixture provisioning. Browser requests then use the normal session and CSRF handlers.
     await db.user.upsert({
       where: { id },
@@ -59,8 +142,6 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         expiresAt: new Date(Date.now() + 3_600_000),
       },
     });
-    const context = await browser.newContext({ baseURL });
-    contexts.push(context);
     await context.addCookies([
       {
         name: "staylink",
@@ -70,11 +151,14 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         sameSite: "Lax",
       },
     ]);
-    return context.newPage();
+    return measure(await context.newPage());
   }
 
   try {
-    const applicant = await signIn("PEMOHON", randomUUID());
+    const applicant = await signIn(
+      "PEMOHON",
+      kit?.accounts.find(({ role }) => role === "PEMOHON")?.id ?? randomUUID(),
+    );
     const pic = await signIn(
       "PIC_KAWASAN",
       process.env.STAYLINK_SYNTHETIC_PIC_ID!,
@@ -164,11 +248,13 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     );
     await applicant.getByRole("button", { name: "Simpan draf unit" }).click();
     expect((await saved).ok()).toBe(true);
+    const openApplicant = performance.now();
     await applicant.goto(pageRoot + "/semakan");
     const panel = applicant.getByRole("region", {
       name: "Serahan latihan sintetik",
     });
     await expect(panel).toBeVisible();
+    uiTimings.applicant = Math.round(performance.now() - openApplicant);
     for (const width of [320, 390]) {
       await applicant.setViewportSize({ width, height: 850 });
       expect(
@@ -189,6 +275,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await panel.getByRole("button", { name: "Jana bukti tiruan" }).click();
     await expect(panel.getByText(/floor_layout .*FAILED/)).toHaveCount(2);
     await expect(submit).toBeDisabled();
+    await capture(panel, "pemohon-bukti-gagal.png");
     await panel.getByLabel("Keputusan imbasan tiruan").selectOption("CLEAN");
     await panel.getByRole("button", { name: "Jana bukti tiruan" }).click();
     await expect(panel.getByText(/floor_layout .*CLEAN/)).toHaveCount(2);
@@ -202,11 +289,13 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     const first = await (await firstSubmit).json();
     expect(first.id).toBeTruthy();
 
+    const openPic = performance.now();
     await pic.goto("/dashboard");
     const firstCard = pic.getByRole("article", {
       name: `Serahan sintetik ${first.id}`,
     });
     await expect(firstCard.getByText(/Nasihat AI tiruan sahaja/)).toBeVisible();
+    uiTimings.pic = Math.round(performance.now() - openPic);
     await pic.setViewportSize({ width: 390, height: 850 });
     const tasks = pic.getByRole("region", { name: "Tugasan semakan sintetik" });
     await tasks.getByLabel("Penapis tugasan").selectOption("action");
@@ -225,6 +314,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       .getByRole("button", { name: "Minta pembetulan sintetik" })
       .click();
     await expect(firstCard.getByText(/Pembetulan diminta ·/)).toBeVisible();
+    await capture(firstCard, "pic-pembetulan.png");
 
     await applicant.reload();
     await expect(panel.getByText(/Betulkan bukti latihan/)).toBeVisible();
@@ -266,6 +356,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       )
         billingReads++;
     });
+    const openPpsk = performance.now();
     await supervisor.goto("/dashboard");
     const supervisorCard = supervisor.getByRole("article", {
       name: `Serahan sintetik ${second.id}`,
@@ -273,6 +364,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await supervisorCard
       .getByLabel("Alasan keputusan sintetik")
       .fill("Pendaftaran latihan oleh PPSK.");
+    uiTimings.ppsk = Math.round(performance.now() - openPpsk);
     await supervisorCard
       .getByRole("button", { name: "Daftar keputusan sintetik" })
       .click();
@@ -294,6 +386,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await expect(
       supervisorCard.getByText("Direkonsiliasi dalam simulasi"),
     ).toBeVisible();
+    await capture(supervisorCard, "ppsk-rekonsiliasi.png");
     await applicant.reload();
     await expect(
       panel.getByText("Direkonsiliasi dalam simulasi"),
@@ -305,6 +398,11 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     ).toBeDisabled();
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
+    if (evidenceDirectory)
+      await writeFile(
+        join(evidenceDirectory, "timings-ms.json"),
+        JSON.stringify({ ui: uiTimings, api: apiTimings }, null, 2) + "\n",
+      );
     await db.$disconnect();
   }
 });

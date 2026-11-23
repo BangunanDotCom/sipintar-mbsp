@@ -1,6 +1,6 @@
 import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import {
   SyntheticFeedback,
@@ -36,30 +36,37 @@ export function SyntheticOfficerPanel({
   userId: string;
   activeRole: string;
 }) {
-  const query = useQuery<{ role: string; district: string; reviews: Review[] }>(
-    {
-      queryKey: ["synthetic-review", userId, activeRole],
-      queryFn: () => api("/synthetic-portal/reviews"),
-      retry: false,
-    },
-  );
   const [filter, setFilter] = useState("all");
+  const [pages, setPages] = useState<(string | null)[]>([null]);
+  const cursor = pages.at(-1);
+  const search = new URLSearchParams({ view: filter });
+  if (cursor) search.set("cursor", cursor);
+  const query = useQuery<{
+    role: string;
+    district: string;
+    reviews: Review[];
+    nextCursor: string | null;
+  }>({
+    queryKey: ["synthetic-review", userId, activeRole, filter, cursor],
+    queryFn: () => api(`/synthetic-portal/reviews?${search}`),
+    retry: false,
+    placeholderData: keepPreviousData,
+  });
   if (query.isError)
     return (
       <SyntheticLoadError
         title="Tugasan semakan sintetik"
         error={query.error}
-        retry={() => void query.refetch()}
+        retry={() => (cursor ? setPages([null]) : void query.refetch())}
       />
     );
-  if (!query.data) return null;
-  const { reviews, role, district } = query.data;
-  const actionable = reviews.filter((review) =>
-    role === "PIC_KAWASAN"
-      ? review.status === "SUBMITTED"
-      : review.status === "COMPLETE",
-  );
-  const visible = filter === "action" ? actionable : reviews;
+  if (!query.data)
+    return cursor || filter !== "all" ? (
+      <p className="synthetic-note" role="status">
+        Memuatkan tugasan latihan…
+      </p>
+    ) : null;
+  const { reviews, role, district, nextCursor } = query.data;
   return (
     <section
       className="panel synthetic-panel"
@@ -74,10 +81,13 @@ export function SyntheticOfficerPanel({
           Penapis tugasan
           <select
             value={filter}
-            onChange={(event) => setFilter(event.target.value)}
+            onChange={(event) => {
+              setFilter(event.target.value);
+              setPages([null]);
+            }}
           >
-            <option value="all">Semua ({reviews.length})</option>
-            <option value="action">Perlu tindakan ({actionable.length})</option>
+            <option value="all">Semua</option>
+            <option value="action">Perlu tindakan</option>
           </select>
         </label>
         <button
@@ -89,24 +99,51 @@ export function SyntheticOfficerPanel({
           {query.isFetching ? "Memuat semula…" : "Muat semula senarai"}
         </button>
       </div>
-      {!visible.length && (
+      {query.isPlaceholderData && (
+        <p role="status">Memuatkan tugasan latihan…</p>
+      )}
+      {!query.isPlaceholderData && !reviews.length && (
         <p role="status">
           {filter === "action"
             ? "Tiada serahan yang memerlukan tindakan."
             : "Tiada serahan sintetik untuk disemak."}
         </p>
       )}
-      {visible.map((review) => (
-        <SyntheticReviewCard
-          key={review.id}
-          review={review}
-          role={role}
-          userId={userId}
-          refresh={async () => {
-            await query.refetch();
-          }}
-        />
-      ))}
+      {!query.isPlaceholderData &&
+        reviews.map((review) => (
+          <SyntheticReviewCard
+            key={review.id}
+            review={review}
+            role={role}
+            userId={userId}
+            refresh={async () => {
+              await query.refetch();
+            }}
+          />
+        ))}
+      {(pages.length > 1 || nextCursor) && (
+        <nav className="synthetic-controls" aria-label="Halaman tugasan">
+          <button
+            className="button secondary small"
+            type="button"
+            disabled={pages.length === 1 || query.isFetching}
+            onClick={() => setPages((previous) => previous.slice(0, -1))}
+          >
+            Halaman sebelumnya
+          </button>
+          <span role="status">Halaman {pages.length}</span>
+          <button
+            className="button secondary small"
+            type="button"
+            disabled={!nextCursor || query.isFetching}
+            onClick={() =>
+              nextCursor && setPages((previous) => [...previous, nextCursor])
+            }
+          >
+            Halaman seterusnya
+          </button>
+        </nav>
+      )}
     </section>
   );
 }

@@ -2551,6 +2551,91 @@ describe("Issue 31 integrated synthetic portal", () => {
   );
 
   it.runIf(enabled)(
+    "paginates eligible reviews with tied timestamps and role-specific filtering",
+    async () => {
+      process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+      process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+      const sameTime = new Date();
+      const floorId = randomUUID();
+      const baseSnapshot = {
+        capacity: "INDIVIDUAL",
+        companyId: null,
+        districtId: "SPU",
+        units: [
+          { id: randomUUID(), unitLabel: "Ujian halaman", floorIds: [floorId] },
+        ],
+        floors: [{ id: floorId, floorLabel: "G" }],
+        evidence: [
+          {
+            id: randomUUID(),
+            version: 1,
+            category: "floor_layout",
+            scope: "FLOOR",
+            targetId: floorId,
+            scanStatus: "CLEAN",
+            verificationStatus: "UNVERIFIED",
+          },
+        ],
+      };
+      const records = Array.from({ length: 25 }, (_, index) => ({
+        id: randomUUID(),
+        draftId: randomUUID(),
+        actorId: applicant.id,
+        draftVersion: 1,
+        key: randomUUID(),
+        declarationVersion: "SYNTHETIC-K05-v1",
+        policyVersion: "SYNTHETIC-K04-v1",
+        createdAt: sameTime,
+        snapshot: {
+          ...baseSnapshot,
+          ...(index === 23
+            ? { districtId: "SPT" }
+            : index === 24
+              ? { capacity: "COMPANY", companyId: randomUUID() }
+              : {}),
+        },
+      }));
+      await db.applicationDraft.createMany({
+        data: records.map(({ draftId }) => ({
+          id: draftId,
+          capacity: "INDIVIDUAL",
+          initiatedByUserId: applicant.id,
+          officialApplicantUserId: applicant.id,
+          initiatorSnapshot: {},
+          applicantSnapshot: {},
+        })),
+      });
+      await db.syntheticSubmission.createMany({ data: records });
+      const queue = `${root}/reviews?view=action`;
+      expect(
+        (await request(pic, `${queue}&cursor=bad_cursor`)).statusCode,
+      ).toBe(400);
+      const first = await request(pic, queue);
+      expect(first.statusCode, first.body).toBe(200);
+      expect(first.json().reviews).toHaveLength(20);
+      const next = await request(
+        pic,
+        `${queue}&cursor=${first.json().nextCursor}`,
+      );
+      expect(next.statusCode, next.body).toBe(200);
+      const seen = [first, next].flatMap((response) =>
+        response.json().reviews.map((row: { id: string }) => row.id),
+      );
+      expect(new Set(seen).size).toBe(seen.length);
+      expect(seen).toEqual(
+        expect.arrayContaining(records.slice(0, 23).map(({ id }) => id)),
+      );
+      expect(seen).not.toContain(records[23].id);
+      expect(seen).not.toContain(records[24].id);
+      expect(
+        (await request(ppsk, queue))
+          .json()
+          .reviews.map((row: { id: string }) => row.id),
+      ).not.toContain(records[0].id);
+    },
+  );
+
+  it.runIf(enabled)(
     "denies a revoked representative even with an existing synthetic draft",
     async () => {
       const company = await request(applicant, "/api/companies", "POST", {
