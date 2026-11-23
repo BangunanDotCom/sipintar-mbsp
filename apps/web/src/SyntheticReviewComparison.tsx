@@ -54,7 +54,6 @@ export function SyntheticReviewComparison({
     );
   if (!query.data) return <p role="status">Memuatkan perbandingan…</p>;
   const { current, previous, unitChanges, newEvidence } = query.data;
-  return <p>Tiada versi terdahulu yang boleh dibandingkan dalam skop anda.</p>;
   return (
     <section
       className="synthetic-comparison"
