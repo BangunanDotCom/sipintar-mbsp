@@ -9,6 +9,7 @@ on:
       - 'issue-40-effect-advisory'
       - 'issue-45-policy-regression'
       - 'issue-49-ict-acceptance'
+      - 'issue-54-ict-decision-pack'
 
 permissions:
   contents: read
@@ -44,8 +45,8 @@ jobs:
         suite: [api, browser, kit]
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue49_${{ matrix.suite }}_test
-      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue49_${{ matrix.suite }}_test
+      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue54_${{ matrix.suite }}_test
+      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue54_${{ matrix.suite }}_test
       APP_ORIGIN: http://localhost:5173
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '1025'
@@ -60,7 +61,7 @@ jobs:
         env:
           POSTGRES_USER: staylink_fixture
           POSTGRES_PASSWORD: staylink_fixture
-          POSTGRES_DB: staylink_issue49_${{ matrix.suite }}_test
+          POSTGRES_DB: staylink_issue54_${{ matrix.suite }}_test
         ports:
           - 5432:5432
         options: >-
@@ -109,8 +110,8 @@ jobs:
         env:
           POSTGRES_FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          docker exec "$POSTGRES_FIXTURE_CONTAINER" psql -X -U staylink_fixture -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE staylink_issue49_restore_ci_test OWNER staylink_fixture'
-          bash scripts/rehearse-synthetic-restore.sh "$POSTGRES_FIXTURE_CONTAINER" staylink_fixture staylink_issue49_api_test staylink_issue49_restore_ci_test
+          docker exec "$POSTGRES_FIXTURE_CONTAINER" psql -X -U staylink_fixture -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE staylink_issue54_restore_ci_test OWNER staylink_fixture'
+          bash scripts/rehearse-synthetic-restore.sh "$POSTGRES_FIXTURE_CONTAINER" staylink_fixture staylink_issue54_api_test staylink_issue54_restore_ci_test
       - name: Install Playwright Chromium
         if: matrix.suite != 'api'
         run: npx playwright install --with-deps chromium

@@ -89,7 +89,7 @@ export function renderFeedbackReport(
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
-      .replace(/[\\|`*_\[\]()!~]/g, "\\$&");
+      .replace(/[\\|`*_[\]()!~]/g, "\\$&");
   const report = [
     "# Laporan maklum balas UAT sintetik",
     "",
