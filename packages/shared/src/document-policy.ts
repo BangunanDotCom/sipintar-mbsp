@@ -57,6 +57,44 @@ export function documentRuleApplicability(
   return rule.condition ? ("CONDITIONAL" as const) : ("REQUIRED" as const);
 }
 
+function matchingEvidence(
+  rule: z.infer<typeof ruleSchema>,
+  item: Evidence,
+  targetId: string,
+) {
+  return (
+    item.scope === rule.scope &&
+    item.targetId === targetId &&
+    rule.alternatives.some((category) => category === item.category) &&
+    item.scanStatus === "CLEAN" &&
+    (item.verificationStatus === "VERIFIED" ||
+      (!rule.requireVerified && item.verificationStatus === "UNVERIFIED"))
+  );
+}
+
+export function summarizeDocumentRequirements(
+  config: z.infer<typeof documentPolicySchema>,
+  context: PolicyContext,
+) {
+  return config.rules.map((rule) => {
+    const applicability = documentRuleApplicability(rule, context);
+    const active =
+      applicability === "REQUIRED" || applicability === "CONDITIONAL";
+    const targets = active ? context.targets[rule.scope] : [];
+    return {
+      requirement: rule.requirement,
+      categories: rule.alternatives,
+      scope: rule.scope,
+      applicability,
+      requiredTargets: targets.length,
+      eligibleTargets: targets.filter((id) =>
+        context.evidence.some((entry) => matchingEvidence(rule, entry, id)),
+      ).length,
+      requireVerified: rule.requireVerified,
+    };
+  });
+}
+
 export function evaluateDocumentPolicy(
   config: unknown,
   context: PolicyContext,
@@ -93,15 +131,8 @@ export function evaluateDocumentPolicy(
     if (!context.targets[rule.scope].length)
       issues.push(`MISSING_SCOPE:${rule.requirement}`);
     for (const targetId of context.targets[rule.scope]) {
-      const present = context.evidence.some(
-        (item) =>
-          item.scope === rule.scope &&
-          item.targetId === targetId &&
-          rule.alternatives.some((category) => category === item.category) &&
-          item.scanStatus === "CLEAN" &&
-          (item.verificationStatus === "VERIFIED" ||
-            (!rule.requireVerified &&
-              item.verificationStatus === "UNVERIFIED")),
+      const present = context.evidence.some((entry) =>
+        matchingEvidence(rule, entry, targetId),
       );
       if (!present)
         issues.push(`MISSING_EVIDENCE:${rule.requirement}:${targetId}`);

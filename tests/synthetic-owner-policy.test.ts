@@ -1,3 +1,4 @@
+import { summarizeDocumentRequirements } from "../packages/shared/src/document-policy";
 import { expect, it } from "vitest";
 import {
   loadSyntheticOwnerPolicy,
@@ -83,4 +84,50 @@ it("uses only facts that can be resolved by a synthetic inventory", () => {
   expect(syntheticDocumentFacts(1, "UNKNOWN")).toEqual({
     multipleUnits: false,
   });
+});
+
+it("reports scoped evidence coverage while distinguishing each applicability state", () => {
+  const rule = baseline.documents.rules[0];
+  const result = summarizeDocumentRequirements(
+    {
+      ...baseline.documents,
+      rules: [
+        rule,
+        { ...rule, requirement: "conditional", condition: "multipleUnits" },
+        { ...rule, requirement: "company", capacity: "COMPANY" },
+        {
+          ...rule,
+          requirement: "certificate",
+          condition: "hasBuildingCertificate",
+        },
+      ],
+    },
+    {
+      capacity: "INDIVIDUAL",
+      premiseType: "SHOP",
+      facts: { multipleUnits: true },
+      targets: { DRAFT: ["draft-a"], UNIT: [], FLOOR: ["floor-a", "floor-b"] },
+      evidence: [
+        {
+          category: "floor_layout",
+          scope: "FLOOR",
+          targetId: "floor-a",
+          scanStatus: "CLEAN",
+          verificationStatus: "UNVERIFIED",
+        },
+      ],
+    },
+  );
+  expect(
+    result.map(({ applicability, eligibleTargets, requiredTargets }) => [
+      applicability,
+      eligibleTargets,
+      requiredTargets,
+    ]),
+  ).toEqual([
+    ["REQUIRED", 1, 2],
+    ["CONDITIONAL", 1, 2],
+    ["NOT_APPLICABLE", 0, 0],
+    ["UNKNOWN", 0, 0],
+  ]);
 });
