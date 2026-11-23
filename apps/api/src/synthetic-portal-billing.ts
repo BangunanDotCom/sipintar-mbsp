@@ -29,7 +29,7 @@ const billingBody = z.strictObject({
   action: z.enum(["ISSUE", "SIMULATE_SETTLEMENT"]),
 });
 const callbackBody = z.strictObject({ payload: z.string().max(4096) });
-const hour = 3_600_000;
+const minute = 60_000;
 
 async function ledgerFor(
   tx: Prisma.TransactionClient,
@@ -137,7 +137,10 @@ async function storeReconciliation(
   return { ...invoiceView(result.ledger), result: result.status };
 }
 
-export async function syntheticBillingRoutes(portal: FastifyInstance) {
+export async function syntheticBillingRoutes(
+  portal: FastifyInstance,
+  options: { ttlMinutes: number; policyVersion: string },
+) {
   const configured = process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY;
   if (!configured || !/^[a-f0-9]{64}$/.test(configured)) return;
   const secret = Buffer.from(configured, "hex");
@@ -195,7 +198,7 @@ export async function syntheticBillingRoutes(portal: FastifyInstance) {
           state,
           { submissionId: id, unitIds: snapshot.units.map((unit) => unit.id) },
           randomUUID(),
-          now + hour,
+          now + options.ttlMinutes * minute,
           now,
         );
         if (output.status !== "ISSUED" && output.status !== "REPLAY")
@@ -209,6 +212,7 @@ export async function syntheticBillingRoutes(portal: FastifyInstance) {
               target: id,
               metadata: {
                 ...output.invoice,
+                policyVersion: options.policyVersion,
                 unitIds: [...output.invoice.unitIds],
               },
             },

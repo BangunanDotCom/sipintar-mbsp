@@ -14,6 +14,7 @@ import {
 type ApplicantState = {
   draftVersion: number;
   policyVersion: string;
+  policyFingerprint: string;
   declaration: { version: string; text: string };
   latest: { id: string; draftVersion: number } | null;
   reviewStatus: SyntheticReviewStatus | null;
@@ -63,7 +64,8 @@ export function SyntheticApplicantPanel({
   const previousId = state.latest?.id ?? null;
   const draftVersion = state.draftVersion;
   const declarationVersion = state.declaration.version;
-  const context = `${draftId}:${state.draftVersion}:${state.declaration.version}:${previousId}`;
+  const policyFingerprint = state.policyFingerprint;
+  const context = `${draftId}:${state.draftVersion}:${state.declaration.version}:${state.policyFingerprint}:${previousId}`;
   const accepted = acceptedFor === context;
 
   async function act(path: string, body: unknown, success: string) {
@@ -106,7 +108,8 @@ export function SyntheticApplicantPanel({
         key: key.current.value,
         accepted: true,
         version: draftVersion,
-        declarationVersion: declarationVersion,
+        declarationVersion,
+        policyFingerprint,
       },
       "Serahan sintetik diterima.",
     );

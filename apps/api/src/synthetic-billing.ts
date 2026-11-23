@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { SyntheticReviewState } from "../../../packages/shared/src/synthetic-review.js";
 
-const UNIT_FEE_SEN = 5000;
+import { MOCK_UNIT_FEE_SEN } from "./synthetic-owner-policy.js";
 export const callbackSchema = z.strictObject({
   invoiceId: z.uuid(),
   eventId: z.uuid(),
@@ -16,6 +16,7 @@ export const mockInvoiceSchema = z.strictObject({
   caseId: z.string(),
   submissionId: z.string(),
   officialReference: z.string(),
+  policyVersion: z.string().optional(),
   unitIds: z.array(z.uuid()).min(1),
   amountSen: z.number().int().positive(),
   currency: z.literal("MYR"),
@@ -80,7 +81,7 @@ export function issueMockInvoice(
     submissionId: review.submissionId,
     officialReference: review.officialReference,
     unitIds,
-    amountSen: unitIds.length * UNIT_FEE_SEN,
+    amountSen: unitIds.length * MOCK_UNIT_FEE_SEN,
     currency: "MYR",
     expiresAt,
   };

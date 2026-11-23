@@ -1,3 +1,8 @@
+import {
+  loadSyntheticOwnerPolicy,
+  syntheticDocumentFacts,
+} from "./synthetic-owner-policy.js";
+import { documentRuleApplicability } from "../../../packages/shared/src/document-policy.js";
 import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
@@ -22,25 +27,6 @@ import {
 
 const params = z.strictObject({ id: z.uuid() });
 const version = z.number().int().positive();
-const declaration = {
-  version: "SYNTHETIC-K05-v1",
-  text: "Saya mengesahkan bahawa permohonan ini menggunakan data latihan sintetik untuk simulasi STAYLink MBSP.",
-};
-const policy = {
-  declarationVersion: declaration.version,
-  documents: {
-    version: "SYNTHETIC-K04-v1",
-    rules: [
-      {
-        requirement: "layout",
-        scope: "FLOOR",
-        alternatives: ["floor_layout"],
-        requireVerified: false,
-      },
-    ],
-  },
-};
-
 const verdict = z.enum(["PENDING", "CLEAN", "FAILED", "INFECTED"]);
 const evidenceBody = z.strictObject({ version, verdict });
 const submitBody = z.strictObject({
@@ -48,6 +34,10 @@ const submitBody = z.strictObject({
   key: z.uuid(),
   accepted: z.literal(true),
   declarationVersion: z.string().max(80),
+  policyFingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
   previousId: z.uuid().nullable(),
 });
 
@@ -69,6 +59,26 @@ async function correctionRequested(
 export async function syntheticPortalRoutes(app: FastifyInstance) {
   const database = syntheticPortalDatabase();
   if (!database) return;
+  const owner = loadSyntheticOwnerPolicy();
+  if (!owner) {
+    app.log.warn(
+      { code: "SYNTHETIC_POLICY_INVALID" },
+      "Polisi portal latihan tidak sah. Portal latihan ditutup.",
+    );
+    return;
+  }
+  const {
+    declaration,
+    documents,
+    review,
+    billing,
+    version: ownerVersion,
+  } = owner.config;
+  const policy = {
+    declarationVersion: declaration.version,
+    documents,
+    owner: { version: ownerVersion, fingerprint: owner.fingerprint },
+  };
   const [active] = await db.$queryRaw<
     { name: string }[]
   >`SELECT current_database()::text AS name`;
@@ -150,6 +160,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
             return {
               declaration,
               policyVersion: policy.documents.version,
+              policyFingerprint: owner.fingerprint,
               draftVersion: draft.version,
               latest: latest
                 ? { id: latest.id, draftVersion: latest.draftVersion }
@@ -216,39 +227,92 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
             where: { draftId: id },
             select: { id: true },
           });
+          const premises = await tx.applicationPremises.findUnique({
+            where: { draftId: id },
+            select: {
+              buildingType: true,
+              certificateType: true,
+              units: { select: { id: true } },
+            },
+          });
           if (!floors.length) fail(409, "Simpan inventori tingkat dahulu.");
-          const categories = draft.companyId
-            ? ["floor_layout", "company_authority"]
-            : ["floor_layout"];
-          const documents = await tx.applicationDocument.groupBy({
+          const units = premises?.units ?? [];
+          const context = {
+            capacity: draft.companyId
+              ? ("COMPANY" as const)
+              : ("INDIVIDUAL" as const),
+            premiseType: premises?.buildingType ?? null,
+            facts: syntheticDocumentFacts(
+              units.length,
+              premises?.certificateType ?? null,
+            ),
+          };
+          const targets = { DRAFT: [{ id }], UNIT: units, FLOOR: floors };
+          const selected = new Map<
+            string,
+            { category: string; floorId: string | null; unitId: string | null }
+          >();
+          const applicable = new Set<string>();
+          for (const rule of documents.rules) {
+            const relevance = documentRuleApplicability(rule, context);
+            if (relevance === "NOT_APPLICABLE") continue;
+            if (
+              relevance === "UNKNOWN" ||
+              applicable.has(rule.requirement) ||
+              !targets[rule.scope].length
+            )
+              fail(409, "Syarat atau skop bukti latihan belum jelas.");
+            applicable.add(rule.requirement);
+            const category = rule.alternatives[0];
+            for (const target of targets[rule.scope]) {
+              selected.set(`${category}:${rule.scope}:${target.id}`, {
+                category,
+                floorId: rule.scope === "FLOOR" ? target.id : null,
+                unitId: rule.scope === "UNIT" ? target.id : null,
+              });
+            }
+          }
+          if (!applicable.size)
+            fail(409, "Tiada syarat bukti latihan yang sesuai.");
+          if (draft.companyId)
+            selected.set(`company_authority:DRAFT:${id}`, {
+              category: "company_authority",
+              floorId: null,
+              unitId: null,
+            });
+          if (selected.size > 600)
+            fail(409, "Bilangan bukti latihan melebihi had.");
+          const categories = [
+            ...new Set([...selected.values()].map(({ category }) => category)),
+          ];
+          const priorVersions = await tx.applicationDocument.groupBy({
             by: ["category"],
             where: { draftId: id, category: { in: categories } },
             _max: { version: true },
           });
+          const nextVersion = new Map(
+            priorVersions.map((row) => [row.category, row._max.version ?? 0]),
+          );
           await tx.applicationDocument.updateMany({
             where: {
               draftId: id,
-              category: { in: categories },
               supersededAt: null,
               storageKey: { startsWith: "issue31-fixture/" },
             },
             data: { supersededAt: new Date() },
           });
-          for (const category of categories) {
-            let documentVersion =
-              documents.find((row) => row.category === category)?._max
-                .version ?? 0;
-            const targets =
-              category === "floor_layout" ? floors : [{ id: null }];
-            for (const floor of targets) {
+          const fixtures = [...selected.values()].map(
+            ({ category, floorId, unitId }) => {
               const documentId = randomUUID();
               const storageKey = `issue31-fixture/${id}/${documentId}`;
-              await tx.applicationDocument.create({
-                data: {
+              const version = (nextVersion.get(category) ?? 0) + 1;
+              nextVersion.set(category, version);
+              return {
+                document: {
                   id: documentId,
                   draftId: id,
                   category,
-                  version: ++documentVersion,
+                  version,
                   fileName: "simulasi-metadata.pdf",
                   mimeType: "application/pdf",
                   byteSize: Buffer.byteLength(storageKey),
@@ -257,22 +321,35 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
                   storageKey,
                   scanStatus: input.verdict,
                   verificationStatus:
+                    draft.companyId &&
                     category === "company_authority" &&
-                    input.verdict === "CLEAN"
+                    input.verdict === "CLEAN" &&
+                    floorId === null &&
+                    unitId === null
                       ? "VERIFIED"
                       : "UNVERIFIED",
-                  scope: { create: { floorId: floor.id } },
                 },
-              });
-            }
-          }
+                scope: { documentId, draftId: id, floorId, unitId },
+              };
+            },
+          );
+          await tx.applicationDocument.createMany({
+            data: fixtures.map(({ document }) => document),
+          });
+          await tx.draftDocumentScope.createMany({
+            data: fixtures.map(({ scope }) => scope),
+          });
           await tx.auditLog.create({
             data: {
               actorId: userId,
               activeRole: "PEMOHON",
               action: "SYNTHETIC_PORTAL_EVIDENCE",
               target: id,
-              metadata: { verdict: input.verdict },
+              metadata: {
+                verdict: input.verdict,
+                policyVersion: ownerVersion,
+                policyFingerprint: owner.fingerprint,
+              },
             },
           });
           return { version: input.version + 1 };
@@ -282,7 +359,15 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
       portal.post("/drafts/:id/submit", { bodyLimit: 2048 }, async (req) => {
         const operator = await applicant(req);
         const { id } = params.parse(req.params);
-        const input = submitBody.parse(req.body);
+        const { policyFingerprint, ...input } = submitBody.parse(req.body);
+        if (
+          (owner.custom || policyFingerprint !== undefined) &&
+          policyFingerprint !== owner.fingerprint
+        )
+          fail(
+            409,
+            "Polisi latihan telah berubah. Muat semula dan sahkan akuan sekali lagi.",
+          );
         const correction = await correctionRequested(db, input.previousId);
         return captureSyntheticSubmission(
           operator.userId,
@@ -296,8 +381,12 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           operator,
         );
       });
-      await syntheticReviewRoutes(portal);
-      await syntheticBillingRoutes(portal);
+      if (review.enabled) await syntheticReviewRoutes(portal);
+      if (billing.mode === "MOCK")
+        await syntheticBillingRoutes(portal, {
+          ttlMinutes: billing.ttlMinutes,
+          policyVersion: ownerVersion,
+        });
     },
     { prefix: "/api/synthetic-portal" },
   );
