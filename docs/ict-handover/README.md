@@ -6,6 +6,8 @@ Issue #36 merangkumi [pemantapan UAT dan keselamatan](UAT-SECURITY.md) serta [sk
 
 Issue #40 menyediakan [penerimaan teknikal pra-staging dan laporan keselamatan](PRESTAGING-ASSURANCE.md).
 
+Issue #45 merekodkan [cadangan dasar dan keputusan pemilik proses](OWNER-PROPOSALS.md).
+
 Pakej Issue #24 merangkumi pelaksanaan awal dan pengesahan sintetik. Kelulusan operasi, UAT MBSP dan kebenaran keluaran mempunyai rekod berasingan. Jejaki peringkat pembangunan dalam [pelan berkelompok](../STAYLINK-PHASE1-MULTIWORKSTREAM-ICT-HANDOVER.md), [pelan K02](../K02-UNIT-IDENTITY-PLAN.md) dan [spesifikasi K03/K04/K07](../K03-K04-K07-DOCUMENT-SECURITY-SPEC.md).
 
 ## Aliran data dan sempadan kepercayaan
