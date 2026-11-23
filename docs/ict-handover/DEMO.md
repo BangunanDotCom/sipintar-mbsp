@@ -4,7 +4,7 @@
 
 ## Sediakan sesi
 
-1. Sediakan PostgreSQL loopback baharu bernama `staylink_issue36_demo_test` dan Mailpit tempatan. Tetapkan `DATABASE_URL` dan `TEST_DATABASE_URL` pada URL yang sama dengan hos `127.0.0.1:5432`.
+1. Sediakan PostgreSQL loopback baharu bernama `staylink_issue40_demo_test` untuk Issue #40 atau `staylink_issue36_demo_test` untuk Issue #36 dan Mailpit tempatan. Tetapkan `DATABASE_URL` dan `TEST_DATABASE_URL` pada URL yang sama dengan hos `127.0.0.1:5432`.
 2. Isikan `MFA_ENCRYPTION_KEY` dan `IDENTITY_DATA_KEY` dengan dua nilai rawak 32 bait berasingan untuk latihan. Tetapkan `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `STAYLINK_DOCUMENT_STORE=disabled`, `STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED=false` dan `STAYLINK_CLAMAV_ENABLED=false`.
 3. Jalankan arahan berikut selepas pemasangan dan penjanaan Prisma.
 
