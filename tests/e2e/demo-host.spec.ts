@@ -190,7 +190,7 @@ test("hosted demo rehearses HTTPS, admin MFA, applicant registration and bounded
       expect.objectContaining({ id: "PIC_KAWASAN", districtId: "SPT" }),
     ]);
     expect((await picSpt.get("/api/synthetic-portal/reviews")).status()).toBe(
-      403,
+      404,
     );
     expect((await picSpt.get("/api/admin/users")).status()).toBe(403);
   } finally {
