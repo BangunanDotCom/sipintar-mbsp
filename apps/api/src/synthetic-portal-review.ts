@@ -1,3 +1,4 @@
+import { floorFacilitySchema } from "../../../packages/shared/src/floor-summary.js";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -27,7 +28,18 @@ const snapshotSchema = z.object({
       z.object({ id: uuid, unitLabel: z.string(), floorIds: z.array(uuid) }),
     )
     .min(1),
-  floors: z.array(z.object({ id: uuid, floorLabel: z.string() })).min(1),
+  floors: z
+    .array(
+      z.object({
+        id: uuid,
+        floorLabel: z.string(),
+        rooms: z.number().int().nonnegative().optional(),
+        beds: z.number().int().nonnegative().optional(),
+        workers: z.number().int().nonnegative().optional(),
+        facilities: z.unknown().optional(),
+      }),
+    )
+    .min(1),
   evidence: z
     .array(
       z.object({
@@ -355,6 +367,16 @@ function comparisonSummary(
     floorCount: snapshot.floors.length,
     unitCount: snapshot.units.length,
     evidenceCount: snapshot.evidence.length,
+    floors: snapshot.floors.map(
+      ({ id, floorLabel, rooms, beds, workers, facilities }) => ({
+        id,
+        floorLabel,
+        rooms,
+        beds,
+        workers,
+        facilities: floorFacilitySchema.safeParse(facilities).data,
+      }),
+    ),
   };
 }
 

@@ -6,6 +6,7 @@ export type ObservedPortalSession = {
   id: string;
   userId: string;
   csrfHash: string;
+  activeRole: string | null;
 };
 
 // Mutations pair the permission read with the write transaction. Role or session
@@ -13,10 +14,10 @@ export type ObservedPortalSession = {
 export async function lockSyntheticPortalSession(
   tx: Prisma.TransactionClient,
   operator: ObservedPortalSession,
-  roleId: "PEMOHON" | "PIC_KAWASAN" | "PPSK",
+  roleId: "PEMOHON" | "WAKIL_SYARIKAT" | "PIC_KAWASAN" | "PPSK",
   districtId?: string,
 ) {
-  const applicant = roleId === "PEMOHON";
+  const applicant = roleId === "PEMOHON" || roleId === "WAKIL_SYARIKAT";
   const permission = applicant ? "applications.draft" : "areas.read";
   await tx.$queryRaw`SELECT id FROM users WHERE id = ${operator.userId} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM user_role_assignments
@@ -59,4 +60,15 @@ export async function lockSyntheticPortalSession(
     !active.user.roles.some((item) => isCurrent(item, now))
   )
     fail(403, "Tugasan atau sesi portal sudah berubah. Muat semula halaman.");
+}
+
+export async function lockSyntheticApplicantSession(
+  tx: Prisma.TransactionClient,
+  operator: ObservedPortalSession,
+) {
+  const role = operator.activeRole;
+  if (role !== "PEMOHON" && role !== "WAKIL_SYARIKAT")
+    fail(403, "Peranan pemohon atau wakil diperlukan untuk latihan.");
+  await lockSyntheticPortalSession(tx, operator, role);
+  return role;
 }
