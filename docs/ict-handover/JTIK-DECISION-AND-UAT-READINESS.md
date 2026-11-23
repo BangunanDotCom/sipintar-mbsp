@@ -2,7 +2,7 @@
 
 **Tujuan:** Rekod keputusan teknikal untuk hos **latihan dalaman sahaja** sebelum sebarang pemasangan. Borang ini bukan permohonan produksi atau kebenaran pemasangan automatik.
 
-**Rujukan:** Surat Jabatan Bangunan kepada JTIK (nombor/tarikh diisi oleh jabatan); Issue #62; Draft PR #63; commit calon `6c8b248c51596ef179134485d41706626f8371fe`.
+**Rujukan:** Surat Jabatan Bangunan kepada JTIK (nombor/tarikh diisi oleh jabatan); Issue #62; Draft PR #63; SHA calon daripada manifest keluaran yang disertakan.
 
 | Keputusan JTIK | Butiran / pilihan yang perlu direkodkan | Pengesahan |
 | --- | --- | --- |

@@ -7,6 +7,20 @@ if [[ $# != 1 || "${APP_ORIGIN:-}" != https://localhost:5443 ||
   echo "Gunakan konfigurasi latihan tempatan https://localhost:5443 dan portal.env kit." >&2
   exit 2
 fi
+# Refuse to reuse an existing API or HTTPS listener.
+node --input-type=module - <<'JS'
+import { createServer } from "node:net";
+for (const port of [3001, 5443]) {
+  await new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => server.close(resolve));
+  }).catch(() => {
+    console.error(`Port latihan setempat ${port} tidak tersedia.`);
+    process.exit(2);
+  });
+}
+JS
 kit_env=$1
 node --env-file="$kit_env" scripts/demo-host-readiness.mjs
 node --env-file="$kit_env" scripts/uat-preflight.mjs kit --kit "$(dirname "$kit_env")"
@@ -40,12 +54,12 @@ openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj '/CN=localhost' 
 node --env-file="$kit_env" --import=tsx apps/api/src/index.ts > "$work/api.log" 2>&1 &
 api_pid=$!
 for _ in {1..30}; do
-  if curl -fsS --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then break; fi
   if ! kill -0 "$api_pid" 2>/dev/null; then echo "API demo tidak dapat dimulakan." >&2; exit 1; fi
+  if curl -fsS --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then break; fi
   sleep 1
 done
 curl -fsS --max-time 3 http://127.0.0.1:3001/api/health >/dev/null
-image=nginx:1.28-alpine
+image=nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
 volumes=(
   --mount "type=bind,src=$work/nginx.conf,dst=/etc/nginx/nginx.conf,readonly"
   --mount "type=bind,src=$work/key.pem,dst=/tmp/demo-key.pem,readonly"

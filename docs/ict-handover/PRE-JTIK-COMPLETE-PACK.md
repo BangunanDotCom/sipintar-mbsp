@@ -6,14 +6,14 @@
 - Repositori: `BangunanDotCom/sipintar-mbsp`
 - Cabang: `issue-62-demo-release-readiness`; Draft PR #63 berasaskan `issue-58-facilitator-handover`, **bukan `main`**
 - Baseline CI yang disahkan sebelum dokumen ini: `6c8b248c51596ef179134485d41706626f8371fe`, workflow run `45141136038` (lima job success).
-- **Penting:** commit dokumentasi selepas baseline belum boleh dianggap telah diuji sehingga workflow baharu berjaya. Rekod SHA akhir, URL CI, versi runtime dan checksum ZIP sebenar ketika serahan.
+- Gunakan [manifest keluaran](DEMO-RELEASE-MANIFEST.md) untuk menyemak SHA yang diserahkan, URL CI, versi runtime dan checksum ZIP. Baseline terdahulu memberi konteks sejarah sahaja.
 - Sumber utama: `deploy/demo/README.md`, `docs/DEPLOYMENT.md`, `docs/ict-handover/DEMO-RELEASE-1-JTIK-HANDOVER.md`.
 
 ## 2. Kerja yang boleh dimuktamadkan sekarang
 
 | Bil | Deliverable | Lokasi bukti / tindakan | Gerbang |
 | --- | --- | --- | --- |
-| 01 | Linux/Nginx HTTPS, service dan konfigurasi latihan | `deploy/demo/linux/`, `scripts/rehearse-demo-host.sh` | CI Linux; semak semula pada SHA akhir |
+| 01 | Linux/Nginx HTTPS, service dan konfigurasi latihan | `deploy/demo/linux/`, `scripts/rehearse-demo-host.sh` | Semak job demo Nginx/TLS pada SHA akhir |
 | 02 | Windows/IIS dan pelancar API | `deploy/demo/windows/` | XML disemak; ARR, ACL, servis Windows **belum** diuji pada hos Windows |
 | 03 | Preflight fail-closed, DB latihan dan e-mel Mailpit | `scripts/demo-host-readiness.mjs`, `scripts/uat-preflight.mjs` | Perlu pengesahan host sebenar sebelum pasang |
 | 04 | Ujian sintetik automatik dan restore | `.github/workflows/staylink-synthetic-uat.yml` | Semak run pada SHA akhir |

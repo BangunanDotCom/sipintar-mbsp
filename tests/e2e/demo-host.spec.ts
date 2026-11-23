@@ -131,7 +131,7 @@ test("hosted demo rehearses HTTPS, admin MFA, applicant registration and bounded
   await expect(page.getByRole("status")).toContainText("Berjaya");
 
   const concurrent = kit.accounts.filter(({ label }) =>
-    ["pemohon", "wakil", "pic-spu", "ppsk"].includes(label),
+    ["pemohon", "wakil", "pic-spu", "ppsk", "pic-spt"].includes(label),
   );
   const isolated = await Promise.all(
     concurrent.map(() =>
@@ -150,16 +150,49 @@ test("hosted demo rehearses HTTPS, admin MFA, applicant registration and bounded
         }),
       ),
     );
-    expect(loggedIn.map((item) => item.status())).toEqual([200, 200, 200, 200]);
+    expect(loggedIn.map((item) => item.status())).toEqual([
+      200, 200, 200, 200, 200,
+    ]);
     const sessions = await Promise.all(
       isolated.map((client) => client.get("/api/auth/me")),
     );
-    expect(sessions.map((item) => item.status())).toEqual([200, 200, 200, 200]);
+    expect(sessions.map((item) => item.status())).toEqual([
+      200, 200, 200, 200, 200,
+    ]);
     const identities = await Promise.all(sessions.map((item) => item.json()));
-    expect(new Set(identities.map((item) => item.user.id)).size).toBe(4);
+    expect(new Set(identities.map((item) => item.user.id)).size).toBe(5);
     console.info(
-      `Empat akaun berasingan menyelesaikan log masuk dan bacaan sesi dalam ${Math.round(performance.now() - loginStart)} ms.`,
+      `Lima akaun berasingan menyelesaikan log masuk dan bacaan sesi dalam ${Math.round(performance.now() - loginStart)} ms.`,
     );
+    const sptIndex = concurrent.findIndex(({ label }) => label === "pic-spt");
+    const picSpt = isolated[sptIndex];
+    const spt = identities[sptIndex];
+    const sptHeaders = { Origin: baseURL!, "X-CSRF-Token": spt.csrf };
+    expect(spt.mfaRequired).toBe(true);
+    expect(
+      (
+        await picSpt.post("/api/auth/mfa/verify", {
+          headers: sptHeaders,
+          data: { code: totp(concurrent[sptIndex].mfaSecretBase32).generate() },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await picSpt.post("/api/auth/role", {
+          headers: sptHeaders,
+          data: { roleId: "PIC_KAWASAN" },
+        })
+      ).status(),
+    ).toBe(200);
+    const current = await picSpt.get("/api/auth/me");
+    expect((await current.json()).roles).toEqual([
+      expect.objectContaining({ id: "PIC_KAWASAN", districtId: "SPT" }),
+    ]);
+    expect((await picSpt.get("/api/synthetic-portal/reviews")).status()).toBe(
+      403,
+    );
+    expect((await picSpt.get("/api/admin/users")).status()).toBe(403);
   } finally {
     await Promise.all(isolated.map((client) => client.dispose()));
   }

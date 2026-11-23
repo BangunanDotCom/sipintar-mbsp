@@ -139,6 +139,13 @@ jobs:
           kit="$(npm run --silent db:uat-demo | sed -n 's/^Kit latihan ditulis ke //p')"
           test -f "$kit/portal.env"
           bash scripts/rehearse-demo-host.sh "$kit/portal.env"
+      - name: Verify hosted demo backup and restore
+        if: matrix.suite == 'demo'
+        env:
+          POSTGRES_FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_FIXTURE_CONTAINER" psql -X -U staylink_fixture -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE staylink_issue62_restore_ci_test OWNER staylink_fixture'
+          bash scripts/rehearse-synthetic-restore.sh "$POSTGRES_FIXTURE_CONTAINER" staylink_fixture staylink_issue62_hosted_test staylink_issue62_restore_ci_test
       - name: Run integrated browser UAT
         if: matrix.suite == 'browser' || matrix.suite == 'kit'
         shell: bash

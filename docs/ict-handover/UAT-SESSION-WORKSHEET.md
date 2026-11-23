@@ -24,6 +24,19 @@
 - [ ] Papan kekunci, paparan 320/390px dan telefon sebenar diuji
 - [ ] Sandaran dan pemulihan DB latihan telah dibuktikan pada hos pilihan
 
+## Peranan dan alias
+
+| Alias kit | Peranan sesi | Semakan awal |
+| --- | --- | --- |
+| `pemohon` | Pemohon individu | Buka draf individu. |
+| `wakil` | Wakil syarikat | Semak draf kuasa aktif dan kuasa luput. |
+| `pic-spu` | PIC SPU | Lengkapkan semakan MFA dan uji penolakan kes SPT. |
+| `pic-spt` | PIC SPT | Lengkapkan MFA dan pastikan tugasan demo SPU tidak dipaparkan. |
+| `ppsk` | PPSK SPU | Lengkapkan MFA dan daftar kes latihan selepas PIC. |
+| `pentadbir` | Pentadbir ICT | Lengkapkan MFA dan semak pengurusan akaun latihan. |
+
+Pengendali sahaja mengurus fail kit privat. Borang ini merekod alias dan rujukan bukti.
+
 ## Matriks senario pengujian
 
 | ID | Pelaku / tindakan utama | Keputusan dijangka | PASS/FAIL/BLOCKED | Bukti EV-* / isu | Ujian semula |
