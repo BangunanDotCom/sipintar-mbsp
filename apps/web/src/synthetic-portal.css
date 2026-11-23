@@ -135,3 +135,22 @@
 .synthetic-panel h3[id] {
   scroll-margin-top: 6rem;
 }
+
+.synthetic-comparison {
+  margin-block: 0.6rem;
+  overflow-wrap: anywhere;
+}
+.synthetic-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.5rem;
+}
+.synthetic-comparison-grid > div {
+  background: #f6f7fa;
+  padding: 0.55rem;
+  border-radius: 0.35rem;
+}
+.synthetic-controls input[type="search"] {
+  display: block;
+  width: 100%;
+}
