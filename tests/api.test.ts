@@ -2525,6 +2525,16 @@ describe("Issue 31 integrated synthetic portal", () => {
       });
       expect(billed[1].json().invoice.id).toBe(invoice.id);
       expect((await request(other, `${path}/billing`)).statusCode).toBe(404);
+      const applicantDashboard = await request(applicant, "/api/dashboard");
+      expect(applicantDashboard.statusCode).toBe(200);
+      expect(applicantDashboard.json().notifications.filter(
+        (row: { type: string }) => row.type === "SYNTHETIC_REVIEW",
+      )).toHaveLength(3);
+      const otherDashboard = await request(other, "/api/dashboard");
+      expect(otherDashboard.statusCode).toBe(200);
+      expect(otherDashboard.json().notifications.filter(
+        (row: { type: string }) => row.type === "SYNTHETIC_REVIEW",
+      )).toHaveLength(0);
       const message = {
         invoiceId: invoice.id,
         eventId: invoice.id,

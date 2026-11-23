@@ -5,7 +5,11 @@ export default defineConfig({
   workers: 1,
   timeout: 45000,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL:
+      process.env.STAYLINK_HTTPS_REHEARSAL === "true"
+        ? "https://localhost:5443"
+        : "http://localhost:5173",
+    ignoreHTTPSErrors: process.env.STAYLINK_HTTPS_REHEARSAL === "true",
     headless: true,
     launchOptions: {
       executablePath:

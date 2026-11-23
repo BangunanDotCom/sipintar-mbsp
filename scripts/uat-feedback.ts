@@ -7,12 +7,10 @@ import {
   open,
   readdir,
   rmdir,
-  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve, basename } from "node:path";
-import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 import { ZodError } from "zod";
@@ -27,15 +25,21 @@ import {
 } from "./uat-feedback-model.js";
 import { renderFeedbackReport } from "./uat-feedback-report.js";
 
+import { privatePermissions, trainingTempRoot } from "./uat-preflight-kit.js";
+
 const prefix = "staylink-uat-feedback-";
 const identifier = /^F-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const eventFile = /^\d{6}\.json$/;
 const maxBytes = 12_288;
 
 async function readJson(path: string) {
+  if (!(await lstat(path)).isFile())
+    throw new FeedbackError("Input mestilah fail JSON kecil.");
   const file = await open(
     path,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    constants.O_RDONLY |
+      (constants.O_NOFOLLOW ?? 0) |
+      (constants.O_NONBLOCK ?? 0),
   );
   try {
     const info = await file.stat();
@@ -68,7 +72,7 @@ async function readJson(path: string) {
 }
 
 async function temporaryRoot() {
-  const root = await realpath(tmpdir());
+  const root = await trainingTempRoot();
   for (let path = root; ; path = dirname(path)) {
     try {
       const metadata = join(path, ".git");
@@ -91,11 +95,7 @@ async function temporaryRoot() {
 
 async function privateDirectory(path: string) {
   const info = await lstat(path);
-  if (
-    !info.isDirectory() ||
-    (info.mode & 0o077) !== 0 ||
-    (process.getuid && info.uid !== process.getuid())
-  )
+  if (!info.isDirectory() || !privatePermissions(path, info, 0o700))
     throw new FeedbackError(
       "Direktori latihan mestilah persendirian milik pengguna semasa.",
     );

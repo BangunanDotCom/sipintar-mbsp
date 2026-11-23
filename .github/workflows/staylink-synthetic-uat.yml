@@ -11,6 +11,7 @@ on:
       - 'issue-49-ict-acceptance'
       - 'issue-54-ict-decision-pack'
       - 'issue-58-facilitator-handover'
+      - 'issue-62-demo-release-readiness'
 
 permissions:
   contents: read
@@ -43,17 +44,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [api, browser, kit]
+        suite: [api, browser, kit, demo]
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue58_${{ matrix.suite }}_test
-      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/staylink_issue58_${{ matrix.suite }}_test
-      APP_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
+      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
+      APP_ORIGIN: ${{ matrix.suite == 'demo' && 'https://localhost:5443' || 'http://localhost:5173' }}
+      API_PORT: '3001'
+      STAYLINK_DEMO_HOST: ${{ matrix.suite == 'demo' && 'true' || 'false' }}
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '1025'
+      SMTP_SECURE: 'false'
+      SMTP_PRODUCTION_ENABLED: 'false'
       STAYLINK_DOCUMENT_STORE: disabled
       STAYLINK_LOCAL_DOCUMENT_STORE_ENABLED: 'false'
       STAYLINK_CLAMAV_ENABLED: 'false'
+      STAYLINK_DOCUMENT_SCAN_BATCH_ENABLED: 'false'
       STAYLINK_SYNTHETIC_PORTAL: 'true'
       STAYLINK_SYNTHETIC_DISTRICT: SPU
     services:
@@ -62,7 +68,7 @@ jobs:
         env:
           POSTGRES_USER: staylink_fixture
           POSTGRES_PASSWORD: staylink_fixture
-          POSTGRES_DB: staylink_issue58_${{ matrix.suite }}_test
+          POSTGRES_DB: ${{ matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
         ports:
           - 5432:5432
         options: >-
@@ -102,7 +108,9 @@ jobs:
           done
           exit 1
       - name: Verify empty guided UAT database and loopback services
-        if: matrix.suite == 'kit'
+        if: matrix.suite == 'kit' || matrix.suite == 'demo'
+        env:
+          NODE_ENV: development
         run: npm run uat:preflight -- empty
       - run: npm run db:test:migrate
       - run: npm run db:seed
@@ -119,8 +127,27 @@ jobs:
       - name: Install Playwright Chromium
         if: matrix.suite != 'api'
         run: npx playwright install --with-deps chromium
+      - name: Run packaged demo over Nginx and TLS
+        if: matrix.suite == 'demo'
+        env:
+          NODE_ENV: development
+        run: |
+          set -euo pipefail
+          npm run build
+          unset STAYLINK_SYNTHETIC_PIC_ID STAYLINK_SYNTHETIC_SUPERVISOR_ID STAYLINK_SYNTHETIC_CALLBACK_KEY
+          node scripts/demo-host-readiness.mjs --prepare
+          kit="$(npm run --silent db:uat-demo | sed -n 's/^Kit latihan ditulis ke //p')"
+          test -f "$kit/portal.env"
+          bash scripts/rehearse-demo-host.sh "$kit/portal.env"
+      - name: Verify hosted demo backup and restore
+        if: matrix.suite == 'demo'
+        env:
+          POSTGRES_FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_FIXTURE_CONTAINER" psql -X -U staylink_fixture -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE staylink_issue62_restore_ci_test OWNER staylink_fixture'
+          bash scripts/rehearse-synthetic-restore.sh "$POSTGRES_FIXTURE_CONTAINER" staylink_fixture staylink_issue62_hosted_test staylink_issue62_restore_ci_test
       - name: Run integrated browser UAT
-        if: matrix.suite != 'api'
+        if: matrix.suite == 'browser' || matrix.suite == 'kit'
         shell: bash
         env:
           NODE_ENV: development

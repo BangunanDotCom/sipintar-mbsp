@@ -14,6 +14,8 @@ Issue #54 menyediakan [panduan fasilitator dan triage](UAT-FEEDBACK-TRIAGE.md) s
 
 Issue #58 menyediakan [panduan pelaksanaan berpandu](GUIDED-INTERNAL-UAT.md) dan [pakej penerimaan serta keputusan pemilik](GUIDED-UAT-ACCEPTANCE.md).
 
+Issue #62 menyediakan [templat hos dan kesediaan Demo Release 1.0](DEMO-RELEASE-1-JTIK-HANDOVER.md), [keputusan JTIK](JTIK-DECISION-AND-UAT-READINESS.md), [borang UAT pegawai](UAT-SESSION-WORKSHEET.md) dan [kaedah pengesahan manifest](DEMO-RELEASE-MANIFEST.md).
+
 Pakej Issue #24 merangkumi pelaksanaan awal dan pengesahan sintetik. Kelulusan operasi, UAT MBSP dan kebenaran keluaran mempunyai rekod berasingan. Jejaki peringkat pembangunan dalam [pelan berkelompok](../STAYLINK-PHASE1-MULTIWORKSTREAM-ICT-HANDOVER.md), [pelan K02](../K02-UNIT-IDENTITY-PLAN.md) dan [spesifikasi K03/K04/K07](../K03-K04-K07-DOCUMENT-SECURITY-SPEC.md).
 
 ## Aliran data dan sempadan kepercayaan

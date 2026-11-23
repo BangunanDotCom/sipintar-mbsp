@@ -1,3 +1,4 @@
+import { inspectDemoHost } from "../apps/api/src/demo-host-config.mjs";
 import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate.js";
 import { loadSyntheticOwnerPolicy } from "../apps/api/src/synthetic-owner-policy.js";
 
@@ -6,6 +7,21 @@ export class PreflightError extends Error {
 }
 
 export function fixtureEnvironment(env: NodeJS.ProcessEnv = process.env) {
+  if (env.STAYLINK_DEMO_HOST === "true") {
+    const { failures, database } = inspectDemoHost(env, { requireKit: false });
+    if (failures.length || !database)
+      throw new PreflightError(failures.join(" "));
+    const owner = loadSyntheticOwnerPolicy(env.STAYLINK_SYNTHETIC_POLICY_JSON);
+    if (!owner?.config.review.enabled || owner.config.billing.mode !== "MOCK")
+      throw new PreflightError(
+        "Polisi demo mesti mengaktifkan semakan sintetik dan bil MOCK.",
+      );
+    return {
+      database,
+      version: owner.config.version,
+      fingerprint: owner.fingerprint,
+    };
+  }
   if (
     env.STAYLINK_SYNTHETIC_PORTAL !== "true" ||
     !["test", "development"].includes(env.NODE_ENV ?? "")

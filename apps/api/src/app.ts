@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { closeMailer } from "./core.js";
 import { transformOpenApi } from "./openapi.js";
 import Fastify, { LogController } from "fastify";
@@ -42,7 +43,20 @@ export async function buildApp() {
       },
     },
   });
-  await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
+  await app.register(rateLimit, {
+    max: 120,
+    timeWindow: "1 minute",
+    keyGenerator(request) {
+      const client = request.headers["x-staylink-demo-client"];
+      // The approved reverse proxy replaces this header and Fastify binds to loopback.
+      return process.env.STAYLINK_DEMO_HOST === "true" &&
+        request.ip === "127.0.0.1" &&
+        typeof client === "string" &&
+        isIP(client)
+        ? client
+        : request.ip;
+    },
+  });
   await app.register(swagger, {
     transform: transformOpenApi,
     openapi: {

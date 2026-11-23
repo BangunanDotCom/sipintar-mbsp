@@ -254,6 +254,7 @@ export async function lockSyntheticReview(
   await requireSyntheticSnapshotAuthority(tx, row);
   return {
     ...(await loadSyntheticReview(tx, row)),
+    actorId: row.actorId,
     previousId: row.previousId,
     draftVersion: row.draftVersion,
     policyVersion: row.policyVersion,
@@ -569,11 +570,8 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
     const { id } = params.parse(req.params);
     const input = edit.parse(req.body);
     return db.$transaction(async (tx) => {
-      const { state, snapshot, completerId } = await lockSyntheticReview(
-        tx,
-        id,
-        officer,
-      );
+      const { state, snapshot, completerId, actorId } =
+        await lockSyntheticReview(tx, id, officer);
       if (
         input.action === "REGISTER" &&
         completerId === officer.operator.userId
@@ -616,6 +614,19 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
                 ? completeAction
                 : correctionAction,
           metadata: decision.audit,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          userId: actorId,
+          type: "SYNTHETIC_REVIEW",
+          title: "Status permohonan latihan dikemas kini",
+          message:
+            input.action === "REQUEST_CORRECTION"
+              ? "PIC meminta pembetulan. Buka draf latihan untuk melihat perkara yang perlu dibaiki."
+              : input.action === "CONFIRM_COMPLETE"
+                ? "PIC mengesahkan kelengkapan. Permohonan latihan menunggu PPSK."
+                : "PPSK mendaftar permohonan latihan. Semak status dalam portal.",
         },
       });
       return {

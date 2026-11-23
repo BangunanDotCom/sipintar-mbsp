@@ -3,7 +3,11 @@ import { createConnection } from "node:net";
 import { parseArgs } from "node:util";
 import argon2 from "argon2";
 import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
-import { personas, readTrainingKit } from "./uat-preflight-kit.js";
+import {
+  isTrainingApplicant,
+  trainingPersonas,
+  readTrainingKit,
+} from "./uat-preflight-kit.js";
 
 async function checkMailpit() {
   const smtp = await new Promise<boolean>((resolve) => {
@@ -64,6 +68,8 @@ export async function runPreflight(args: string[]) {
     );
 
   const expected = fixtureEnvironment();
+  const people = trainingPersonas(expected.database);
+  const hosted = expected.database.startsWith("staylink_issue62_");
   const kit = parsed.values.kit
     ? await readTrainingKit(parsed.values.kit, expected)
     : null;
@@ -103,17 +109,16 @@ export async function runPreflight(args: string[]) {
             roles: { include: { role: { include: { permissions: true } } } },
             factors: true,
           },
-          take: 5,
+          take: people.length + 1,
         });
         const now = new Date();
         const verified = await Promise.all(
-          personas.map(async ({ label, role, district }) => {
+          people.map(async ({ label, role, district }) => {
             const account = kit.accounts.find((item) => item.label === label)!;
             const user = users.find((item) => item.id === account.id);
-            const applicant = !district;
-            const expectedRoles = applicant
-              ? ["PEMOHON", "WAKIL_SYARIKAT"]
-              : [role];
+            const applicant = isTrainingApplicant(role);
+            const expectedRoles =
+              applicant && !hosted ? ["PEMOHON", "WAKIL_SYARIKAT"] : [role];
             if (
               !user ||
               user.email !== account.email ||
@@ -132,7 +137,11 @@ export async function runPreflight(args: string[]) {
                     assignment.role.permissions.some(
                       ({ action }) =>
                         action ===
-                        (applicant ? "applications.draft" : "areas.read"),
+                        (applicant
+                          ? "applications.draft"
+                          : role === "PENTADBIR_ICT"
+                            ? "users.manage"
+                            : "areas.read"),
                     ),
                 ),
               ) ||
@@ -150,11 +159,11 @@ export async function runPreflight(args: string[]) {
           }),
         );
         if (
-          users.length !== personas.length ||
+          users.length !== people.length ||
           verified.some((result) => !result)
         )
           throw new PreflightError(
-            "Semak empat akaun, kata laluan, MFA dan pelantikan daerah kit latihan.",
+            "Semak akaun, kata laluan, MFA dan pelantikan daerah kit latihan.",
           );
 
         const drafts = await tx.applicationDraft.findMany({
@@ -178,11 +187,15 @@ export async function runPreflight(args: string[]) {
             const units = draft?.premises?.units;
             const expectedUnits = id === "multiple-units" ? 2 : 1;
             const company = id === "company-active" || id === "company-expired";
+            const actor =
+              company && hosted
+                ? kit.accounts.find(({ label }) => label === "wakil")!
+                : applicant;
             const rep = draft?.company?.representatives.find(
-              (item) => item.userId === applicant.id,
+              (item) => item.userId === actor.id,
             );
             return (
-              draft?.initiatedByUserId === applicant.id &&
+              draft?.initiatedByUserId === actor.id &&
               draft.version === 1 &&
               draft.status === "DRAFT" &&
               draft._count.syntheticSubmissions === 0 &&
@@ -231,7 +244,7 @@ export async function runPreflight(args: string[]) {
     await db.$disconnect();
   }
   console.log(
-    `LULUS · PostgreSQL dan Mailpit loopback · ${kit ? "empat akaun dan enam fixture sedia" : "DB kosong"}`,
+    `LULUS · PostgreSQL dan Mailpit loopback · ${kit ? `${people.length} akaun dan enam fixture sedia` : "DB kosong"}`,
   );
   console.log(`Polisi ${expected.version} · cap jari ${expected.fingerprint}`);
   console.log("Bukti kesiapsiagaan teknikal latihan.");

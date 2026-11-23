@@ -29,6 +29,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
   type KitAccount = {
     id: string;
     role: string;
+    label?: string;
     email: string;
     password: string;
     mfaSecretBase32: string | null;
@@ -66,9 +67,15 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       animations: "disabled",
     });
   }
-  async function signIn(role: "PEMOHON" | "PIC_KAWASAN" | "PPSK", id: string) {
-    const applicant = role === "PEMOHON";
-    const context = await browser.newContext({ baseURL });
+  async function signIn(
+    role: "PEMOHON" | "PIC_KAWASAN" | "PPSK" | "WAKIL_SYARIKAT",
+    id: string,
+  ) {
+    const applicant = role === "PEMOHON" || role === "WAKIL_SYARIKAT";
+    const context = await browser.newContext({
+      baseURL,
+      ignoreHTTPSErrors: process.env.STAYLINK_HTTPS_REHEARSAL === "true",
+    });
     contexts.push(context);
     if (kit) {
       const account = kit.accounts.find(
@@ -271,7 +278,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     ).toContainText("Wajib");
 
     uiTimings.applicant = Math.round(performance.now() - openApplicant);
-    for (const width of [320, 390]) {
+    for (const width of [320, 390, 768]) {
       await applicant.setViewportSize({ width, height: 850 });
       expect(
         await panel.evaluate(
@@ -334,7 +341,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await expect(search).toBeFocused();
     await expect(search).toHaveValue("");
 
-    for (const width of [320, 390]) {
+    for (const width of [320, 390, 768]) {
       await pic.setViewportSize({ width, height: 850 });
       expect(
         await firstCard.evaluate(
@@ -554,27 +561,42 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       expect(await invoice.json()).toMatchObject({
         invoice: { unitCount: 2, amountSen: 10000 },
       });
+      const representative = kit.accounts.find(
+        ({ label }) => label === "wakil",
+      );
+      const company = representative
+        ? await signIn("WAKIL_SYARIKAT", representative.id)
+        : applicant;
+      if (representative) {
+        expect(
+          (await applicant.request.get(scenario("company-active"))).status(),
+        ).toBe(404);
+        expect(
+          (await company.request.get(scenario("single-unit"))).status(),
+        ).toBe(404);
+      } else {
+        expect(
+          (
+            await applicant.request.post("/api/auth/role", {
+              headers,
+              data: { roleId: "WAKIL_SYARIKAT" },
+            })
+          ).status(),
+        ).toBe(200);
+      }
+      expect(
+        (await company.request.get(scenario("company-active"))).status(),
+      ).toBe(200);
       expect(
         (
-          await applicant.request.post("/api/auth/role", {
-            headers,
-            data: { roleId: "WAKIL_SYARIKAT" },
+          await company.request.post(scenario("company-active") + "/evidence", {
+            headers: await officerHeaders(company),
+            data: { version: 1, verdict: "CLEAN" },
           })
         ).status(),
       ).toBe(200);
       expect(
-        (await applicant.request.get(scenario("company-active"))).status(),
-      ).toBe(200);
-      expect(
-        (
-          await applicant.request.post(
-            scenario("company-active") + "/evidence",
-            { headers, data: { version: 1, verdict: "CLEAN" } },
-          )
-        ).status(),
-      ).toBe(200);
-      expect(
-        (await applicant.request.get(scenario("company-expired"))).status(),
+        (await company.request.get(scenario("company-expired"))).status(),
       ).toBe(404);
     }
   } finally {
