@@ -1,19 +1,22 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import argon2 from "argon2";
 import { Secret } from "otpauth";
 import { db, encrypt, hash } from "../apps/api/src/core.js";
 import { protectIdentification } from "../apps/api/src/identity.js";
 import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
-import { personas } from "./uat-preflight-kit.js";
+import {
+  isTrainingApplicant,
+  trainingPersonas,
+  trainingTempRoot,
+} from "./uat-preflight-kit.js";
 import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate.js";
 
 async function prepareDemo() {
   const expected = syntheticPortalDatabase();
-  if (!expected || !/^staylink_issue(?:36|40|45|49|54|58)_/.test(expected))
+  if (!expected || !/^staylink_issue(?:36|40|45|49|54|58|62)_/.test(expected))
     throw Error(
       "Gunakan PostgreSQL loopback seperti staylink_issue58_<label>_test dengan opt-in portal sintetik.",
     );
@@ -22,14 +25,18 @@ async function prepareDemo() {
   >`SELECT current_database()::text AS name`;
   if (actual?.name !== expected)
     throw Error("Pangkalan data latihan aktif tidak sepadan.");
-  const manifest = expected.startsWith("staylink_issue58_")
-    ? fixtureEnvironment()
-    : null;
+  const hosted = expected.startsWith("staylink_issue62_");
+  const manifest =
+    hosted || expected.startsWith("staylink_issue58_")
+      ? fixtureEnvironment()
+      : null;
   const batch = randomBytes(6).toString("hex");
   const identities = await Promise.all(
-    personas.map(async ({ role, district, label }) => {
+    trainingPersonas(expected).map(async ({ role, district, label }) => {
       const password = `Aa1!${randomBytes(18).toString("hex")}`;
-      const mfa = role === "PEMOHON" ? null : new Secret({ size: 20 }).base32;
+      const mfa = isTrainingApplicant(role)
+        ? null
+        : new Secret({ size: 20 }).base32;
       return {
         role,
         district,
@@ -43,7 +50,9 @@ async function prepareDemo() {
       };
     }),
   );
-  const directory = await mkdtemp(join(tmpdir(), "staylink-uat-"));
+  const directory = await mkdtemp(
+    join(await trainingTempRoot(), "staylink-uat-"),
+  );
   const result = await db.$transaction(async (tx) => {
     if (manifest) {
       await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(58001)`;
@@ -69,7 +78,7 @@ async function prepareDemo() {
         password,
         mfa,
       } = identity;
-      const applicant = role === "PEMOHON";
+      const applicant = isTrainingApplicant(role);
       const user = await tx.user.create({
         data: {
           email,
@@ -78,15 +87,20 @@ async function prepareDemo() {
           phone: "0100000000",
           emailVerified: true,
           kind: applicant ? "APPLICANT" : "OFFICER",
-          ...(applicant ? protectIdentification(`UJIAN${batch}`) : {}),
+          ...(applicant
+            ? protectIdentification(
+                `UJIAN${batch}${role === "WAKIL_SYARIKAT" ? "WA" : ""}`,
+              )
+            : {}),
           roles: {
             create: [
               {
                 roleId: role,
                 districtId: district,
-                reference: "LATIHAN ISSUE 49",
+                ...(role === "PENTADBIR_ICT" ? { departmentId: "ICT" } : {}),
+                reference: hosted ? "LATIHAN ISSUE 62" : "LATIHAN ISSUE 49",
               },
-              ...(applicant
+              ...(!hosted && applicant
                 ? [{ roleId: "WAKIL_SYARIKAT", reference: "LATIHAN ISSUE 49" }]
                 : []),
             ],
@@ -109,13 +123,11 @@ async function prepareDemo() {
     const applicant = await tx.user.findUniqueOrThrow({
       where: { id: accounts[0].id },
     });
-    const profile = {
-      userId: applicant.id,
-      name: applicant.name,
-      email: applicant.email,
-      phone: applicant.phone,
-      identificationMasked: applicant.identificationMasked,
-    };
+    const representative = hosted
+      ? await tx.user.findUniqueOrThrow({
+          where: { id: accounts.find(({ label }) => label === "wakil")!.id },
+        })
+      : applicant;
     const companyFor = (expired: boolean) =>
       tx.company.create({
         data: {
@@ -128,7 +140,7 @@ async function prepareDemo() {
           email: `company-${batch}@example.test`,
           representatives: {
             create: {
-              userId: applicant.id,
+              userId: representative.id,
               status: "VERIFIED",
               authorityType: "PENGARAH",
               startsAt: new Date(Date.now() - 120_000),
@@ -145,9 +157,17 @@ async function prepareDemo() {
       company?: Awaited<ReturnType<typeof companyFor>>,
       failed = false,
     ) {
+      const actor = company ? representative : applicant;
+      const profile = {
+        userId: actor.id,
+        name: actor.name,
+        email: actor.email,
+        phone: actor.phone,
+        identificationMasked: actor.identificationMasked,
+      };
       const draft = await tx.applicationDraft.create({
         data: {
-          initiatedByUserId: applicant.id,
+          initiatedByUserId: actor.id,
           initiatorSnapshot: profile,
           notes: label,
           ...(company

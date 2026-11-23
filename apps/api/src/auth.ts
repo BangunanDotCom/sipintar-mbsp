@@ -103,7 +103,7 @@ async function makeSession(app: FastifyInstance, reply: any, user: any) {
   reply.setCookie("staylink", raw, {
     httpOnly: true,
     sameSite: "strict",
-    secure: production,
+    secure: production || process.env.STAYLINK_DEMO_HOST === "true",
     path: "/",
     maxAge: 28800,
   });
@@ -115,6 +115,8 @@ export async function authRoutes(app: FastifyInstance) {
   };
   app.post("/api/auth/register", authLimit, async (req, reply) => {
     const b = registerSchema.parse(req.body);
+    if (process.env.STAYLINK_DEMO_HOST === "true" && !b.email.toLowerCase().endsWith("@example.test"))
+      fail(400, "Pendaftaran demo memerlukan alamat latihan @example.test.");
     assertDatabaseConfigured();
     let user;
     try {

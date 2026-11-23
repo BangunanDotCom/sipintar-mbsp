@@ -66,6 +66,8 @@ export async function dispatchMail(id: string) {
   if (!claimed.count) return;
   const row = await db.emailDeliveryLog.findUniqueOrThrow({ where: { id } });
   try {
+    if (process.env.STAYLINK_DEMO_HOST === "true" && !row.recipient.toLowerCase().endsWith("@example.test"))
+      throw Error("Emel demo hanya dibenarkan untuk alamat latihan.");
     if (production && process.env.SMTP_PRODUCTION_ENABLED !== "true")
       throw Error("Penghantaran produksi belum dibenarkan.");
     const transport = (mailTransport ??= nodemailer.createTransport({

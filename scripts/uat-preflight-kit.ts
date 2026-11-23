@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,13 +17,92 @@ export const personas = [
   { role: "PIC_KAWASAN", district: "SPT", label: "pic-spt" },
 ] as const;
 
+export const isTrainingApplicant = (role: string) =>
+  role === "PEMOHON" || role === "WAKIL_SYARIKAT";
+
+export const trainingPersonas = (database: string) =>
+  database.startsWith("staylink_issue62_")
+    ? ([
+        ...personas,
+        { role: "WAKIL_SYARIKAT", district: null, label: "wakil" },
+        { role: "PENTADBIR_ICT", district: null, label: "pentadbir" },
+      ] as const)
+    : personas;
+
+export function privatePermissions(
+  path: string,
+  info: { uid: number; mode: number },
+  mode: number,
+) {
+  if (process.platform !== "win32")
+    return info.uid === process.getuid?.() && (info.mode & 0o777) === mode;
+  // Windows uses a private inherited ACL instead of POSIX mode bits.
+  try {
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `
+      $ErrorActionPreference = 'Stop'
+      $path = $env:STAYLINK_CHECK_ACL
+      if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { exit 1 }
+      $acl = Get-Acl -LiteralPath $path
+      $owner = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+      $allowed = @($owner, 'S-1-5-18', 'S-1-5-32-544')
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $allowed) { exit 1 }
+      foreach ($ace in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+        if ($ace.AccessControlType -eq 'Allow' -and $ace.IdentityReference.Value -notin $allowed) { exit 1 }
+      }
+    `,
+      ],
+      {
+        env: { ...process.env, STAYLINK_CHECK_ACL: path },
+        stdio: "ignore",
+        timeout: 5000,
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function trainingTempRoot() {
+  const root = await realpath(tmpdir());
+  if (
+    process.platform === "win32" &&
+    !privatePermissions(root, await lstat(root), 0o700)
+  )
+    throw new PreflightError(
+      "Tetapkan TEMP dan TMP kepada direktori Windows dengan ACL latihan terhad.",
+    );
+  return root;
+}
+
 const account = z.object({
-  label: z.enum(["pemohon", "pic-spu", "ppsk", "pic-spt"]),
-  role: z.enum(["PEMOHON", "PIC_KAWASAN", "PPSK"]),
+  label: z.enum([
+    "pemohon",
+    "pic-spu",
+    "ppsk",
+    "pic-spt",
+    "wakil",
+    "pentadbir",
+  ]),
+  role: z.enum([
+    "PEMOHON",
+    "PIC_KAWASAN",
+    "PPSK",
+    "WAKIL_SYARIKAT",
+    "PENTADBIR_ICT",
+  ]),
   id: z.uuid(),
   email: z
     .string()
-    .regex(/^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt)@example\.test$/),
+    .regex(
+      /^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt|wakil|pentadbir)@example\.test$/,
+    ),
   password: z.string().regex(/^Aa1![a-f0-9]{36}$/),
   mfaSecretBase32: z
     .string()
@@ -35,7 +115,7 @@ const manifestSchema = z.strictObject({
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const kitSchema = z.object({
-  accounts: z.array(account).length(personas.length),
+  accounts: z.array(account).max(6),
   scenarios: z
     .array(
       z.object({
@@ -57,21 +137,26 @@ export async function readTrainingKit(
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const directory = resolve(path);
+  const people = trainingPersonas(expected.database);
   async function readPrivate(name: string) {
+    const path = join(directory, name);
+    if (!(await lstat(path)).isFile())
+      throw new PreflightError("Kit tidak boleh dibaca melalui pautan.");
     const file = await open(
-      join(directory, name),
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
     );
     try {
       const info = await file.stat();
       if (
         !info.isFile() ||
-        info.uid !== process.getuid?.() ||
-        (info.mode & 0o777) !== 0o600 ||
+        !privatePermissions(path, info, 0o600) ||
         info.nlink !== 1
       )
         throw new PreflightError(
-          "Fail kit mesti dimiliki pengendali dan berizin 0600.",
+          "Fail kit mesti persendirian (0600 atau ACL Windows terhad).",
         );
       const content = Buffer.alloc(16_385);
       const { bytesRead } = await file.read(content, 0, content.length);
@@ -84,17 +169,16 @@ export async function readTrainingKit(
   }
 
   try {
-    const root = await realpath(tmpdir());
+    const root = await trainingTempRoot();
     const info = await lstat(directory);
     if (
       dirname(directory) !== root ||
       !basename(directory).startsWith("staylink-uat-") ||
       !info.isDirectory() ||
-      info.uid !== process.getuid?.() ||
-      (info.mode & 0o777) !== 0o700
+      !privatePermissions(directory, info, 0o700)
     )
       throw new PreflightError(
-        "Gunakan direktori kit persendirian berizin 0700 di bawah TMPDIR.",
+        "Gunakan direktori kit persendirian di bawah direktori sementara (0700 atau ACL Windows terhad).",
       );
     const manifest = manifestSchema.parse(
       JSON.parse(await readPrivate("preflight.json")),
@@ -110,24 +194,24 @@ export async function readTrainingKit(
       );
     const kit = kitSchema.parse(JSON.parse(await readPrivate("accounts.json")));
     if (
-      new Set(kit.accounts.map(({ id }) => id)).size !== personas.length ||
-      new Set(kit.accounts.map(({ email }) => email)).size !==
-        personas.length ||
+      kit.accounts.length !== people.length ||
+      new Set(kit.accounts.map(({ id }) => id)).size !== people.length ||
+      new Set(kit.accounts.map(({ email }) => email)).size !== people.length ||
       new Set(kit.scenarios.map(({ id }) => id)).size !== scenarios.length ||
       new Set(kit.scenarios.map(({ draftPath }) => draftPath)).size !==
         scenarios.length ||
-      !personas.every(({ label, role, district }) =>
+      !people.every(({ label, role }) =>
         kit.accounts.some(
           (item) =>
             item.label === label &&
             item.role === role &&
             item.email.endsWith(`-${label}@example.test`) &&
-            (item.mfaSecretBase32 !== null) === Boolean(district),
+            (item.mfaSecretBase32 === null) === isTrainingApplicant(role),
         ),
       )
     )
       throw new PreflightError(
-        "Kit memerlukan empat akaun berasingan dan enam draf unik.",
+        "Kit memerlukan akaun peranan berasingan dan enam draf unik.",
       );
 
     const bindings = {
