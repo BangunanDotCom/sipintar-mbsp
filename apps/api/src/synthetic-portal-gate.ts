@@ -14,7 +14,7 @@ export function syntheticPortalDatabase(env = process.env) {
       url.port !== "5432" ||
       url.search ||
       url.hash ||
-      !/^\/staylink_issue(31|36|40|45|49|54)_[a-z0-9_]+_test$/.test(url.pathname)
+      !/^\/staylink_issue(31|36|40|45|49|54|58)_[a-z0-9_]+_test$/.test(url.pathname)
     )
       return null;
     return url.pathname.slice(1);

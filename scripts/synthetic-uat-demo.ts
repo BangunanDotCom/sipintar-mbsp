@@ -7,28 +7,27 @@ import argon2 from "argon2";
 import { Secret } from "otpauth";
 import { db, encrypt, hash } from "../apps/api/src/core.js";
 import { protectIdentification } from "../apps/api/src/identity.js";
+import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
+import { personas } from "./uat-preflight-kit.js";
 import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate.js";
 
 async function prepareDemo() {
   const expected = syntheticPortalDatabase();
-  if (!expected || !/^staylink_issue(?:36|40|45|49|54)_/.test(expected))
+  if (!expected || !/^staylink_issue(?:36|40|45|49|54|58)_/.test(expected))
     throw Error(
-      "Gunakan PostgreSQL loopback seperti staylink_issue54_<label>_test dengan opt-in portal sintetik.",
+      "Gunakan PostgreSQL loopback seperti staylink_issue58_<label>_test dengan opt-in portal sintetik.",
     );
   const [actual] = await db.$queryRaw<
     { name: string }[]
   >`SELECT current_database()::text AS name`;
   if (actual?.name !== expected)
     throw Error("Pangkalan data latihan aktif tidak sepadan.");
-  const roles = [
-    { role: "PEMOHON", district: null, label: "pemohon" },
-    { role: "PIC_KAWASAN", district: "SPU", label: "pic-spu" },
-    { role: "PPSK", district: "SPU", label: "ppsk" },
-    { role: "PIC_KAWASAN", district: "SPT", label: "pic-spt" },
-  ] as const;
+  const manifest = expected.startsWith("staylink_issue58_")
+    ? fixtureEnvironment()
+    : null;
   const batch = randomBytes(6).toString("hex");
   const identities = await Promise.all(
-    roles.map(async ({ role, district, label }) => {
+    personas.map(async ({ role, district, label }) => {
       const password = `Aa1!${randomBytes(18).toString("hex")}`;
       const mfa = role === "PEMOHON" ? null : new Secret({ size: 20 }).base32;
       return {
@@ -46,6 +45,17 @@ async function prepareDemo() {
   );
   const directory = await mkdtemp(join(tmpdir(), "staylink-uat-"));
   const result = await db.$transaction(async (tx) => {
+    if (manifest) {
+      await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(58001)`;
+      if (
+        (await tx.user.count()) ||
+        (await tx.applicationDraft.count()) ||
+        (await tx.company.count())
+      )
+        throw new PreflightError(
+          "Kit latihan memerlukan DB baharu tanpa akaun, draf atau syarikat.",
+        );
+    }
     const accounts = [];
     for (const identity of identities) {
       const {
@@ -321,6 +331,15 @@ async function prepareDemo() {
     ].join("\n"),
     { mode: 0o600, flag: "wx" },
   );
+  if (manifest)
+    await writeFile(
+      join(directory, "preflight.json"),
+      JSON.stringify(manifest) + "\n",
+      {
+        mode: 0o600,
+        flag: "wx",
+      },
+    );
   console.log(`Kit latihan ditulis ke ${directory}`);
 }
 
@@ -329,7 +348,8 @@ try {
 } catch (error) {
   process.exitCode = 1;
   console.error(
-    error instanceof Error && error.message.startsWith("Gunakan PostgreSQL")
+    error instanceof PreflightError ||
+      (error instanceof Error && error.message.startsWith("Gunakan PostgreSQL"))
       ? error.message
       : "Penyediaan kit latihan gagal. Semak migrasi, seed peranan dan konfigurasi sintetik.",
   );
