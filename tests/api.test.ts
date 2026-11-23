@@ -2636,6 +2636,237 @@ describe("Issue 31 integrated synthetic portal", () => {
   );
 
   it.runIf(enabled)(
+    "rejects an invalid owner policy without exposing a route or affecting ordinary drafts",
+    async () => {
+      const prior = process.env.STAYLINK_SYNTHETIC_POLICY_JSON;
+      let candidate: FastifyInstance | undefined;
+      try {
+        process.env.STAYLINK_SYNTHETIC_POLICY_JSON =
+          '{"mode":"PRODUCTION","approved":true}';
+        candidate = await buildApp();
+        expect(
+          candidate.hasRoute({ method: "GET", url: root + "/drafts/:id" }),
+        ).toBe(false);
+        expect(
+          candidate.hasRoute({
+            method: "POST",
+            url: root + "/callbacks/payment/:id",
+          }),
+        ).toBe(false);
+        expect((await candidate.inject("/api/health")).statusCode).toBe(200);
+        expect(
+          candidate.hasRoute({
+            method: "POST",
+            url: "/api/application-drafts/:id/submit",
+          }),
+        ).toBe(true);
+      } finally {
+        if (prior === undefined)
+          delete process.env.STAYLINK_SYNTHETIC_POLICY_JSON;
+        else process.env.STAYLINK_SYNTHETIC_POLICY_JSON = prior;
+        await candidate?.close();
+      }
+    },
+  );
+
+  it.runIf(enabled)(
+    "uses scoped policy facts and rejects stale or missing confirmation across configuration reloads",
+    async () => {
+      const { loadSyntheticOwnerPolicy } =
+        await import("../apps/api/src/synthetic-owner-policy");
+      const baseline = loadSyntheticOwnerPolicy()!.config;
+      const owner = await actor("PEMOHON");
+      const created = await request(owner, "/api/application-drafts", "POST", {
+        capacity: "INDIVIDUAL",
+      });
+      expect(created.statusCode).toBe(201);
+      const id = created.json().id as string;
+      const premises = await db.applicationPremises.create({
+        data: readyPremises(id, 1),
+      });
+      const floor = await db.premiseFloor.create({
+        data: {
+          draftId: id,
+          floorLabel: "G",
+          position: 0,
+          rooms: 1,
+          workers: 1,
+          beds: 1,
+          areaSqm: 12,
+          facilities,
+        },
+      });
+      const unit = await db.premiseUnit.create({
+        data: {
+          draftId: id,
+          premiseId: premises.id,
+          unitLabel: "U",
+          normalizedLabel: "u",
+        },
+      });
+      await db.premiseUnitFloor.create({
+        data: { draftId: id, floorId: floor.id, unitId: unit.id },
+      });
+      const policy = {
+        ...baseline,
+        version: "SYNTHETIC-OWNER-UAT-v1",
+        declaration: {
+          version: "SYNTHETIC-OWNER-AKUAN-v1",
+          text: "Saya menerima akuan konfigurasi latihan.",
+        },
+        documents: {
+          version: "SYNTHETIC-OWNER-BUKTI-v1",
+          rules: [
+            ...baseline.documents.rules,
+            {
+              requirement: "tenancy",
+              capacity: "INDIVIDUAL",
+              premiseType: "SHOP",
+              scope: "UNIT",
+              alternatives: ["ownership_or_tenancy"],
+              requireVerified: false,
+            },
+            {
+              requirement: "certificate",
+              condition: "hasBuildingCertificate",
+              scope: "DRAFT",
+              alternatives: ["building_certificate"],
+              requireVerified: false,
+            },
+          ],
+        },
+        review: { ...baseline.review, enabled: false },
+        billing: { mode: "DISABLED" },
+      };
+      const earlier = process.env.STAYLINK_SYNTHETIC_POLICY_JSON;
+      const apps: FastifyInstance[] = [];
+      const configured = async (config: unknown) => {
+        process.env.STAYLINK_SYNTHETIC_POLICY_JSON = JSON.stringify(config);
+        const candidate = await buildApp();
+        apps.push(candidate);
+        return (
+          url: string,
+          method: "GET" | "POST" = "GET",
+          payload?: object,
+        ) =>
+          candidate.inject({
+            method,
+            url,
+            payload,
+            headers: {
+              cookie: owner.cookie,
+              origin: "http://localhost:5173",
+              "x-csrf-token": owner.csrf,
+            },
+          });
+      };
+      try {
+        const first = await configured(policy);
+        const path = `${root}/drafts/${id}`;
+        expect((await first(root + "/reviews")).statusCode).toBe(404);
+        expect((await first(path + "/billing")).statusCode).toBe(404);
+        expect(
+          (await first(root + `/callbacks/payment/${randomUUID()}`, "POST", {}))
+            .statusCode,
+        ).toBe(404);
+        const evidence = await first(path + "/evidence", "POST", {
+          version: 1,
+          verdict: "CLEAN",
+        });
+        expect(evidence.statusCode, evidence.body).toBe(200);
+        expect(
+          await db.applicationDocument.count({
+            where: { draftId: id, supersededAt: null },
+          }),
+        ).toBe(2);
+        const current = await first(path);
+        expect(current.json()).toMatchObject({
+          ready: true,
+          draftVersion: 2,
+          policyVersion: policy.documents.version,
+          evidence: expect.arrayContaining([
+            expect.objectContaining({
+              category: "floor_layout",
+              scope: { floorId: floor.id, unitId: null },
+            }),
+            expect.objectContaining({
+              category: "ownership_or_tenancy",
+              scope: { unitId: unit.id, floorId: null },
+            }),
+          ]),
+        });
+        const input = {
+          version: 2,
+          accepted: true,
+          key: randomUUID(),
+          previousId: null,
+          declarationVersion: policy.declaration.version,
+        };
+        expect((await first(path + "/submit", "POST", input)).statusCode).toBe(
+          409,
+        );
+        const submitted = await first(path + "/submit", "POST", {
+          ...input,
+          policyFingerprint: current.json().policyFingerprint,
+        });
+        expect(submitted.statusCode, submitted.body).toBe(200);
+        const same = await first(path + "/submit", "POST", {
+          ...input,
+          policyFingerprint: current.json().policyFingerprint,
+        });
+        expect(same.json()).toEqual(submitted.json());
+        const saved = await db.syntheticSubmission.findUniqueOrThrow({
+          where: { id: submitted.json().id },
+        });
+        expect(saved.snapshot).toMatchObject({
+          ownerPolicyVersion: policy.version,
+          policyFingerprint: current.json().policyFingerprint,
+        });
+
+        const updated = await configured({
+          ...policy,
+          declaration: {
+            ...policy.declaration,
+            text: "Teks latihan berubah tanpa menaikkan versi.",
+          },
+        });
+        const latest = (await updated(path)).json();
+        expect(latest.policyFingerprint).not.toBe(
+          current.json().policyFingerprint,
+        );
+        expect(
+          (
+            await updated(path + "/submit", "POST", {
+              ...input,
+              policyFingerprint: current.json().policyFingerprint,
+            })
+          ).statusCode,
+        ).toBe(409);
+        expect(
+          (
+            await updated(path + "/submit", "POST", {
+              ...input,
+              policyFingerprint: latest.policyFingerprint,
+            })
+          ).statusCode,
+        ).toBe(409);
+        expect(
+          await db.syntheticSubmission.count({ where: { draftId: id } }),
+        ).toBe(1);
+        expect(
+          (await updated(`/api/application-drafts/${id}/submit`, "POST", {}))
+            .statusCode,
+        ).toBe(409);
+      } finally {
+        if (earlier === undefined)
+          delete process.env.STAYLINK_SYNTHETIC_POLICY_JSON;
+        else process.env.STAYLINK_SYNTHETIC_POLICY_JSON = earlier;
+        for (const candidate of apps) await candidate.close();
+      }
+    },
+  );
+
+  it.runIf(enabled)(
     "denies a revoked representative even with an existing synthetic draft",
     async () => {
       const company = await request(applicant, "/api/companies", "POST", {

@@ -286,7 +286,9 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         result.url().endsWith("/submit"),
     );
     await submit.click();
-    const first = await (await firstSubmit).json();
+    const submitted = await firstSubmit;
+    expect(submitted.request().postDataJSON().policyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const first = await submitted.json();
     expect(first.id).toBeTruthy();
 
     const openPic = performance.now();
