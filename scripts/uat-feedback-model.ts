@@ -25,7 +25,7 @@ const feedbackText = z
   .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value))
   .refine(
     (value) =>
-      !/@|https?:|file:|Bearer\s|BEGIN .*KEY|(?:password|kata laluan|secret|token)\s*[:=]|\d{6}[- ]?\d{2}[- ]?\d{4}|\b\d{9,}\b/i.test(
+      !/@|\b[a-z][a-z0-9+.-]*:\/\/|\b(?:data|file|ftp|https?|javascript|mailto|vbscript):|\bwww\.|Bearer\s|BEGIN .*KEY|(?:password|kata laluan|secret|token)\s*[:=]|\d{6}[- ]?\d{2}[- ]?\d{4}|\b\d{9,}\b/i.test(
         value,
       ),
   );
@@ -54,6 +54,7 @@ export const recordSchema = z
       "ONCE",
       "NOT_APPLICABLE",
     ]),
+    reproductionSteps: feedbackText.optional(),
     evidenceRef: evidence,
     component: z.enum([
       "PEMOHON",
@@ -73,6 +74,9 @@ export const recordSchema = z
         path: ["severity"],
         message: "Severity diperlukan bagi FAIL/BLOCKED sahaja.",
       });
+    }
+    if (item.outcome !== "PASS" && !item.reproductionSteps) {
+      ctx.addIssue({ code: "custom", path: ["reproductionSteps"], message: "Nyatakan langkah untuk mengulang dapatan." });
     }
   });
 

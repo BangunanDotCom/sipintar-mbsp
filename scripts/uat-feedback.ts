@@ -71,7 +71,9 @@ async function temporaryRoot() {
   const root = await realpath(tmpdir());
   for (let path = root; ; path = dirname(path)) {
     try {
-      await lstat(join(path, ".git"));
+      const metadata = join(path, ".git");
+      const marker = await lstat(metadata);
+      if (marker.isDirectory()) await lstat(join(metadata, "HEAD"));
       throw new FeedbackError(
         "Gunakan direktori sementara di luar checkout Git.",
       );

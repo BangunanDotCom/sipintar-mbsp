@@ -2489,6 +2489,12 @@ describe("Issue 31 integrated synthetic portal", () => {
         (await request(ppsk, secondPath, "POST", register)).statusCode,
       ).toBe(200);
 
+      expect(
+        (await request(ppsk, secondPath, "POST", register)).statusCode,
+      ).toBe(409);
+      expect(
+        (await request(outsider, secondPath + "/comparison")).statusCode,
+      ).toBe(404);
       const billPath = `${secondPath}/billing`;
       expect(
         (await request(pic, billPath, "POST", { action: "ISSUE" })).statusCode,
@@ -2546,6 +2552,13 @@ describe("Issue 31 integrated synthetic portal", () => {
       };
       expect((await callback(5000, false)).statusCode).toBe(401);
       expect((await callback(1, true)).statusCode).toBe(409);
+      expect((await request(outsider, billPath)).statusCode).toBe(404);
+      expect(
+        await db.auditLog.count({
+          where: { action: "SYNTHETIC_PORTAL_INVOICE_SETTLED", target: second },
+        }),
+      ).toBe(0);
+
       const settlements = await Promise.all([
         callback(5000, true),
         callback(5000, true),
@@ -2888,6 +2901,7 @@ describe("Issue 31 integrated synthetic portal", () => {
           },
         });
         const latest = (await updated(path)).json();
+        expect(latest.latest.id).toBe(submitted.json().id);
         expect(latest.policyFingerprint).not.toBe(
           current.json().policyFingerprint,
         );
@@ -3048,6 +3062,14 @@ describe("Issue 31 integrated synthetic portal", () => {
         data: { status: "REVOKED" },
       });
       expect((await request(applicant, draftPath)).statusCode).toBe(404);
+      expect(
+        (
+          await request(
+            pic,
+            `${root}/reviews/${submitted.json().id}/comparison`,
+          )
+        ).statusCode,
+      ).toBe(404);
       expect(
         (
           await request(applicant, `${draftPath}/evidence`, "POST", {
