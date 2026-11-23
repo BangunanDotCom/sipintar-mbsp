@@ -2,7 +2,10 @@ import {
   loadSyntheticOwnerPolicy,
   syntheticDocumentFacts,
 } from "./synthetic-owner-policy.js";
-import { documentRuleApplicability } from "../../../packages/shared/src/document-policy.js";
+import {
+  documentRuleApplicability,
+  summarizeDocumentRequirements,
+} from "../../../packages/shared/src/document-policy.js";
 import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
@@ -22,6 +25,9 @@ import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import {
   captureSyntheticSubmission,
   loadSyntheticReadiness,
+  loadSyntheticInventory,
+  loadSyntheticEvidence,
+  documentContext,
   requireSyntheticSnapshotAuthority,
 } from "./synthetic-submissions.js";
 
@@ -119,24 +125,15 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               ? await loadSyntheticReview(tx, latest)
               : null;
             const correction = review?.state.status === "CORRECTION_REQUESTED";
-            const evidence = await tx.applicationDocument.findMany({
-              where: {
-                draftId: id,
-                supersededAt: null,
-                storageKey: { startsWith: "issue31-fixture/" },
-              },
-              select: {
-                id: true,
-                category: true,
-                version: true,
-                scanStatus: true,
-                scope: { select: { unitId: true, floorId: true } },
-              },
-              orderBy: { version: "asc" },
-            });
+            const inventory = await loadSyntheticInventory(tx, id);
+            const evidence = await loadSyntheticEvidence(tx, id);
+            const context = documentContext(draft, inventory, evidence);
             let blocker = "";
             try {
-              await loadSyntheticReadiness(tx, draft, authority, policy);
+              await loadSyntheticReadiness(tx, draft, authority, policy, {
+                inventory,
+                documents: evidence,
+              });
             } catch (error) {
               if (
                 !(error instanceof Error) ||
@@ -169,7 +166,20 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               reference: review?.state.officialReference ?? null,
               correctionReason: review?.correctionReason ?? null,
               correctionRequested: correction,
-              evidence,
+              evidence: evidence.map(
+                ({ id, category, version, scanStatus, scope }) => ({
+                  id,
+                  category,
+                  version,
+                  scanStatus,
+                  scope,
+                }),
+              ),
+              requirements: summarizeDocumentRequirements(documents, context),
+              inventory: {
+                unitCount: context.targets.UNIT.length,
+                floorCount: context.targets.FLOOR.length,
+              },
               blocker,
               ready: !blocker,
             };

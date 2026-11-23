@@ -240,15 +240,12 @@ function assertSyntheticCapacity(
     fail(409, "Konteks pemohon sintetik tidak sah.");
 }
 
-export async function loadSyntheticReadiness(
+export async function loadSyntheticInventory(
   tx: Prisma.TransactionClient,
-  draft: ApplicationDraft,
-  authority: Authority,
-  policy: SyntheticPolicy,
+  draftId: string,
 ) {
-  assertSyntheticCapacity(draft, authority);
   const premises = await tx.applicationPremises.findUnique({
-    where: { draftId: draft.id },
+    where: { draftId: draftId },
     include: {
       units: {
         orderBy: { id: "asc" },
@@ -257,9 +254,92 @@ export async function loadSyntheticReadiness(
     },
   });
   const floors = await tx.premiseFloor.findMany({
-    where: { draftId: draft.id },
+    where: { draftId: draftId },
     orderBy: { position: "asc" },
   });
+  return { premises, floors };
+}
+
+export async function loadSyntheticEvidence(
+  tx: Prisma.TransactionClient,
+  draftId: string,
+) {
+  return tx.applicationDocument.findMany({
+    where: {
+      draftId,
+      supersededAt: null,
+      ...(syntheticPortalDatabase()
+        ? { storageKey: { startsWith: "issue31-fixture/" } }
+        : {}),
+    },
+    select: {
+      id: true,
+      category: true,
+      version: true,
+      scanStatus: true,
+      verificationStatus: true,
+      scope: { select: { unitId: true, floorId: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+}
+
+export function documentContext(
+  draft: ApplicationDraft,
+  { premises, floors }: Awaited<ReturnType<typeof loadSyntheticInventory>>,
+  documents: Awaited<ReturnType<typeof loadSyntheticEvidence>>,
+) {
+  const eligible = documents.filter(
+    (item) =>
+      item.scanStatus === "CLEAN" &&
+      ["VERIFIED", "UNVERIFIED"].includes(item.verificationStatus),
+  );
+  const evidence = eligible.map((item): Evidence => ({
+    scope: item.scope?.unitId
+      ? "UNIT"
+      : item.scope?.floorId
+        ? "FLOOR"
+        : "DRAFT",
+    targetId: item.scope?.unitId ?? item.scope?.floorId ?? draft.id,
+    category: item.category,
+    scanStatus: item.scanStatus,
+    verificationStatus: item.verificationStatus,
+  }));
+  const capacity =
+    draft.capacity === "COMPANY"
+      ? ("COMPANY" as const)
+      : ("INDIVIDUAL" as const);
+  return {
+    eligible,
+    capacity,
+    evidence,
+    premiseType: premises?.buildingType ?? null,
+    facts: syntheticDocumentFacts(
+      premises?.units.length ?? 0,
+      premises?.certificateType ?? null,
+    ),
+    targets: {
+      DRAFT: [draft.id],
+      UNIT: premises?.units.map(({ id }) => id) ?? [],
+      FLOOR: floors.map(({ id }) => id),
+    },
+  };
+}
+
+export async function loadSyntheticReadiness(
+  tx: Prisma.TransactionClient,
+  draft: ApplicationDraft,
+  authority: Authority,
+  policy: SyntheticPolicy,
+  loaded?: {
+    inventory: Awaited<ReturnType<typeof loadSyntheticInventory>>;
+    documents: Awaited<ReturnType<typeof loadSyntheticEvidence>>;
+  },
+) {
+  assertSyntheticCapacity(draft, authority);
+  const inventory =
+    loaded?.inventory ?? (await loadSyntheticInventory(tx, draft.id));
+  const { premises, floors } = inventory;
   if (
     !premises?.buildingType ||
     !floors.length ||
@@ -296,33 +376,12 @@ export async function loadSyntheticReadiness(
       );
   }
 
-  const documents = await tx.applicationDocument.findMany({
-    where: {
-      draftId: draft.id,
-      supersededAt: null,
-      ...(syntheticPortalDatabase()
-        ? { storageKey: { startsWith: "issue31-fixture/" } }
-        : {}),
-    },
-    include: { scope: true },
-    orderBy: { id: "asc" },
-  });
-  const eligible = documents.filter(
-    (item) =>
-      item.scanStatus === "CLEAN" &&
-      ["VERIFIED", "UNVERIFIED"].includes(item.verificationStatus),
+  const context = documentContext(
+    draft,
+    inventory,
+    loaded?.documents ?? (await loadSyntheticEvidence(tx, draft.id)),
   );
-  const evidence = eligible.map((item): Evidence => ({
-    scope: item.scope?.unitId
-      ? "UNIT"
-      : item.scope?.floorId
-        ? "FLOOR"
-        : "DRAFT",
-    targetId: item.scope?.unitId ?? item.scope?.floorId ?? draft.id,
-    category: item.category,
-    scanStatus: item.scanStatus,
-    verificationStatus: item.verificationStatus,
-  }));
+  const { eligible, evidence } = context;
   if (
     authority &&
     !evidence.some(
@@ -333,21 +392,7 @@ export async function loadSyntheticReadiness(
     )
   )
     fail(409, "Bukti kuasa wakil sintetik belum disahkan.");
-  const capacity = draft.capacity === "COMPANY" ? "COMPANY" : "INDIVIDUAL";
-  const readiness = evaluateDocumentPolicy(policy.documents, {
-    capacity,
-    premiseType: premises.buildingType,
-    facts: syntheticDocumentFacts(
-      premises.units.length,
-      premises.certificateType,
-    ),
-    targets: {
-      DRAFT: [draft.id],
-      UNIT: premises.units.map(({ id }) => id),
-      FLOOR: floors.map(({ id }) => id),
-    },
-    evidence,
-  });
+  const readiness = evaluateDocumentPolicy(policy.documents, context);
   if (
     readiness.status !== "READY" ||
     !readiness.version?.startsWith("SYNTHETIC-")

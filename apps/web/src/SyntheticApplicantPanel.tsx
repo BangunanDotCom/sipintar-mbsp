@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+import { preliminarySupportingDocuments } from "../../../packages/shared/src/supporting-documents";
 import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +12,26 @@ import {
   type ActionFeedback,
   type SyntheticReviewStatus,
 } from "./synthetic-portal-ui";
+
+type Requirement = {
+  requirement: string;
+  categories: string[];
+  scope: "DRAFT" | "UNIT" | "FLOOR";
+  applicability: "REQUIRED" | "CONDITIONAL" | "NOT_APPLICABLE" | "UNKNOWN";
+  eligibleTargets: number;
+  requiredTargets: number;
+  requireVerified: boolean;
+};
+const requirementLabels = {
+  REQUIRED: "Wajib",
+  CONDITIONAL: "Bersyarat",
+  NOT_APPLICABLE: "Tidak berkaitan",
+  UNKNOWN: "Syarat belum diketahui",
+};
+const scopes = { DRAFT: "Permohonan", UNIT: "Unit fizikal", FLOOR: "Tingkat" };
+const categoryLabel = (category: string) =>
+  preliminarySupportingDocuments.find((entry) => entry.category === category)
+    ?.label ?? category;
 
 type ApplicantState = {
   draftVersion: number;
@@ -27,6 +49,8 @@ type ApplicantState = {
     version: number;
     scanStatus: string;
   }[];
+  requirements: Requirement[];
+  inventory: { unitCount: number; floorCount: number };
   blocker: string;
   ready: boolean;
 };
@@ -67,6 +91,8 @@ export function SyntheticApplicantPanel({
   const policyFingerprint = state.policyFingerprint;
   const context = `${draftId}:${state.draftVersion}:${state.declaration.version}:${state.policyFingerprint}:${previousId}`;
   const accepted = acceptedFor === context;
+  const base = `/permohonan/draf/${draftId}`;
+  const step = editable ? (state.ready ? "declaration" : "evidence") : "status";
 
   async function act(path: string, body: unknown, success: string) {
     setPending(true);
@@ -121,7 +147,55 @@ export function SyntheticApplicantPanel({
       aria-labelledby="synthetic-applicant-title"
       aria-busy={pending}
     >
-      <h2 id="synthetic-applicant-title">Serahan latihan sintetik</h2>
+      <header>
+        <span className="synthetic-status">LATIHAN / SINTETIK</span>
+        <h2 id="synthetic-applicant-title">Serahan latihan sintetik</h2>
+      </header>
+      <nav aria-label="Langkah latihan pemohon" className="synthetic-steps">
+        <ol>
+          <li>
+            <Link to={base + "/premis"}>Premis</Link>
+          </li>
+          <li>
+            <Link to={base + "/unit"}>
+              Unit fizikal ({state.inventory.unitCount})
+            </Link>
+          </li>
+          <li>
+            <Link to={base + "/tingkat"}>
+              Tingkat dan kemudahan ({state.inventory.floorCount})
+            </Link>
+          </li>
+          <li>
+            <a
+              href="#uat-bukti"
+              aria-current={step === "evidence" ? "step" : undefined}
+            >
+              Bukti
+            </a>
+          </li>
+          <li>
+            {editable ? (
+              <a
+                href="#uat-akuan"
+                aria-current={step === "declaration" ? "step" : undefined}
+              >
+                Akuan dan serahan
+              </a>
+            ) : (
+              <span>Akuan dan serahan</span>
+            )}
+          </li>
+          <li>
+            <a
+              href="#uat-status"
+              aria-current={step === "status" ? "step" : undefined}
+            >
+              Status dan invois
+            </a>
+          </li>
+        </ol>
+      </nav>
       <div className="synthetic-meta">
         <span className="synthetic-status" role="status">
           {state.reviewStatus
@@ -134,6 +208,29 @@ export function SyntheticApplicantPanel({
           Polisi bukti {state.policyVersion} · Draf v{state.draftVersion}
         </small>
       </div>
+      <h3 id="uat-bukti">Bukti mengikut polisi latihan</h3>
+      <ul
+        className="synthetic-requirements"
+        aria-label="Keperluan dokumen mengikut polisi latihan"
+      >
+        {state.requirements.map((rule, index) => (
+          <li key={`${rule.requirement}:${index}`}>
+            <strong>{rule.categories.map(categoryLabel).join(" / ")}</strong>
+            <span>
+              {requirementLabels[rule.applicability]} · {scopes[rule.scope]}
+            </span>
+            {rule.applicability === "REQUIRED" ||
+            rule.applicability === "CONDITIONAL" ? (
+              <small>
+                {rule.requiredTargets
+                  ? `${rule.eligibleTargets}/${rule.requiredTargets} sasaran dengan bukti layak`
+                  : "Tambah sasaran pada inventori dahulu."}
+                {rule.requireVerified && " · Pengesahan diperlukan"}
+              </small>
+            ) : null}
+          </li>
+        ))}
+      </ul>
       <p>
         Gunakan metadata latihan untuk menyemak bukti sebelum mengesahkan akuan.
       </p>
@@ -178,16 +275,6 @@ export function SyntheticApplicantPanel({
           </button>
         </div>
       )}
-      {state.latest && (
-        <p>
-          Resit sintetik <code>{state.latest.id}</code>
-        </p>
-      )}
-      {state.reference && (
-        <p>
-          Rujukan simulasi <code>{state.reference}</code>
-        </p>
-      )}
       {state.correctionReason && (
         <p>Alasan pembetulan: {state.correctionReason}</p>
       )}
@@ -200,6 +287,7 @@ export function SyntheticApplicantPanel({
       {state.blocker && <p className="synthetic-note">{state.blocker}</p>}
       {editable && (
         <>
+          <h3 id="uat-akuan">Akuan dan serahan latihan</h3>
           <label className="synthetic-check">
             <input
               type="checkbox"
@@ -227,6 +315,30 @@ export function SyntheticApplicantPanel({
       )}
       {pending && <p role="status">Memproses tindakan latihan…</p>}
       <SyntheticFeedback feedback={message} />
+      <div className="synthetic-meta">
+        <h3 id="uat-status">Status dan invois latihan</h3>
+        <button
+          type="button"
+          className="button secondary small"
+          disabled={query.isFetching || pending}
+          onClick={() => void query.refetch()}
+        >
+          Semak status terkini
+        </button>
+      </div>
+      {!state.latest && (
+        <p>Resit latihan akan muncul selepas serahan diterima.</p>
+      )}
+      {state.latest && (
+        <p>
+          Resit sintetik <code>{state.latest.id}</code>
+        </p>
+      )}
+      {state.reference && (
+        <p>
+          Rujukan simulasi <code>{state.reference}</code>
+        </p>
+      )}
       {state.reviewStatus === "REGISTERED" && (
         <SyntheticInvoice path={`${root}/billing`} identity={userId} />
       )}
