@@ -65,3 +65,7 @@ Paginasi mengehadkan pembacaan metadata dan peristiwa kepada kes pada halaman. A
 | UAT peranti sebenar, prestasi peta dan kesediaan staging | ICT, fasilitator UAT | Pemilik sistem MBSP | Semua pemilik proses |
 
 **Ringkasan mesyuarat.** Aliran latihan dan pengasingan boleh didemonstrasikan. Bawa sebarang kelulusan bersama nama pelulus, tarikh kuat kuasa dan rujukan SOP. Pemilik sistem menetapkan bila gerbang semakan staging boleh dipertimbangkan.
+
+## Semakan advisori susulan · 23 November 2026 (MYT)
+
+Audit pada `35b648e` melaporkan lima entri tinggi daripada satu advisori terhadap `effect` melalui rantaian Prisma. Override terhad kepada `@prisma/config@6.19.3` menaikkan `effect` daripada 3.21.0 kepada versi yang ditampal, 3.22.1. Prisma kekal 6.19.3 dan lockfile hanya berubah bagi pakej `effect`. Audit lockfile selepas kemas kini melaporkan sifar kelemahan. Pengesahan commit akhir turut meliputi pemasangan bersih, penjanaan Prisma, integrasi dan pemulihan sintetik. [GHSA-7589-6fvf-x4pw](https://github.com/advisories/GHSA-7589-6fvf-x4pw)

@@ -6,6 +6,7 @@ on:
     branches:
       - 'issue-36-uat-ict-readiness'
       - 'issue-40-ict-acceptance'
+      - 'issue-40-effect-advisory'
 
 permissions:
   contents: read
