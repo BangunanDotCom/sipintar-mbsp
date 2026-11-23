@@ -5,31 +5,38 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import argon2 from "argon2";
 import { Secret } from "otpauth";
-import { db, encrypt } from "../apps/api/src/core.js";
+import { db, encrypt, hash } from "../apps/api/src/core.js";
 import { protectIdentification } from "../apps/api/src/identity.js";
 import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate.js";
 
 async function prepareDemo() {
   const expected = syntheticPortalDatabase();
-  if (!expected || !/^staylink_issue(?:36|40|45)_/.test(expected))
+  if (!expected || !/^staylink_issue(?:36|40|45|49)_/.test(expected))
     throw Error(
-      "Gunakan PostgreSQL loopback staylink_issue36_<label>_test atau staylink_issue45_<label>_test dengan opt-in portal sintetik.",
+      "Gunakan PostgreSQL loopback staylink_issue36_<label>_test atau staylink_issue49_<label>_test dengan opt-in portal sintetik.",
     );
   const [actual] = await db.$queryRaw<
     { name: string }[]
   >`SELECT current_database()::text AS name`;
   if (actual?.name !== expected)
     throw Error("Pangkalan data latihan aktif tidak sepadan.");
-  const roles = ["PEMOHON", "PIC_KAWASAN", "PPSK"] as const;
+  const roles = [
+    { role: "PEMOHON", district: null, label: "pemohon" },
+    { role: "PIC_KAWASAN", district: "SPU", label: "pic-spu" },
+    { role: "PPSK", district: "SPU", label: "ppsk" },
+    { role: "PIC_KAWASAN", district: "SPT", label: "pic-spt" },
+  ] as const;
   const batch = randomBytes(6).toString("hex");
   const identities = await Promise.all(
-    roles.map(async (role) => {
+    roles.map(async ({ role, district, label }) => {
       const password = `Aa1!${randomBytes(18).toString("hex")}`;
       const mfa = role === "PEMOHON" ? null : new Secret({ size: 20 }).base32;
       return {
         role,
+        district,
+        label,
         name: `Latihan STAYLink ${role}`,
-        email: `uat-${batch}-${role.toLowerCase()}@example.test`,
+        email: `uat-${batch}-${label}@example.test`,
         password,
         passwordHash: await argon2.hash(password),
         mfa,
@@ -41,8 +48,17 @@ async function prepareDemo() {
   const result = await db.$transaction(async (tx) => {
     const accounts = [];
     for (const identity of identities) {
-      const { role, email, name, passwordHash, encrypted, password, mfa } =
-        identity;
+      const {
+        role,
+        district,
+        label,
+        email,
+        name,
+        passwordHash,
+        encrypted,
+        password,
+        mfa,
+      } = identity;
       const applicant = role === "PEMOHON";
       const user = await tx.user.create({
         data: {
@@ -54,11 +70,16 @@ async function prepareDemo() {
           kind: applicant ? "APPLICANT" : "OFFICER",
           ...(applicant ? protectIdentification(`UJIAN${batch}`) : {}),
           roles: {
-            create: {
-              roleId: role,
-              districtId: applicant ? null : "SPU",
-              reference: "LATIHAN ISSUE 36",
-            },
+            create: [
+              {
+                roleId: role,
+                districtId: district,
+                reference: "LATIHAN ISSUE 49",
+              },
+              ...(applicant
+                ? [{ roleId: "WAKIL_SYARIKAT", reference: "LATIHAN ISSUE 49" }]
+                : []),
+            ],
           },
         },
       });
@@ -68,6 +89,7 @@ async function prepareDemo() {
         });
       accounts.push({
         role,
+        label,
         id: user.id,
         email,
         password,
@@ -84,78 +106,198 @@ async function prepareDemo() {
       phone: applicant.phone,
       identificationMasked: applicant.identificationMasked,
     };
-    const draft = await tx.applicationDraft.create({
-      data: {
-        capacity: "INDIVIDUAL",
-        initiatedByUserId: applicant.id,
-        officialApplicantUserId: applicant.id,
-        initiatorSnapshot: profile,
-        applicantSnapshot: profile,
-        notes: "Latihan UAT STAYLink MBSP.",
-      },
-    });
-    const premise = await tx.applicationPremises.create({
-      data: {
-        draftId: draft.id,
-        address: "Premis Latihan Maya, lot UAT-36",
-        postcode: "13000",
-        lotNumber: "UAT-36",
-        locality: "Mukim latihan",
-        districtId: "SPU",
-        latitude: 5.42,
-        longitude: 100.4,
-        locationSource: "USER_PIN",
-        buildingType: "Kedai latihan",
-        currentUse: "Latihan",
-        involvedFloors: 2,
-        accommodationUnits: 1,
-        totalRooms: 2,
-        floorAreaSqm: 100,
-        proposedWorkers: 4,
-        certificateType: "NOT_APPLICABLE",
-      },
-    });
-    const floors = await Promise.all(
-      ["Tingkat Bawah", "Tingkat 1"].map((floorLabel, position) =>
-        tx.premiseFloor.create({
-          data: {
-            draftId: draft.id,
-            floorLabel,
-            position,
-            rooms: 1,
-            beds: 2,
-            workers: 2,
-            areaSqm: 50,
-            facilities: {
-              toilets: 1,
-              bathrooms: 1,
-              sinks: 1,
-              diningTables: 0,
-              diningChairs: 0,
-              fireExtinguishers: 1,
+    const companyFor = (expired: boolean) =>
+      tx.company.create({
+        data: {
+          name: expired
+            ? "Syarikat latihan — kuasa luput"
+            : "Syarikat latihan — kuasa sah",
+          registrationNumber: `UAT${batch}${expired ? "LUPUT" : "SAH"}`,
+          address: "Alamat latihan",
+          phone: "0100000000",
+          email: `company-${batch}@example.test`,
+          representatives: {
+            create: {
+              userId: applicant.id,
+              status: "VERIFIED",
+              authorityType: "PENGARAH",
+              startsAt: new Date(Date.now() - 120_000),
+              endsAt: expired ? new Date(Date.now() - 60_000) : null,
             },
           },
-        }),
-      ),
+        },
+        include: { representatives: true },
+      });
+    async function scenario(
+      label: string,
+      unitCount: number,
+      districtId = "SPU",
+      company?: Awaited<ReturnType<typeof companyFor>>,
+      failed = false,
+    ) {
+      const draft = await tx.applicationDraft.create({
+        data: {
+          initiatedByUserId: applicant.id,
+          initiatorSnapshot: profile,
+          notes: label,
+          ...(company
+            ? {
+                capacity: "COMPANY",
+                companyId: company.id,
+                applicantSnapshot: {
+                  companyId: company.id,
+                  name: company.name,
+                  registrationNumber: company.registrationNumber,
+                  address: company.address,
+                  phone: company.phone,
+                  email: company.email,
+                  informationStatus: company.informationStatus,
+                },
+                representativeSnapshot: {
+                  ...profile,
+                  representativeId: company.representatives[0].id,
+                  authorityType: "PENGARAH",
+                  status: "VERIFIED",
+                },
+              }
+            : {
+                capacity: "INDIVIDUAL",
+                officialApplicantUserId: applicant.id,
+                applicantSnapshot: profile,
+              }),
+        },
+      });
+      const premise = await tx.applicationPremises.create({
+        data: {
+          draftId: draft.id,
+          address: "Premis Latihan Maya, lot UAT-49",
+          postcode: "13000",
+          lotNumber: "UAT-49",
+          locality: "Mukim latihan",
+          districtId,
+          latitude: 5.42,
+          longitude: 100.4,
+          locationSource: "USER_PIN",
+          buildingType: "Kedai latihan",
+          currentUse: "Latihan",
+          involvedFloors: 2,
+          accommodationUnits: unitCount,
+          totalRooms: 2,
+          floorAreaSqm: 100,
+          proposedWorkers: 4,
+          certificateType: "NOT_APPLICABLE",
+        },
+      });
+      const floors = await Promise.all(
+        ["Tingkat Bawah", "Tingkat 1"].map((floorLabel, position) =>
+          tx.premiseFloor.create({
+            data: {
+              draftId: draft.id,
+              floorLabel,
+              position,
+              rooms: 1,
+              beds: 2,
+              workers: 2,
+              areaSqm: 50,
+              facilities: {
+                toilets: 1,
+                bathrooms: 1,
+                sinks: 1,
+                diningTables: 0,
+                diningChairs: 0,
+                fireExtinguishers: 1,
+              },
+            },
+          }),
+        ),
+      );
+      for (let index = 0; index < unitCount; index++) {
+        const unitLabel = index === 0 ? "Kedai Latihan A" : "Kedai Latihan B";
+        const unit = await tx.premiseUnit.create({
+          data: {
+            draftId: draft.id,
+            premiseId: premise.id,
+            unitLabel,
+            normalizedLabel: unitLabel.toLowerCase(),
+          },
+        });
+        const links = index === 0 ? floors : floors.slice(1);
+        await tx.premiseUnitFloor.createMany({
+          data: links.map(({ id }) => ({
+            draftId: draft.id,
+            floorId: id,
+            unitId: unit.id,
+          })),
+        });
+      }
+      if (failed) {
+        const storageKey = `issue31-fixture/${draft.id}/uat-failed`;
+        await tx.applicationDocument.create({
+          data: {
+            draftId: draft.id,
+            category: "floor_layout",
+            version: 1,
+            fileName: "simulasi-metadata.pdf",
+            mimeType: "application/pdf",
+            byteSize: Buffer.byteLength(storageKey),
+            sha256: hash(storageKey),
+            storageKey,
+            scanStatus: "FAILED",
+            uploadedBy: applicant.id,
+            scope: { create: { floorId: floors[0].id } },
+          },
+        });
+      }
+      return `/permohonan/draf/${draft.id}/semakan`;
+    }
+    const draftPath = await scenario(
+      "Latihan UAT · satu unit merentasi dua tingkat",
+      1,
     );
-    const unit = await tx.premiseUnit.create({
-      data: {
-        draftId: draft.id,
-        premiseId: premise.id,
-        unitLabel: "Kedai Latihan A",
-        normalizedLabel: "kedai latihan a",
+    const scenarios = [
+      { id: "single-unit", draftPath, feeSen: 5000 },
+      {
+        id: "multiple-units",
+        draftPath: await scenario("Latihan UAT · dua unit fizikal", 2),
+        feeSen: 10000,
       },
-    });
-    await tx.premiseUnitFloor.createMany({
-      data: floors.map(({ id }) => ({
-        draftId: draft.id,
-        floorId: id,
-        unitId: unit.id,
-      })),
-    });
+      {
+        id: "failed-evidence",
+        draftPath: await scenario(
+          "Latihan UAT · bukti gagal",
+          1,
+          "SPU",
+          undefined,
+          true,
+        ),
+      },
+      {
+        id: "company-active",
+        draftPath: await scenario(
+          "Latihan UAT · kuasa sah",
+          1,
+          "SPU",
+          await companyFor(false),
+        ),
+      },
+      {
+        id: "company-expired",
+        draftPath: await scenario(
+          "Latihan UAT · kuasa luput",
+          1,
+          "SPU",
+          await companyFor(true),
+        ),
+      },
+      {
+        id: "district-spt",
+        draftPath: await scenario("Latihan UAT · daerah berasingan", 1, "SPT"),
+      },
+    ];
     return {
       accounts,
-      draftPath: `/permohonan/draf/${draft.id}/semakan`,
+      draftPath,
+      scenarios,
       feeSen: 5000,
     };
   });

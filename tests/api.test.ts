@@ -2401,6 +2401,34 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(next.statusCode, next.body).toBe(200);
       const second = next.json().id as string;
       const secondPath = `${root}/reviews/${second}`;
+      const comparison = await request(pic, secondPath + "/comparison");
+      expect(comparison.statusCode, comparison.body).toBe(200);
+      expect(comparison.json()).toMatchObject({
+        previous: { draftVersion: version, floorCount: 2, unitCount: 1 },
+        current: {
+          draftVersion: reedited.json().version,
+          floorCount: 2,
+          unitCount: 1,
+        },
+        unitChanges: [],
+      });
+      expect(
+        (await request(applicant, secondPath + "/comparison")).statusCode,
+      ).toBe(403);
+      expect((await request(pic, firstPath + "/comparison")).statusCode).toBe(
+        404,
+      );
+      const matched = await request(
+        pic,
+        `${root}/reviews?view=submitted&search=${second.slice(0, 8)}`,
+      );
+      expect(matched.statusCode, matched.body).toBe(200);
+      expect(
+        matched.json().reviews.map((item: { id: string }) => item.id),
+      ).toEqual([second]);
+      expect(
+        (await request(pic, `${root}/reviews?search=%25abcd`)).statusCode,
+      ).toBe(400);
       await expect(
         db.syntheticSubmission.update({
           where: { id: first },
@@ -2627,6 +2655,16 @@ describe("Issue 31 integrated synthetic portal", () => {
       );
       expect(seen).not.toContain(records[23].id);
       expect(seen).not.toContain(records[24].id);
+      const hidden = await request(
+        pic,
+        `${root}/reviews?search=${records[23].id}`,
+      );
+      expect(hidden.json().reviews).toEqual([]);
+      expect(
+        (await request(pic, `${root}/reviews/${records[23].id}/comparison`))
+          .statusCode,
+      ).toBe(404);
+
       expect(
         (await request(ppsk, queue))
           .json()
@@ -2780,6 +2818,25 @@ describe("Issue 31 integrated synthetic portal", () => {
           }),
         ).toBe(2);
         const current = await first(path);
+        expect(current.json().requirements).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              requirement: "layout",
+              applicability: "REQUIRED",
+              eligibleTargets: 1,
+            }),
+            expect.objectContaining({
+              requirement: "tenancy",
+              applicability: "REQUIRED",
+              eligibleTargets: 1,
+            }),
+            expect.objectContaining({
+              requirement: "certificate",
+              applicability: "NOT_APPLICABLE",
+              eligibleTargets: 0,
+            }),
+          ]),
+        );
         expect(current.json()).toMatchObject({
           ready: true,
           draftVersion: 2,
@@ -2891,6 +2948,20 @@ describe("Issue 31 integrated synthetic portal", () => {
         { capacity: "COMPANY", companyId },
       );
       expect(created.statusCode).toBe(201);
+      await db.userRoleAssignment.create({
+        data: {
+          userId: applicant.id,
+          roleId: "WAKIL_SYARIKAT",
+          reference: "UAT 49",
+        },
+      });
+      expect(
+        (
+          await request(applicant, "/api/auth/role", "POST", {
+            roleId: "WAKIL_SYARIKAT",
+          })
+        ).statusCode,
+      ).toBe(200);
       const id = created.json().id as string;
       const draftPath = `${root}/drafts/${id}`;
       const expiredAt = new Date(Date.now() - 60_000);
@@ -2951,6 +3022,16 @@ describe("Issue 31 integrated synthetic portal", () => {
         },
       );
       expect(submitted.statusCode, submitted.body).toBe(200);
+      expect(
+        await db.auditLog.count({
+          where: {
+            target: submitted.json().id,
+            action: "SYNTHETIC_SUBMISSION_CAPTURED",
+            activeRole: "WAKIL_SYARIKAT",
+          },
+        }),
+      ).toBe(1);
+
       const switchCapacity = await request(
         applicant,
         `/api/application-drafts/${id}`,

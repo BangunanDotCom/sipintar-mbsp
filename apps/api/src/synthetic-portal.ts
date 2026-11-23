@@ -6,7 +6,7 @@ import {
   documentRuleApplicability,
   summarizeDocumentRequirements,
 } from "../../../packages/shared/src/document-policy.js";
-import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
+import { lockSyntheticApplicantSession } from "./synthetic-portal-session.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
@@ -194,7 +194,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         const { id } = params.parse(req.params);
         const input = evidenceBody.parse(req.body);
         return db.$transaction(async (tx) => {
-          await lockSyntheticPortalSession(tx, operator, "PEMOHON");
+          const activeRole = await lockSyntheticApplicantSession(tx, operator);
           const draft = await authorizedDraft(tx, userId, id);
           if (draft.version !== input.version)
             fail(409, "Versi draf telah berubah.");
@@ -352,7 +352,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           await tx.auditLog.create({
             data: {
               actorId: userId,
-              activeRole: "PEMOHON",
+              activeRole,
               action: "SYNTHETIC_PORTAL_EVIDENCE",
               target: id,
               metadata: {

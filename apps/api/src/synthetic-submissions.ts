@@ -1,6 +1,6 @@
 import { syntheticDocumentFacts } from "./synthetic-owner-policy.js";
 import {
-  lockSyntheticPortalSession,
+  lockSyntheticApplicantSession,
   type ObservedPortalSession,
 } from "./synthetic-portal-session.js";
 import type { ApplicationDraft, Prisma } from "@prisma/client";
@@ -71,10 +71,11 @@ export async function captureSyntheticSubmission(
     >`SELECT current_database()::text AS name`;
     if (active?.name !== expectedDatabase)
       fail(404, "Pangkalan data sintetik tidak tersedia.");
+    let activeRole: "PEMOHON" | "WAKIL_SYARIKAT" = "PEMOHON";
     if (syntheticPortalDatabase()) {
       if (!operator || operator.userId !== userId)
         fail(403, "Sesi portal diperlukan.");
-      await lockSyntheticPortalSession(tx, operator, "PEMOHON");
+      activeRole = await lockSyntheticApplicantSession(tx, operator);
     }
     const draft = await authorizedDraft(tx, userId, input.draftId);
     const authority = draft.companyId
@@ -200,7 +201,7 @@ export async function captureSyntheticSubmission(
     await tx.auditLog.create({
       data: {
         actorId: userId,
-        activeRole: "PEMOHON",
+        activeRole,
         action: "SYNTHETIC_SUBMISSION_CAPTURED",
         target: row.id,
         metadata: {

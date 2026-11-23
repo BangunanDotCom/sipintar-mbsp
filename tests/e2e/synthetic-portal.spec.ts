@@ -34,9 +34,10 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     mfaSecretBase32: string | null;
   };
   const kitPath = process.env.STAYLINK_UAT_KIT_FILE;
-  const kit: { accounts: KitAccount[] } | null = kitPath
-    ? JSON.parse(await readFile(kitPath, "utf8"))
-    : null;
+  const kit: {
+    accounts: KitAccount[];
+    scenarios?: { id: string; draftPath: string; feeSen?: number }[];
+  } | null = kitPath ? JSON.parse(await readFile(kitPath, "utf8")) : null;
   const evidenceDirectory = process.env.STAYLINK_UAT_EVIDENCE_DIR;
   if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true });
   const apiTimings: Record<string, number[]> = {};
@@ -254,6 +255,21 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: "Serahan latihan sintetik",
     });
     await expect(panel).toBeVisible();
+    const steps = panel.getByRole("navigation", {
+      name: "Langkah latihan pemohon",
+    });
+    await expect(
+      steps.getByRole("link", { name: "Bukti", exact: true }),
+    ).toHaveAttribute("aria-current", "step");
+    await expect(
+      steps.getByRole("link", { name: /Tingkat dan kemudahan/ }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("list", {
+        name: "Keperluan dokumen mengikut polisi latihan",
+      }),
+    ).toContainText("Wajib");
+
     uiTimings.applicant = Math.round(performance.now() - openApplicant);
     for (const width of [320, 390]) {
       await applicant.setViewportSize({ width, height: 850 });
@@ -287,7 +303,9 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     );
     await submit.click();
     const submitted = await firstSubmit;
-    expect(submitted.request().postDataJSON().policyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(submitted.request().postDataJSON().policyFingerprint).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
     const first = await submitted.json();
     expect(first.id).toBeTruthy();
 
@@ -303,6 +321,14 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await tasks.getByLabel("Penapis tugasan").selectOption("action");
     await expect(firstCard).toBeVisible();
     await tasks.getByLabel("Penapis tugasan").selectOption("all");
+    const search = tasks.getByRole("searchbox", {
+      name: "ID serahan atau rujukan latihan",
+    });
+    await search.fill(first.id.slice(0, 8));
+    await tasks.getByRole("button", { name: "Cari tugasan" }).click();
+    await expect(firstCard).toBeVisible();
+    await tasks.getByRole("button", { name: "Kosongkan carian" }).click();
+
     expect(
       await firstCard.evaluate(
         (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -339,6 +365,22 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     const secondCard = pic.getByRole("article", {
       name: `Serahan sintetik ${second.id}`,
     });
+    await secondCard
+      .getByRole("button", { name: "Bandingkan versi serahan" })
+      .click();
+    const comparison = secondCard.getByRole("region", {
+      name: "Perbandingan serahan latihan",
+    });
+    await expect(comparison.getByText("Versi terdahulu")).toBeVisible();
+    await comparison
+      .getByText("Inventori tingkat dan kemudahan semasa")
+      .click();
+    await expect(comparison.getByText(/1 bilik · 2 katil/)).toHaveCount(2);
+    await capture(secondCard, "pic-perbandingan.png");
+
+    await expect(
+      comparison.getByRole("list", { name: "Versi bukti baharu" }),
+    ).toBeVisible();
     await secondCard
       .getByLabel("Alasan keputusan sintetik")
       .fill("Bukti latihan lengkap.");
@@ -389,7 +431,7 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       supervisorCard.getByText("Direkonsiliasi dalam simulasi"),
     ).toBeVisible();
     await capture(supervisorCard, "ppsk-rekonsiliasi.png");
-    await applicant.reload();
+    await panel.getByRole("button", { name: "Semak status terkini" }).click();
     await expect(
       panel.getByText("Direkonsiliasi dalam simulasi"),
     ).toBeVisible();
@@ -398,6 +440,51 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         name: "Hantar Permohonan (belum tersedia)",
       }),
     ).toBeDisabled();
+    if (kit?.scenarios) {
+      const scenario = (id: string) => {
+        const match = kit.scenarios!.find((item) => item.id === id);
+        if (!match) throw Error("Senario kit latihan tidak tersedia.");
+        const draftId = match.draftPath.split("/")[3];
+        return `/api/synthetic-portal/drafts/${draftId}`;
+      };
+      const multiple = await applicant.request.get(scenario("multiple-units"));
+      expect((await multiple.json()).inventory).toEqual({
+        unitCount: 2,
+        floorCount: 2,
+      });
+      const failed = await applicant.request.get(scenario("failed-evidence"));
+      expect(await failed.json()).toMatchObject({
+        ready: false,
+        evidence: [expect.objectContaining({ scanStatus: "FAILED" })],
+      });
+      const currentSession = await applicant.request.get("/api/auth/me");
+      const headers = {
+        Origin: baseURL!,
+        "X-CSRF-Token": (await currentSession.json()).csrf,
+      };
+      expect(
+        (
+          await applicant.request.post("/api/auth/role", {
+            headers,
+            data: { roleId: "WAKIL_SYARIKAT" },
+          })
+        ).status(),
+      ).toBe(200);
+      expect(
+        (await applicant.request.get(scenario("company-active"))).status(),
+      ).toBe(200);
+      expect(
+        (
+          await applicant.request.post(
+            scenario("company-active") + "/evidence",
+            { headers, data: { version: 1, verdict: "CLEAN" } },
+          )
+        ).status(),
+      ).toBe(200);
+      expect(
+        (await applicant.request.get(scenario("company-expired"))).status(),
+      ).toBe(404);
+    }
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
     if (evidenceDirectory)
