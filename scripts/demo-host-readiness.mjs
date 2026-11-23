@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Read-only readiness check. No network, DB connections, migrations or secret output.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const failures = [];
