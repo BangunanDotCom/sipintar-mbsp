@@ -334,11 +334,14 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await expect(search).toBeFocused();
     await expect(search).toHaveValue("");
 
-    expect(
-      await firstCard.evaluate(
-        (element) => element.scrollWidth <= element.clientWidth + 1,
-      ),
-    ).toBe(true);
+    for (const width of [320, 390]) {
+      await pic.setViewportSize({ width, height: 850 });
+      expect(
+        await firstCard.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
+    }
 
     await firstCard
       .getByLabel("Alasan keputusan sintetik")
@@ -458,7 +461,8 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         floorCount: 2,
       });
       const failed = await applicant.request.get(scenario("failed-evidence"));
-      expect(await failed.json()).toMatchObject({
+      const failedState = await failed.json();
+      expect(failedState).toMatchObject({
         ready: false,
         evidence: [expect.objectContaining({ scanStatus: "FAILED" })],
       });
@@ -467,6 +471,89 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         Origin: baseURL!,
         "X-CSRF-Token": (await currentSession.json()).csrf,
       };
+      const submitFixture = (path: string, state: typeof failedState) =>
+        applicant.request.post(path + "/submit", {
+          headers,
+          data: {
+            version: state.draftVersion,
+            declarationVersion: state.declaration.version,
+            policyFingerprint: state.policyFingerprint,
+            accepted: true,
+            key: randomUUID(),
+            previousId: null,
+          },
+        });
+      expect(
+        (
+          await submitFixture(scenario("failed-evidence"), failedState)
+        ).status(),
+      ).toBe(409);
+      async function submitCleanFixture(id: string) {
+        const path = scenario(id);
+        const before = await applicant.request.get(path);
+        expect(before.status()).toBe(200);
+        const evidence = await applicant.request.post(path + "/evidence", {
+          headers,
+          data: {
+            version: (await before.json()).draftVersion,
+            verdict: "CLEAN",
+          },
+        });
+        expect(evidence.status()).toBe(200);
+        const after = await applicant.request.get(path);
+        expect(after.status()).toBe(200);
+        const submission = await submitFixture(path, await after.json());
+        expect(submission.status()).toBe(200);
+        return (await submission.json()).id as string;
+      }
+      const multiId = await submitCleanFixture("multiple-units");
+      const districtId = await submitCleanFixture("district-spt");
+      const root = "/api/synthetic-portal/reviews";
+      const officerQueue = await pic.request.get(root);
+      expect(officerQueue.status()).toBe(200);
+      const reviews = (await officerQueue.json()).reviews;
+      expect(reviews).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: multiId })]),
+      );
+      expect(reviews).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: districtId })]),
+      );
+      expect(
+        (await pic.request.get(`${root}/${districtId}/comparison`)).status(),
+      ).toBe(404);
+      const officerHeaders = async (page: typeof pic) => ({
+        Origin: baseURL!,
+        "X-CSRF-Token": (await (await page.request.get("/api/auth/me")).json())
+          .csrf,
+      });
+      const multiPath = `${root}/${multiId}`;
+      const complete = await pic.request.post(multiPath, {
+        headers: await officerHeaders(pic),
+        data: {
+          action: "CONFIRM_COMPLETE",
+          version: 1,
+          reason: "Dua unit latihan disemak.",
+        },
+      });
+      expect(complete.status()).toBe(200);
+      const ppskHeaders = await officerHeaders(supervisor);
+      const register = await supervisor.request.post(multiPath, {
+        headers: ppskHeaders,
+        data: {
+          action: "REGISTER",
+          version: 2,
+          reason: "Dua unit latihan didaftar.",
+        },
+      });
+      expect(register.status()).toBe(200);
+      const invoice = await supervisor.request.post(multiPath + "/billing", {
+        headers: ppskHeaders,
+        data: { action: "ISSUE" },
+      });
+      expect(invoice.status()).toBe(200);
+      expect(await invoice.json()).toMatchObject({
+        invoice: { unitCount: 2, amountSen: 10000 },
+      });
       expect(
         (
           await applicant.request.post("/api/auth/role", {

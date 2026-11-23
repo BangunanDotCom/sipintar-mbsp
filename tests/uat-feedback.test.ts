@@ -198,10 +198,16 @@ it("tracks a defect through assignment, competing edits, fix, independent retest
     expect(report).toContain("1234abc");
     expect(report).toContain("ADD-semakan-khas");
     expect(report).toMatch(/VERIFIED\\?_INTERNAL/);
+    expect(report).toContain("SYN-TESTER");
   }
   const markdown = await readFile(mdPath, "utf8");
   expect(markdown).toContain("district-spt | Belum diuji");
   expect(markdown).toContain("Versi 5");
+  expect(markdown).toContain("**1/6**");
+  expect(markdown).toContain("**2 FAIL**");
+  expect(markdown).toContain("HIGH 1");
+  expect(markdown).toContain("| Penerimaan Jabatan Bangunan | | | |");
+  expect(markdown).toContain("| Kebenaran produksi | | | |");
 });
 
 it("fails closed outside test/dev, rejects secret-shaped input and never follows a session symlink", async () => {
@@ -248,7 +254,10 @@ it("fails closed outside test/dev, rejects secret-shaped input and never follows
     record(directory, { ...observation, evidenceRef: "/tmp/EV-PRIVATE" }),
   ).rejects.toMatchObject({ code: 1 });
   await expect(
-    record(directory, { ...observation, actual: "Bukti di sftp://fixture.test" }),
+    record(directory, {
+      ...observation,
+      actual: "Bukti di sftp://fixture.test",
+    }),
   ).rejects.toMatchObject({ code: 1 });
   const alias = join(root, "staylink-uat-feedback-alias");
   await symlink(directory, alias);
