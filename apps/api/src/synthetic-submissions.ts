@@ -1,3 +1,7 @@
+import {
+  lockSyntheticPortalSession,
+  type ObservedPortalSession,
+} from "./synthetic-portal-session.js";
 import type { ApplicationDraft, Prisma } from "@prisma/client";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { z } from "zod";
@@ -53,6 +57,7 @@ export async function captureSyntheticSubmission(
   userId: string,
   payload: unknown,
   policy?: SyntheticPolicy,
+  operator?: ObservedPortalSession,
 ) {
   const expectedDatabase = assertSandbox();
   if (!policy || !policy.declarationVersion.startsWith("SYNTHETIC-"))
@@ -64,6 +69,11 @@ export async function captureSyntheticSubmission(
     >`SELECT current_database()::text AS name`;
     if (active?.name !== expectedDatabase)
       fail(404, "Pangkalan data sintetik tidak tersedia.");
+    if (syntheticPortalDatabase()) {
+      if (!operator || operator.userId !== userId)
+        fail(403, "Sesi portal diperlukan.");
+      await lockSyntheticPortalSession(tx, operator, "PEMOHON");
+    }
     const draft = await authorizedDraft(tx, userId, input.draftId);
     const authority = draft.companyId
       ? await companyAuthority(tx, userId, draft.companyId)

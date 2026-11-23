@@ -14,8 +14,8 @@ export function api(path: string, method = "GET", body?: unknown) {
   const refreshesSession = method === "GET" && path === "/auth/me";
   if (method === "GET" && !refreshesSession) return request(path, method, body);
 
-  // A session refresh rotates the server's CSRF token. Finish it before
-  // sending the next mutation, and let in-flight mutations finish first.
+  // Load session state before sending mutations. In-flight auth changes
+  // are serialized so requests use the current cookie and CSRF token.
   const result = sessionRequests.then(async () => {
     const data = await request(path, method, body);
     if (refreshesSession || (method === "POST" && path === "/auth/login")) {
