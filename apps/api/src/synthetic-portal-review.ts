@@ -5,6 +5,11 @@ import { z } from "zod";
 import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
 import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
+import {
+  isPersonalDemoDatabase,
+  personalDistrictAssignments,
+} from "./demo-host-config.mjs";
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import {
   applySyntheticReview,
@@ -63,11 +68,24 @@ const actions = [correctionAction, completeAction, registerAction];
 export async function syntheticReviewOfficer(req: FastifyRequest) {
   const operator = await authorize(req, "areas.read");
   const assignedRole = role.safeParse(operator.activeRole);
-  const pic = uuid.safeParse(process.env.STAYLINK_SYNTHETIC_PIC_ID);
+  const personal =
+    process.env.STAYLINK_DEMO_HOST === "true" &&
+    isPersonalDemoDatabase(syntheticPortalDatabase());
+  const allocation =
+    personal && assignedRole.data === "PIC_KAWASAN"
+      ? personalDistrictAssignments(process.env).find(
+          ({ id }) => id === operator.userId,
+        )
+      : null;
+  const pic = uuid.safeParse(
+    allocation?.id ?? process.env.STAYLINK_SYNTHETIC_PIC_ID,
+  );
   const supervisor = uuid.safeParse(
     process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID,
   );
-  const area = district.safeParse(process.env.STAYLINK_SYNTHETIC_DISTRICT);
+  const area = district.safeParse(
+    allocation?.district ?? process.env.STAYLINK_SYNTHETIC_DISTRICT,
+  );
   if (
     !assignedRole.success ||
     !pic.success ||

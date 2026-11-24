@@ -2,15 +2,16 @@
 # Local synthetic rehearsal only. A short-lived Nginx container binds loopback.
 set -euo pipefail
 umask 077
-if [[ $# != 1 || "${APP_ORIGIN:-}" != https://localhost:5443 ||
+if [[ $# != 1 || ! "${APP_ORIGIN:-}" =~ ^https://localhost:(5443|5444)$ ||
       "${STAYLINK_DEMO_HOST:-}" != true ]]; then
-  echo "Gunakan konfigurasi latihan tempatan https://localhost:5443 dan portal.env kit." >&2
+  echo "Gunakan konfigurasi latihan tempatan dan portal.env kit." >&2
   exit 2
 fi
+host_port=${BASH_REMATCH[1]}
 # Refuse to reuse an existing API or HTTPS listener.
-node --input-type=module - <<'JS'
+node --input-type=module - "$host_port" <<'JS'
 import { createServer } from "node:net";
-for (const port of [3001, 5443]) {
+for (const port of [3001, Number(process.argv[2])]) {
   await new Promise((resolve, reject) => {
     const server = createServer();
     server.once("error", reject);
@@ -22,8 +23,12 @@ for (const port of [3001, 5443]) {
 }
 JS
 kit_env=$1
+kit_dir=$(dirname "$kit_env")
 node --env-file="$kit_env" scripts/demo-host-readiness.mjs
-node --env-file="$kit_env" scripts/uat-preflight.mjs kit --kit "$(dirname "$kit_env")"
+node --env-file="$kit_env" scripts/uat-preflight.mjs kit --kit "$kit_dir"
+if [[ "$host_port" == 5444 ]]; then
+  node --env-file="$kit_env" --import=tsx scripts/personal-demo-stage.ts "$kit_dir"
+fi
 
 work=$(mktemp -d)
 api_pid=""
@@ -44,7 +49,7 @@ openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj '/CN=localhost' 
   -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout "$work/key.pem" -out "$work/cert.pem" 2>/dev/null
 {
   printf 'events {}\nhttp {\ninclude /etc/nginx/mime.types;\n'
-  sed -e 's/DEMO_BIND_IP:443/127.0.0.1:5443/' -e 's/DEMO_FQDN/localhost/g' \
+  sed -e "s/DEMO_BIND_IP:443/127.0.0.1:$host_port/" -e 's/DEMO_FQDN/localhost/g' \
     -e 's|DEMO_CERT_KEY_FILE|/tmp/demo-key.pem|' -e 's|DEMO_CERT_FILE|/tmp/demo-cert.pem|' \
     -e 's|DEMO_WEB_ROOT|/srv/demo|' -e 's|DEMO_ACCESS_LOG|/dev/stdout|' \
     -e 's|DEMO_ERROR_LOG|/dev/stderr|' deploy/demo/linux/staylink-demo.nginx.conf
@@ -69,11 +74,14 @@ volumes=(
 "${docker_cmd[@]}" run --rm "${volumes[@]}" "$image" nginx -t
 nginx_id=$("${docker_cmd[@]}" run -d --network host "${volumes[@]}" "$image")
 for _ in {1..20}; do
-  if curl -fsS --cacert "$work/cert.pem" --max-time 3 https://localhost:5443/api/health >/dev/null 2>&1; then break; fi
+  if curl -fsS --cacert "$work/cert.pem" --max-time 3 "$APP_ORIGIN/api/health" >/dev/null 2>&1; then break; fi
   sleep 1
 done
-curl -fsS --cacert "$work/cert.pem" --max-time 3 https://localhost:5443/api/health >/dev/null
+curl -fsS --cacert "$work/cert.pem" --max-time 3 "$APP_ORIGIN/api/health" >/dev/null
 export STAYLINK_HTTPS_REHEARSAL=true
-export STAYLINK_UAT_KIT_FILE="$(dirname "$kit_env")/accounts.json"
-node --env-file="$kit_env" node_modules/@playwright/test/cli.js test \
-  tests/e2e/synthetic-portal.spec.ts tests/e2e/demo-host.spec.ts
+export STAYLINK_UAT_KIT_FILE="$kit_dir/accounts.json"
+suite=(tests/e2e/synthetic-portal.spec.ts tests/e2e/demo-host.spec.ts)
+if [[ "$host_port" == 5444 ]]; then
+  suite=(tests/e2e/personal-demo.spec.ts)
+fi
+node --env-file="$kit_env" node_modules/@playwright/test/cli.js test "${suite[@]}"

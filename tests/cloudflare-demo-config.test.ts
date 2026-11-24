@@ -87,3 +87,27 @@ it.each([
     reason,
   );
 });
+
+it("separates Personal Demo origins from the Demo Release 1.0 hostname", () => {
+  const personalDatabase = database.replace(
+    "staylink_issue62_cloudflare_test",
+    "staylink_issue62_personal_new_test",
+  );
+  const env = {
+    ...local,
+    APP_ORIGIN: "https://staylink-mbsp-personal.example.test",
+    DATABASE_URL: personalDatabase,
+    TEST_DATABASE_URL: personalDatabase,
+  };
+  const { tunnel, nginx } = buildCloudflareDemoConfig(env);
+  expect(tunnel.ingress[0]).toMatchObject({
+    hostname: "staylink-mbsp-personal.example.test",
+  });
+  expect(nginx).toContain("server_name staylink-mbsp-personal.example.test;");
+  expect(() =>
+    buildCloudflareDemoConfig({ ...env, APP_ORIGIN: local.APP_ORIGIN }),
+  ).toThrow("APP_ORIGIN");
+  expect(() =>
+    buildCloudflareDemoConfig({ ...local, APP_ORIGIN: env.APP_ORIGIN }),
+  ).toThrow("APP_ORIGIN");
+});

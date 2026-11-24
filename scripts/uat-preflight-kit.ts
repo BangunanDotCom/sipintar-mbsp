@@ -4,6 +4,7 @@ import { lstat, open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { isPersonalDemoDatabase } from "../apps/api/src/demo-host-config.mjs";
 import { scenarios } from "./uat-feedback-model.js";
 import {
   PreflightError,
@@ -26,6 +27,11 @@ export const trainingPersonas = (database: string) =>
         ...personas,
         { role: "WAKIL_SYARIKAT", district: null, label: "wakil" },
         { role: "PENTADBIR_ICT", district: null, label: "pentadbir" },
+        ...(isPersonalDemoDatabase(database)
+          ? ([
+              { role: "PIC_KAWASAN", district: "SPS", label: "pic-sps" },
+            ] as const)
+          : []),
       ] as const)
     : personas;
 
@@ -81,12 +87,17 @@ export async function trainingTempRoot() {
   return root;
 }
 
+export const personalScenarios = [...scenarios, "district-sps"] as const;
+export const trainingScenarios = (database: string) =>
+  isPersonalDemoDatabase(database) ? personalScenarios : scenarios;
+
 const account = z.object({
   label: z.enum([
     "pemohon",
     "pic-spu",
     "ppsk",
     "pic-spt",
+    "pic-sps",
     "wakil",
     "pentadbir",
   ]),
@@ -101,7 +112,7 @@ const account = z.object({
   email: z
     .string()
     .regex(
-      /^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt|wakil|pentadbir)@example\.test$/,
+      /^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt|pic-sps|wakil|pentadbir)@example\.test$/,
     ),
   password: z.string().regex(/^Aa1![a-f0-9]{36}$/),
   mfaSecretBase32: z
@@ -115,11 +126,12 @@ const manifestSchema = z.strictObject({
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const kitSchema = z.object({
-  accounts: z.array(account).max(6),
+  loginUrl: z.url().optional(),
+  accounts: z.array(account).max(7),
   scenarios: z
     .array(
       z.object({
-        id: z.enum(scenarios),
+        id: z.enum(personalScenarios),
         draftPath: z
           .string()
           .regex(
@@ -128,7 +140,7 @@ const kitSchema = z.object({
         feeSen: z.number().optional(),
       }),
     )
-    .length(scenarios.length),
+    .max(personalScenarios.length),
 });
 
 export async function readTrainingKit(
@@ -138,6 +150,8 @@ export async function readTrainingKit(
 ) {
   const directory = resolve(path);
   const people = trainingPersonas(expected.database);
+  const cases = trainingScenarios(expected.database);
+  const personal = isPersonalDemoDatabase(expected.database);
   async function readPrivate(name: string) {
     const path = join(directory, name);
     if (!(await lstat(path)).isFile())
@@ -197,9 +211,14 @@ export async function readTrainingKit(
       kit.accounts.length !== people.length ||
       new Set(kit.accounts.map(({ id }) => id)).size !== people.length ||
       new Set(kit.accounts.map(({ email }) => email)).size !== people.length ||
-      new Set(kit.scenarios.map(({ id }) => id)).size !== scenarios.length ||
+      new Set(kit.accounts.map(({ password }) => password)).size !==
+        people.length ||
+      (personal && kit.loginUrl !== `${env.APP_ORIGIN}/log-masuk`) ||
+      kit.scenarios.length !== cases.length ||
+      !cases.every((id) => kit.scenarios.some((item) => item.id === id)) ||
+      new Set(kit.scenarios.map(({ id }) => id)).size !== cases.length ||
       new Set(kit.scenarios.map(({ draftPath }) => draftPath)).size !==
-        scenarios.length ||
+        cases.length ||
       !people.every(({ label, role }) =>
         kit.accounts.some(
           (item) =>
@@ -224,6 +243,14 @@ export async function readTrainingKit(
         ({ label }) => label === "ppsk",
       )!.id,
       STAYLINK_SYNTHETIC_CALLBACK_KEY: env.STAYLINK_SYNTHETIC_CALLBACK_KEY,
+      ...(personal && {
+        STAYLINK_PERSONAL_PIC_SPT_ID: kit.accounts.find(
+          ({ label }) => label === "pic-spt",
+        )!.id,
+        STAYLINK_PERSONAL_PIC_SPS_ID: kit.accounts.find(
+          ({ label }) => label === "pic-sps",
+        )!.id,
+      }),
     };
     const entries = Object.entries(bindings);
     if (
