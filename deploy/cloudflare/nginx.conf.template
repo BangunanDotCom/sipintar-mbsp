@@ -1,0 +1,54 @@
+# Include inside http {}. Generated for one dedicated demo origin.
+map $uri $stl_cf_csp {
+    ~*^/api(?:/|$) "";
+    default "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self' blob:";
+}
+map $cookie_staylink $stl_cf_app_cookie {
+    "" "";
+    default "staylink=$cookie_staylink";
+}
+server {
+    listen 127.0.0.1:5443 ssl;
+    server_name @HOST@;
+    ssl_certificate @CERT@;
+    ssl_certificate_key @KEY@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    root @WEB@;
+    index index.html;
+    access_log off;
+    error_log /dev/stderr crit;
+    client_max_body_size 29m;
+
+    # Only the same-host connector is trusted to supply the edge client address.
+    set_real_ip_from 127.0.0.1;
+    real_ip_header CF-Connecting-IP;
+    if ($http_host != "@HOST@") { return 421; }
+    if ($remote_addr = "127.0.0.1") { return 403; }
+    if ($http_cf_access_jwt_assertion = "") { return 403; }
+
+    add_header Cache-Control "private, no-store, max-age=0" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Content-Security-Policy $stl_cf_csp always;
+
+    location ~ ^/api(?:/|$) {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host @HOST@;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Staylink-Demo-Client $remote_addr;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header Cf-Access-Jwt-Assertion "";
+        proxy_set_header Cf-Access-Authenticated-User-Email "";
+        proxy_set_header Cookie $stl_cf_app_cookie;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_redirect off;
+    }
+    location /assets/ { try_files $uri =404; }
+    location / { try_files $uri $uri/ /index.html; }
+}

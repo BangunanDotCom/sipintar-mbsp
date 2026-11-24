@@ -1,0 +1,21 @@
+# Template for a dedicated approved Linux origin. Review paths and ACLs before use.
+[Unit]
+Description=STAYLink MBSP demo Cloudflare connector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=staylink-mbsp-demo-tunnel
+Group=staylink-mbsp-demo-tunnel
+ExecStart=/usr/bin/cloudflared tunnel --config /etc/staylink-mbsp-demo/cloudflared.yaml run
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

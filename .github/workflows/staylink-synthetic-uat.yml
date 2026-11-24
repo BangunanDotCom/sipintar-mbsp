@@ -12,6 +12,7 @@ on:
       - 'issue-54-ict-decision-pack'
       - 'issue-58-facilitator-handover'
       - 'issue-62-demo-release-readiness'
+      - 'feature/cloudflare-demo-readiness'
 
 permissions:
   contents: read
@@ -37,6 +38,8 @@ jobs:
       - run: npx vitest run --exclude tests/api.test.ts
       - run: npm run build
       - run: npm audit
+      - name: Rehearse the Cloudflare origin boundary without provisioning
+        run: bash scripts/rehearse-cloudflare-boundary.sh
 
   integrations:
     runs-on: ubuntu-24.04
