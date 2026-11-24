@@ -8,6 +8,9 @@ import {
   createDecipheriv,
 } from "node:crypto";
 import nodemailer from "nodemailer";
+if (process.env.STAYLINK_DB_PROVIDER && process.env.STAYLINK_DB_PROVIDER !== "postgresql")
+  throw Error("Pembekal Oracle belum disepadukan dengan semua laluan API. Permulaan dibatalkan.");
+
 export const db = new PrismaClient({
   adapter: new PrismaPg({
     connectionString:
