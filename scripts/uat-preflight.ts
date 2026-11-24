@@ -6,6 +6,7 @@ import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
 import {
   isTrainingApplicant,
   trainingPersonas,
+  trainingScenarios,
   readTrainingKit,
 } from "./uat-preflight-kit.js";
 
@@ -69,6 +70,7 @@ export async function runPreflight(args: string[]) {
 
   const expected = fixtureEnvironment();
   const people = trainingPersonas(expected.database);
+  const cases = trainingScenarios(expected.database);
   const hosted = expected.database.startsWith("staylink_issue62_");
   const kit = parsed.values.kit
     ? await readTrainingKit(parsed.values.kit, expected)
@@ -167,7 +169,7 @@ export async function runPreflight(args: string[]) {
           );
 
         const drafts = await tx.applicationDraft.findMany({
-          take: 7,
+          take: cases.length + 1,
           include: {
             premises: { include: { units: { include: { floorLinks: true } } } },
             floors: { select: { id: true } },
@@ -200,7 +202,11 @@ export async function runPreflight(args: string[]) {
               draft.status === "DRAFT" &&
               draft._count.syntheticSubmissions === 0 &&
               draft.premises?.districtId ===
-                (id === "district-spt" ? "SPT" : "SPU") &&
+                (id === "district-spt"
+                  ? "SPT"
+                  : id === "district-sps"
+                    ? "SPS"
+                    : "SPU") &&
               draft.floors.length === 2 &&
               units?.length === expectedUnits &&
               units.some((unit) => unit.floorLinks.length === 2) &&
@@ -224,13 +230,13 @@ export async function runPreflight(args: string[]) {
           },
         );
         if (
-          drafts.length !== 6 ||
+          drafts.length !== cases.length ||
           !fixturesValid ||
           (await tx.company.count()) !== 2 ||
           (await tx.session.count()) !== 0
         )
           throw new PreflightError(
-            "Enam fixture asal diperlukan. Sesi yang telah digunakan perlu dikekalkan dan latihan baharu menggunakan DB baharu.",
+            "Semua fixture asal diperlukan. Sesi yang telah digunakan perlu dikekalkan dan latihan baharu menggunakan DB baharu.",
           );
       },
       { timeout: 15_000 },
@@ -244,7 +250,7 @@ export async function runPreflight(args: string[]) {
     await db.$disconnect();
   }
   console.log(
-    `LULUS · PostgreSQL dan Mailpit loopback · ${kit ? `${people.length} akaun dan enam fixture sedia` : "DB kosong"}`,
+    `LULUS · PostgreSQL dan Mailpit loopback · ${kit ? `${people.length} akaun dan ${cases.length} fixture sedia` : "DB kosong"}`,
   );
   console.log(`Polisi ${expected.version} · cap jari ${expected.fingerprint}`);
   console.log("Bukti kesiapsiagaan teknikal latihan.");

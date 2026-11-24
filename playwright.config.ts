@@ -7,7 +7,9 @@ export default defineConfig({
   use: {
     baseURL:
       process.env.STAYLINK_HTTPS_REHEARSAL === "true"
-        ? "https://localhost:5443"
+        ? process.env.APP_ORIGIN === "https://localhost:5444"
+          ? "https://localhost:5444"
+          : "https://localhost:5443"
         : "http://localhost:5173",
     ignoreHTTPSErrors: process.env.STAYLINK_HTTPS_REHEARSAL === "true",
     headless: true,
@@ -17,7 +19,7 @@ export default defineConfig({
         (process.env.CI ? undefined : "/usr/bin/chromium"),
       args: ["--no-sandbox"],
     },
-    trace: "retain-on-failure",
+    trace: process.env.STAYLINK_UAT_KIT_FILE ? "off" : "retain-on-failure",
   },
   reporter: [["list"], ["html", { open: "never" }]],
 });

@@ -2,7 +2,10 @@ import { readFile, mkdtemp, writeFile } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { tmpdir } from "node:os";
-import { inspectDemoHost } from "../../apps/api/src/demo-host-config.mjs";
+import {
+  inspectDemoHost,
+  isPersonalDemoDatabase,
+} from "../../apps/api/src/demo-host-config.mjs";
 
 const template = await readFile(
   new URL("nginx.conf.template", import.meta.url),
@@ -13,18 +16,22 @@ export function buildCloudflareDemoConfig(env) {
   const { failures, database, origin } = inspectDemoHost(env, {
     requireKit: false,
   });
-  if (database !== "staylink_issue62_cloudflare_test")
+  const personal = isPersonalDemoDatabase(database);
+  if (database !== "staylink_issue62_cloudflare_test" && !personal)
     failures.push("Gunakan DB PostgreSQL demo Cloudflare yang dikhaskan.");
   const host = origin ? new URL(origin).hostname : "";
+  const prefix = personal ? "staylink-mbsp-personal" : "staylink-mbsp-demo";
   if (
     origin !== `https://${host}` ||
-    !/^staylink-mbsp-demo\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
-      host,
+    !host.startsWith(`${prefix}.`) ||
+    !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
+      host.slice(prefix.length + 1),
     )
-  )
+  ) {
     failures.push(
-      "APP_ORIGIN mesti HTTPS tanpa port tersuai untuk hostname staylink-mbsp-demo yang diluluskan.",
+      `APP_ORIGIN mesti HTTPS tanpa port tersuai untuk hostname ${prefix} yang diluluskan.`,
     );
+  }
   if (
     !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(
       env.CF_DEMO_TUNNEL_ID ?? "",

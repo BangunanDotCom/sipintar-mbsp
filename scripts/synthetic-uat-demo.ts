@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { isPersonalDemoDatabase } from "../apps/api/src/demo-host-config.mjs";
 import { randomBytes } from "node:crypto";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -26,6 +27,7 @@ async function prepareDemo() {
   if (actual?.name !== expected)
     throw Error("Pangkalan data latihan aktif tidak sepadan.");
   const hosted = expected.startsWith("staylink_issue62_");
+  const personal = isPersonalDemoDatabase(expected);
   const manifest =
     hosted || expected.startsWith("staylink_issue58_")
       ? fixtureEnvironment()
@@ -324,7 +326,17 @@ async function prepareDemo() {
         draftPath: await scenario("Latihan UAT · daerah berasingan", 1, "SPT"),
       },
     ];
+    if (personal)
+      scenarios.push({
+        id: "district-sps",
+        draftPath: await scenario(
+          "Latihan Personal Demo · daerah SPS",
+          1,
+          "SPS",
+        ),
+      });
     return {
+      ...(personal && { loginUrl: `${process.env.APP_ORIGIN}/log-masuk` }),
       accounts,
       draftPath,
       scenarios,
@@ -347,6 +359,12 @@ async function prepareDemo() {
       `export STAYLINK_SYNTHETIC_PIC_ID=${result.accounts[1].id}`,
       `export STAYLINK_SYNTHETIC_SUPERVISOR_ID=${result.accounts[2].id}`,
       `export STAYLINK_SYNTHETIC_CALLBACK_KEY=${randomBytes(32).toString("hex")}`,
+      ...(personal
+        ? [
+            `export STAYLINK_PERSONAL_PIC_SPT_ID=${result.accounts.find(({ label }) => label === "pic-spt")!.id}`,
+            `export STAYLINK_PERSONAL_PIC_SPS_ID=${result.accounts.find(({ label }) => label === "pic-sps")!.id}`,
+          ]
+        : []),
       "",
     ].join("\n"),
     { mode: 0o600, flag: "wx" },
