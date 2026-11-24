@@ -2,7 +2,7 @@ import { premisesRoutes } from "./premises.js";
 import { premiseFloorRoutes } from "./premise-floors.js";
 import { premiseUnitRoutes } from "./premise-units.js";
 import { applicationDocumentRoutes } from "./application-documents.js";
-import { delegationLimitMiB, validateDelegationPdf, UPLOAD_CATEGORIES, uploadLimitMiB, uploadPolicyKey, uploadCategoryForKey } from "./upload-policy.js";
+import { delegationLimitMiB, validateDelegationPdf, UPLOAD_CATEGORIES, uploadLimitMiB, uploadPolicyKey } from "./upload-policy.js";
 import { applicationDraftRoutes } from "./application-drafts.js";
 import argon2 from "argon2";
 import { protectIdentification } from "./identity.js";
@@ -96,13 +96,6 @@ export async function routes(app: FastifyInstance) {
     const u = await db.user.update({ where: { id: s.userId }, data: b });
     await audit(s.userId, s.activeRole, "PROFILE_UPDATED", s.userId);
     return safeUser(u);
-  });
-  app.post("/api/notifications/:id/read", async (req) => {
-    const s = await session(req);
-    return db.notification.updateMany({
-      where: { id: id(req), userId: s.userId },
-      data: { readAt: new Date() },
-    });
   });
   app.get("/api/companies", async (req) => {
     const s = await authorize(req, "companies");
@@ -655,103 +648,5 @@ export async function routes(app: FastifyInstance) {
       });
     });
     return { ok: true };
-  });
-  app.get("/api/config/:scope", async (req) => {
-    const scope = z
-      .enum(["technical", "operations"])
-      .parse((req.params as any).scope);
-    await authorize(req, `config.${scope}`);
-    return db.systemConfiguration.findMany({
-      where: { key: { startsWith: `${scope}.` } },
-      include: { versions: { orderBy: { createdAt: "desc" }, take: 10 } },
-    });
-  });
-  app.post("/api/config/:scope", async (req) => {
-    const scope = z
-      .enum(["technical", "operations"])
-      .parse((req.params as any).scope);
-    const s = await authorize(req, `config.${scope}`);
-    const b = z
-      .object({
-        key: z.string().regex(/^[a-z][a-z0-9_.]{2,60}$/),
-        value: z.union([z.string().max(1000), z.number(), z.boolean()]),
-        reason: z.string().min(5).max(500),
-      })
-      .parse(req.body);
-    const uploadCategory = scope === "technical" ? uploadCategoryForKey(b.key) : undefined;
-    if (uploadCategory && (typeof b.value !== "number" || !Number.isInteger(b.value) ||
-      b.value < 1 || b.value > UPLOAD_CATEGORIES[uploadCategory].ceilingMiB))
-      fail(400, `Had ${uploadCategory} mesti nombor bulat 1 hingga ${UPLOAD_CATEGORIES[uploadCategory].ceilingMiB} MiB.`);
-    const key = `${scope}.${b.key}`;
-    await db.$transaction(async (tx) => {
-      await tx.systemConfiguration.upsert({
-        where: { key },
-        create: { key, value: b.value },
-        update: { value: b.value },
-      });
-      await tx.configurationVersion.create({
-        data: { key, value: b.value, changedBy: s.userId, reason: b.reason },
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "CONFIG_CHANGED",
-          target: key,
-        },
-      });
-    });
-    return { ok: true };
-  });
-  app.get("/api/audit", async (req) => {
-    const s = await session(req);
-    if (s.activeRole === "PENTADBIR_ICT") {
-      await authorize(req, "audit.all");
-      await audit(s.userId, s.activeRole, "AUDIT_READ");
-      return db.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
-    }
-    await authorize(req, "audit.operations");
-    const areas = await db.area.findMany();
-    const assignments = await db.areaAssignment.findMany({
-      where: { assignedBy: s.userId },
-    });
-    return db.auditLog.findMany({
-      where: {
-        OR: [
-          { actorId: s.userId },
-          {
-            action: "AREA_REASSIGNED",
-            target: {
-              in: assignments
-                .map((a) => a.areaId)
-                .filter((v) => areas.some((a) => a.id === v)),
-            },
-          },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
-  });
-  app.get("/api/admin/services", async (req) => {
-    await authorize(req, "services.read");
-    await db.$queryRaw`SELECT 1`;
-    return {
-      database: "CONNECTED",
-      email: await db.emailDeliveryLog.groupBy({
-        by: ["status"],
-        _count: true,
-      }),
-      integrations: {
-        AI: "NOT_CONFIGURED",
-        MBSPPay: "NOT_CONFIGURED",
-        GIS: "NOT_CONFIGURED",
-        SSO: "NOT_CONFIGURED",
-        digitalSignature: "NOT_CONFIGURED",
-      },
-    };
   });
 }
