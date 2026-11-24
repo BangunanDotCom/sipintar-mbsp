@@ -100,8 +100,11 @@ it("separates Personal Demo origins from the Demo Release 1.0 hostname", () => {
     TEST_DATABASE_URL: personalDatabase,
   };
   const { tunnel, nginx } = buildCloudflareDemoConfig(env);
-  expect(tunnel.ingress[0]).toMatchObject({
-    hostname: "staylink-mbsp-personal.example.test",
+  expect(tunnel).toMatchObject({
+    ingress: [
+      { hostname: "staylink-mbsp-personal.example.test" },
+      { service: "http_status:404" },
+    ],
   });
   expect(nginx).toContain("server_name staylink-mbsp-personal.example.test;");
   expect(() =>
