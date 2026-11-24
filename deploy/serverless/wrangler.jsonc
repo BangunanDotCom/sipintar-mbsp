@@ -1,0 +1,17 @@
+{
+  "name": "staylink-mbsp-demo",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "send_metrics": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "staylink-mbsp-demo-db",
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "migrations",
+      "remote": false
+    }
+  ]
+}
