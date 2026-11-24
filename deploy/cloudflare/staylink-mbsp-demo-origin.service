@@ -1,0 +1,22 @@
+# Template only. The app, Nginx, PostgreSQL, Mailpit and connector share the approved host.
+[Unit]
+Description=STAYLink MBSP demo Fastify origin
+After=network.target
+
+[Service]
+Type=simple
+User=staylink-mbsp-demo-app
+Group=staylink-mbsp-demo-app
+WorkingDirectory=/srv/staylink-mbsp-demo/current
+ExecStartPre=/usr/bin/node --env-file=/etc/staylink-mbsp-demo/demo.env --env-file=/etc/staylink-mbsp-demo/private/portal.env scripts/demo-host-readiness.mjs
+ExecStart=/usr/bin/node --env-file=/etc/staylink-mbsp-demo/demo.env --env-file=/etc/staylink-mbsp-demo/private/portal.env --import=tsx apps/api/src/index.ts
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
