@@ -1,5 +1,4 @@
 import { protectIdentification } from "./identity.js";
-import { assertDatabaseConfigured } from "./errors.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import argon2 from "argon2";
@@ -7,12 +6,8 @@ import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
 import { createHmac, randomUUID } from "node:crypto";
 import {
-  db,
   hash,
   token,
-  audit,
-  notify,
-  issueIdentity,
   encrypt,
   decrypt,
   safeUser,
@@ -24,22 +19,23 @@ import {
   passwordSchema,
   registerSchema,
 } from "../../../packages/shared/src/index.js";
+import {
+  postgresAuth,
+  type AuthRepository,
+  type AuthAccount,
+} from "./auth-repository.js";
+
 export function fail(statusCode: number, message: string): never {
   throw Object.assign(new Error(message), { statusCode });
 }
-export async function session(req: FastifyRequest, full = true) {
+export async function session(
+  req: FastifyRequest,
+  full = true,
+  repository = postgresAuth,
+) {
   const raw = req.cookies.staylink;
   if (!raw) fail(401, "Sila log masuk.");
-  const s = await db.session.findUnique({
-    where: { id: hash(raw) },
-    include: {
-      user: {
-        include: {
-          roles: { include: { role: { include: { permissions: true } } } },
-        },
-      },
-    },
-  });
+  const s = await repository.loadSession(hash(raw));
   if (!s || s.expiresAt < new Date() || s.user.status !== "ACTIVE")
     fail(401, "Sesi tamat atau akaun tidak aktif.");
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
@@ -57,8 +53,12 @@ export async function session(req: FastifyRequest, full = true) {
   }
   return s;
 }
-export async function authorize(req: FastifyRequest, action: string) {
-  const s = await session(req);
+export async function authorize(
+  req: FastifyRequest,
+  action: string,
+  repository = postgresAuth,
+) {
+  const s = await session(req, true, repository);
   const assignments = s.user.roles.filter(
     (a) => isCurrent(a) && a.roleId === s.activeRole,
   );
@@ -67,7 +67,13 @@ export async function authorize(req: FastifyRequest, action: string) {
       a.role.permissions.some((p) => p.action === action),
     )
   ) {
-    await audit(s.userId, s.activeRole, "ACCESS_DENIED", action, "DENIED");
+    await repository.audit(
+      s.userId,
+      s.activeRole,
+      "ACCESS_DENIED",
+      action,
+      "DENIED",
+    );
     fail(403, "Anda tidak mempunyai kebenaran untuk tindakan ini.");
   }
   return { ...s, assignments };
@@ -83,22 +89,25 @@ export const totp = (secret: string) =>
   });
 // The HttpOnly session secret keys a separate token for same-origin requests.
 function sessionCsrf(sessionSecret: string) {
-  return createHmac("sha256", sessionSecret).update("staylink.csrf.v1").digest("hex");
+  return createHmac("sha256", sessionSecret)
+    .update("staylink.csrf.v1")
+    .digest("hex");
 }
 
-async function makeSession(app: FastifyInstance, reply: any, user: any) {
+async function makeSession(
+  repository: AuthRepository,
+  reply: any,
+  user: AuthAccount,
+) {
   const raw = token();
   const csrf = sessionCsrf(raw);
   reply.header("Cache-Control", "private, no-store");
-  await db.session.create({
-    data: {
-      id: hash(raw),
-      userId: user.id,
-      activeRole: null,
-      csrfHash: hash(csrf),
-      expiresAt: new Date(Date.now() + 8 * 3600000),
-      mfaVerified: user.kind !== "OFFICER",
-    },
+  await repository.createSession({
+    id: hash(raw),
+    userId: user.id,
+    csrfHash: hash(csrf),
+    expiresAt: new Date(Date.now() + 8 * 3600000),
+    mfaVerified: user.kind !== "OFFICER",
   });
   reply.setCookie("staylink", raw, {
     httpOnly: true,
@@ -109,31 +118,33 @@ async function makeSession(app: FastifyInstance, reply: any, user: any) {
   });
   return { user: safeUser(user), csrf, mfaRequired: user.kind === "OFFICER" };
 }
-export async function authRoutes(app: FastifyInstance) {
+export async function authRoutes(
+  app: FastifyInstance,
+  repository: AuthRepository = postgresAuth,
+) {
+  const loadSession = (req: FastifyRequest, full = true) =>
+    session(req, full, repository);
+  const { audit, issueIdentity, notify } = repository;
   const authLimit = {
     config: { rateLimit: { max: 10, timeWindow: "15 minutes" } },
   };
   app.post("/api/auth/register", authLimit, async (req, reply) => {
     const b = registerSchema.parse(req.body);
-    if (process.env.STAYLINK_DEMO_HOST === "true" && !b.email.toLowerCase().endsWith("@example.test"))
+    if (
+      process.env.STAYLINK_DEMO_HOST === "true" &&
+      !b.email.toLowerCase().endsWith("@example.test")
+    )
       fail(400, "Pendaftaran demo memerlukan alamat latihan @example.test.");
-    assertDatabaseConfigured();
+    await repository.assertRegistrationReady();
     let user;
     try {
-      user = await db.user.create({
-        data: {
-          ...protectIdentification(b.identificationNumber),
-          name: b.name,
-          email: b.email,
-          phone: b.phone,
-          passwordHash: await argon2.hash(b.password, {
-            type: argon2.argon2id,
-          }),
-          consentAt: new Date(),
-          roles: {
-            create: { roleId: "PEMOHON", reference: "Pendaftaran awam" },
-          },
-        },
+      user = await repository.register({
+        ...protectIdentification(b.identificationNumber),
+        name: b.name,
+        email: b.email,
+        phone: b.phone,
+        passwordHash: await argon2.hash(b.password, { type: argon2.argon2id }),
+        consentAt: new Date(),
       });
     } catch (e: any) {
       if (e.code === "P2002")
@@ -159,7 +170,7 @@ export async function authRoutes(app: FastifyInstance) {
         password: z.string().max(128),
       })
       .parse(req.body);
-    const u = await db.user.findUnique({ where: { email: b.email } });
+    const u = await repository.findUser(b.email);
     const valid = u?.passwordHash
       ? await argon2.verify(u.passwordHash, b.password)
       : await argon2.verify(await dummyHash, "invalid");
@@ -168,23 +179,18 @@ export async function authRoutes(app: FastifyInstance) {
       fail(401, "E-mel atau kata laluan tidak sah.");
     }
     await audit(u.id, null, "LOGIN", u.id);
-    return makeSession(app, reply, u);
+    return makeSession(repository, reply, u);
   });
   app.get("/api/auth/me", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store");
-    const s = await session(req, false);
+    const s = await loadSession(req, false);
     const csrf = sessionCsrf(req.cookies.staylink!);
     const csrfHash = hash(csrf);
     // Existing sessions migrate once. All tabs compute the same token.
     if (s.csrfHash !== csrfHash) {
-      await db.session.updateMany({
-        where: { id: s.id, csrfHash: s.csrfHash },
-        data: { csrfHash },
-      });
+      await repository.refreshCsrf(s.id, s.csrfHash, csrfHash);
     }
-    const factor = await db.mfaFactor.findUnique({
-      where: { userId: s.userId },
-    });
+    const factor = await repository.findFactor(s.userId);
     return {
       user: safeUser(s.user),
       roles: s.user.roles
@@ -202,20 +208,17 @@ export async function authRoutes(app: FastifyInstance) {
     };
   });
   app.post("/api/auth/logout", async (req, reply) => {
-    const s = await session(req, false);
-    await db.session.delete({ where: { id: s.id } });
+    const s = await loadSession(req, false);
+    await repository.logout(s.id);
     reply.clearCookie("staylink", { path: "/" });
     return { ok: true };
   });
   app.post("/api/auth/role", async (req) => {
-    const s = await session(req);
+    const s = await loadSession(req);
     const { roleId } = z.object({ roleId: z.string() }).parse(req.body);
     if (!s.user.roles.some((a) => a.roleId === roleId && isCurrent(a)))
       fail(403, "Pelantikan tidak aktif atau telah tamat.");
-    await db.session.update({
-      where: { id: s.id },
-      data: { activeRole: roleId },
-    });
+    await repository.switchRole(s.id, roleId);
     await audit(s.userId, roleId, "ROLE_SWITCH", s.userId);
     return { ok: true };
   });
@@ -232,32 +235,8 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = b.password
       ? await argon2.hash(b.password, { type: argon2.argon2id })
       : undefined;
-    const u = await db.$transaction(async (tx) => {
-      const identity = await tx.authenticationIdentity.findUnique({
-        where: { tokenHash: hash(b.token) },
-      });
-      if (
-        !identity ||
-        identity.provider !== b.type ||
-        identity.consumedAt ||
-        identity.expiresAt < new Date()
-      )
-        fail(400, "Pautan tidak sah atau telah luput.");
-      const claim = await tx.authenticationIdentity.updateMany({
-        where: { id: identity.id, consumedAt: null },
-        data: { consumedAt: new Date() },
-      });
-      if (!claim.count) fail(400, "Pautan telah digunakan.");
-      const user = await tx.user.update({
-        where: { id: identity.userId },
-        data: {
-          emailVerified: true,
-          ...(passwordHash ? { passwordHash } : {}),
-        },
-      });
-      await tx.session.deleteMany({ where: { userId: user.id } });
-      return user;
-    });
+    const u = await repository.activate(hash(b.token), b.type, passwordHash);
+    if (!u) fail(400, "Pautan tidak sah atau telah luput.");
     await audit(u.id, null, b.type, u.id);
     await notify(
       u.id,
@@ -276,7 +255,7 @@ export async function authRoutes(app: FastifyInstance) {
           .default("RESET_PASSWORD"),
       })
       .parse(req.body);
-    const u = await db.user.findUnique({ where: { email } });
+    const u = await repository.findUser(email);
     if (
       u &&
       u.status === "ACTIVE" &&
@@ -294,7 +273,7 @@ export async function authRoutes(app: FastifyInstance) {
     return { message: "Jika akaun layak, pautan akan dihantar melalui e-mel." };
   });
   app.post("/api/auth/password", async (req) => {
-    const s = await session(req);
+    const s = await loadSession(req);
     const b = z
       .object({ currentPassword: z.string(), password: passwordSchema })
       .parse(req.body);
@@ -303,17 +282,10 @@ export async function authRoutes(app: FastifyInstance) {
       !(await argon2.verify(s.user.passwordHash, b.currentPassword))
     )
       fail(400, "Kata laluan semasa tidak sah.");
-    await db.$transaction([
-      db.user.update({
-        where: { id: s.userId },
-        data: {
-          passwordHash: await argon2.hash(b.password, {
-            type: argon2.argon2id,
-          }),
-        },
-      }),
-      db.session.deleteMany({ where: { userId: s.userId } }),
-    ]);
+    await repository.changePassword(
+      s.userId,
+      await argon2.hash(b.password, { type: argon2.argon2id }),
+    );
     await audit(s.userId, s.activeRole, "PASSWORD_CHANGE", s.userId);
     await notify(
       s.userId,
@@ -324,31 +296,26 @@ export async function authRoutes(app: FastifyInstance) {
     return { message: "Kata laluan ditukar. Sila log masuk semula." };
   });
   app.post("/api/auth/mfa/setup", async (req) => {
-    const s = await session(req, false);
+    const s = await loadSession(req, false);
     if (s.user.kind !== "OFFICER" || !s.user.emailVerified)
       fail(403, "Akaun tidak layak.");
-    const existing = await db.mfaFactor.findUnique({
-      where: { userId: s.userId },
-    });
+    const existing = await repository.findFactor(s.userId);
     if (existing?.verified)
       fail(409, "MFA telah aktif. Hubungi pentadbir untuk pemulihan.");
     const secret = new OTPAuth.Secret({ size: 20 }).base32;
-    await db.mfaFactor.upsert({
-      where: { userId: s.userId },
-      create: { userId: s.userId, encryptedSecret: encrypt(secret) },
-      update: { encryptedSecret: encrypt(secret) },
-    });
+    if (!(await repository.setFactor(s.userId, encrypt(secret))))
+      fail(409, "MFA telah aktif. Hubungi pentadbir untuk pemulihan.");
     const uri = totp(secret).toString();
     await audit(s.userId, null, "MFA_SETUP", s.userId);
     return { secret, qr: await QRCode.toDataURL(uri) };
   });
   app.post("/api/auth/mfa/verify", authLimit, async (req) => {
-    const s = await session(req, false);
+    const s = await loadSession(req, false);
     if (!s.user.emailVerified) fail(403, "Sahkan e-mel dahulu.");
     const { code } = z
       .object({ code: z.string().regex(/^\d{6}$/) })
       .parse(req.body);
-    const f = await db.mfaFactor.findUnique({ where: { userId: s.userId } });
+    const f = await repository.findFactor(s.userId);
     if (!f) fail(400, "Daftar MFA dahulu.");
     const step = Math.floor(Date.now() / 30000);
     const delta = totp(decrypt(f.encryptedSecret)).validate({
@@ -360,47 +327,22 @@ export async function authRoutes(app: FastifyInstance) {
       fail(400, "Kod MFA tidak sah.");
     }
     const accepted = BigInt(step + delta);
-    const recoveryCodes: string[] = [];
-    await db.$transaction(async (tx) => {
-      const claim = await tx.mfaFactor.updateMany({
-        where: { id: f.id, lastStep: { lt: accepted } },
-        data: { verified: true, lastStep: accepted },
-      });
-      if (!claim.count)
-        fail(400, "Kod MFA telah digunakan. Tunggu kod seterusnya.");
-      if (!f.verified) {
-        await tx.recoveryCode.deleteMany({ where: { userId: s.userId } });
-        for (let i = 0; i < 8; i++) {
-          const raw = randomUUID();
-          recoveryCodes.push(raw);
-          await tx.recoveryCode.create({
-            data: { userId: s.userId, codeHash: hash(raw) },
-          });
-        }
-      }
-      await tx.session.update({
-        where: { id: s.id },
-        data: { mfaVerified: true },
-      });
-    });
+    const recoveryCodes = f.verified
+      ? []
+      : Array.from({ length: 8 }, () => randomUUID());
+    if (
+      !(await repository.claimMfa(s.id, f, accepted, recoveryCodes.map(hash)))
+    )
+      fail(400, "Kod MFA telah digunakan. Tunggu kod seterusnya.");
     await audit(s.userId, null, "MFA_VERIFIED", s.userId);
     return { ok: true, recoveryCodes };
   });
   app.post("/api/auth/mfa/recovery", authLimit, async (req) => {
-    const s = await session(req, false);
+    const s = await loadSession(req, false);
     if (!s.user.emailVerified) fail(403, "Sahkan e-mel dahulu.");
     const { code } = z.object({ code: z.string().uuid() }).parse(req.body);
-    await db.$transaction(async (tx) => {
-      const used = await tx.recoveryCode.updateMany({
-        where: { userId: s.userId, codeHash: hash(code), usedAt: null },
-        data: { usedAt: new Date() },
-      });
-      if (!used.count) fail(400, "Kod pemulihan tidak sah.");
-      await tx.session.update({
-        where: { id: s.id },
-        data: { mfaVerified: true },
-      });
-    });
+    if (!(await repository.useRecoveryCode(s.id, s.userId, hash(code))))
+      fail(400, "Kod pemulihan tidak sah.");
     await audit(s.userId, null, "MFA_RECOVERY_USED", s.userId);
     await notify(
       s.userId,

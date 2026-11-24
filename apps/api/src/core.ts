@@ -8,8 +8,13 @@ import {
   createDecipheriv,
 } from "node:crypto";
 import nodemailer from "nodemailer";
-if (process.env.STAYLINK_DB_PROVIDER && process.env.STAYLINK_DB_PROVIDER !== "postgresql")
-  throw Error("Pembekal Oracle belum disepadukan dengan semua laluan API. Permulaan dibatalkan.");
+if (
+  process.env.STAYLINK_DB_PROVIDER &&
+  process.env.STAYLINK_DB_PROVIDER !== "postgresql"
+)
+  throw Error(
+    "Pembekal Oracle belum disepadukan dengan semua laluan API. Permulaan dibatalkan.",
+  );
 
 export const db = new PrismaClient({
   adapter: new PrismaPg({
@@ -60,16 +65,52 @@ export function closeMailer() {
   mailTransport?.close();
   mailTransport = undefined;
 }
-export async function dispatchMail(id: string) {
+export interface MailOutbox {
+  claim(
+    id: string,
+  ): Promise<{ recipient: string; encryptedPayload: string } | null>;
+  markSent(id: string, encryptedPayload: string): Promise<void>;
+  markFailed(id: string, lastError: string): Promise<void>;
+}
+
+const postgresMailOutbox: MailOutbox = {
+  async claim(id) {
+    const claimed = await db.emailDeliveryLog.updateMany({
+      where: { id, status: { in: ["PENDING", "FAILED"] }, attempts: { lt: 5 } },
+      data: { status: "SENDING", attempts: { increment: 1 } },
+    });
+    return claimed.count
+      ? db.emailDeliveryLog.findUniqueOrThrow({ where: { id } })
+      : null;
+  },
+  async markSent(id, encryptedPayload) {
+    await db.emailDeliveryLog.update({
+      where: { id },
+      data: {
+        status: "SENT",
+        sentAt: new Date(),
+        lastError: null,
+        encryptedPayload,
+      },
+    });
+  },
+  async markFailed(id, lastError) {
+    await db.emailDeliveryLog.update({
+      where: { id },
+      data: { status: "FAILED", lastError },
+    });
+  },
+};
+
+export async function dispatchMail(id: string, outbox = postgresMailOutbox) {
   // Claim atomically: concurrent workers cannot send the same pending row.
-  const claimed = await db.emailDeliveryLog.updateMany({
-    where: { id, status: { in: ["PENDING", "FAILED"] }, attempts: { lt: 5 } },
-    data: { status: "SENDING", attempts: { increment: 1 } },
-  });
-  if (!claimed.count) return;
-  const row = await db.emailDeliveryLog.findUniqueOrThrow({ where: { id } });
+  const row = await outbox.claim(id);
+  if (!row) return;
   try {
-    if (process.env.STAYLINK_DEMO_HOST === "true" && !row.recipient.toLowerCase().endsWith("@example.test"))
+    if (
+      process.env.STAYLINK_DEMO_HOST === "true" &&
+      !row.recipient.toLowerCase().endsWith("@example.test")
+    )
       throw Error("Emel demo hanya dibenarkan untuk alamat latihan.");
     if (production && process.env.SMTP_PRODUCTION_ENABLED !== "true")
       throw Error("Penghantaran produksi belum dibenarkan.");
@@ -98,27 +139,19 @@ export async function dispatchMail(id: string) {
       to: row.recipient,
       ...payload,
     });
-    await db.emailDeliveryLog.update({
-      where: { id },
-      data: {
-        status: "SENT",
-        sentAt: new Date(),
-        lastError: null,
-        encryptedPayload: encrypt("{}"),
-      },
-    });
   } catch (error: any) {
     const smtpCode = /^[A-Z0-9_]+$/.test(error.code || "")
       ? error.code
       : "SMTP_ERROR";
-    await db.emailDeliveryLog.update({
-      where: { id },
-      data: {
-        status: "FAILED",
-        lastError: `${smtpCode}: SMTP gagal; semak konfigurasi dan sambungan.`,
-      },
-    });
+    await outbox.markFailed(
+      id,
+      `${smtpCode}: SMTP gagal; semak konfigurasi dan sambungan.`,
+    );
+    return;
   }
+  // A database failure after SMTP accepted the message leaves an uncertain send.
+  // Keep SENDING for reconciliation so the retry runner cannot send it again.
+  await outbox.markSent(id, encrypt("{}"));
 }
 export async function notify(
   userId: string,

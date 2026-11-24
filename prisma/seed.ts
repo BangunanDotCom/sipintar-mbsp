@@ -1,3 +1,4 @@
+import { departments, districts } from "./reference-data.js";
 import { db } from "../apps/api/src/core.js";
 import {
   roles,
@@ -19,22 +20,13 @@ export async function seed() {
       })),
     });
   }
-  for (const [id, name] of Object.entries({
-    SPU: "Seberang Perai Utara",
-    SPT: "Seberang Perai Tengah",
-    SPS: "Seberang Perai Selatan",
-  }))
+  for (const [id, name] of Object.entries(districts))
     await db.district.upsert({
       where: { id },
       create: { id, name },
       update: { name },
     });
-  for (const [id, name] of Object.entries({
-    BANGUNAN: "Jabatan Bangunan",
-    PERANCANG: "Jabatan Perancang Bandar",
-    KEJURUTERAAN: "Jabatan Kejuruteraan",
-    ICT: "Bahagian ICT",
-  }))
+  for (const [id, name] of Object.entries(departments))
     await db.department.upsert({
       where: { id },
       create: { id, name },

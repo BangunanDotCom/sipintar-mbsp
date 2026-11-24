@@ -1,3 +1,4 @@
+import { oracleGeneratedLobIndexes } from "./lob-indexes.js";
 import oracledb from "oracledb";
 import { oracleConfig } from "../../apps/api/src/oracle/config.js";
 import { createOraclePool } from "../../apps/api/src/oracle/pool.js";
@@ -16,6 +17,8 @@ try {
       {},
       options,
     );
+    const proposedLobIndexExceptions =
+      await oracleGeneratedLobIndexes(connection);
     let history: unknown = null;
     if (
       objects.rows?.some((row) => row.OBJECT_NAME === "STL_SCHEMA_MIGRATIONS")
@@ -34,7 +37,12 @@ try {
     }
     console.log(
       JSON.stringify(
-        { objects: objects.rows, errors: errors.rows, history },
+        {
+          objects: objects.rows,
+          errors: errors.rows,
+          history,
+          proposedLobIndexExceptions,
+        },
         null,
         2,
       ),

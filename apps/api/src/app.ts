@@ -10,6 +10,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import { ZodError } from "zod";
 import { authRoutes } from "./auth.js";
 import { routes } from "./routes.js";
+import { managementRoutes } from "./management-routes.js";
 import { safeServerFailure } from "./errors.js";
 import { syntheticPortalRoutes } from "./synthetic-portal.js";
 export const requestLogRedactions = [
@@ -110,6 +111,7 @@ export async function buildApp() {
   });
   await authRoutes(app);
   await routes(app);
+  await managementRoutes(app);
   await syntheticPortalRoutes(app);
   return app;
 }

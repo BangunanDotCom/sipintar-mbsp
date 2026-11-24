@@ -32,7 +32,10 @@
     "oracle:preflight": "tsx scripts/oracle/install.ts preflight",
     "oracle:migrate": "tsx scripts/oracle/install.ts apply",
     "oracle:seed": "tsx scripts/oracle/seed.ts",
-    "oracle:recovery": "tsx scripts/oracle/recovery.ts"
+    "oracle:recovery": "tsx scripts/oracle/recovery.ts",
+    "oracle:backup": "tsx scripts/oracle/backup.ts",
+    "oracle:documents:scan": "tsx scripts/oracle/scan-documents.ts",
+    "oracle:mail:retry": "tsx scripts/oracle/retry-email.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

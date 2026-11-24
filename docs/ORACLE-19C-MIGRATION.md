@@ -2,6 +2,56 @@
 
 Baseline rujukan ialah `72b04f61b195d031a07f2079f0f8c14523ee1ef7`. Cabang ini menyediakan skema dan alat migrasi Oracle 19c, repository awal Oracle melalui Thin mode, seed makmal dan ujian berasingan. API aplikasi masih menggunakan PostgreSQL. Tetapan `STAYLINK_DB_PROVIDER=oracle` menghentikan permulaan sehingga port semua laluan API selesai.
 
+## Sambungan daripada commit `298f6679`
+
+**Status runtime penuh: fail-closed.** Laluan HTTP yang disenaraikan di bawah menggunakan repository Oracle apabila didaftarkan secara eksplisit dalam ujian makmal. Permulaan API biasa masih menolak `STAYLINK_DB_PROVIDER=oracle`.
+
+| Skop | Kemajuan sambungan |
+| --- | --- |
+| Akaun | Pendaftaran, emel pengaktifan, log masuk dan keluar, sesi, CSRF, pertukaran peranan, penukaran kata laluan, token pemulihan dan MFA melalui repository Oracle. Test HTTP meliputi pengaktifan, penolakan pengulangan kod dan pembatalan sesi. |
+| Syarikat dan kuasa wakil | Repository Oracle untuk jemputan, pratonton, senarai wakil dan penerimaan sekali sahaja. Penerimaan mengunci syarikat dan wakil pemberi jemputan, menyemak kuasa semula dan mencatat audit dalam transaksi yang sama. CRUD syarikat, profil, surat kuasa dan pengesahan wakil oleh PIC masih menggunakan PostgreSQL. |
+| Dokumen | Worker makmal Oracle untuk lease imbasan, pemeriksaan integriti, pengambilan semula lease tamat dan penolakan keputusan worker lama. API pengurusan draf, premis, unit, tingkat serta metadata dokumen masih menggunakan PostgreSQL. |
+| Notifikasi dan pentadbiran | Notifikasi, outbox, percubaan semula SMTP, penandaan notifikasi dibaca, konfigurasi berversi, audit berskop dan status perkhidmatan. Pengurusan pegawai, peranan, kawasan, templat dan dashboard masih memerlukan port. |
+| Serahan, PIC/PPSK dan bil | Laluan penyerahan, semakan, invois sintetik, lejar fi dan rekonsiliasi masih menggunakan PostgreSQL. |
+| Operasi data | Seed rujukan Oracle, migrasi DDL makmal, import PostgreSQL sintetik, sandaran logik dan pemulihan ke skema Oracle makmal kosong. Bootstrap, kit UAT Oracle, prosedur DBA sasaran dan pemulihan stor dokumen masih diperlukan. |
+
+### Skop makmal dan cadangan SYS_IL
+
+Jejak audit pemulihan melaporkan `proposedLobIndexExceptions` daripada padanan `USER_LOBS` dan `USER_INDEXES`. Entri mesti merupakan indeks LOB janaan Oracle dengan awalan `SYS_IL`, terikat kepada jadual dan segmen `STL_`. Oracle Free 23.26.4 melaporkan 14 entri. Kekalkan penamaan `STL_` bagi semua objek yang ditakrifkan oleh aplikasi dalam schema gunasama INDECS. Pengecualian ini dicadangkan khusus untuk indeks LOB dalaman tersebut dan tertakluk pada persetujuan JTIK.
+
+`oracle:seed` menyediakan rol, izin, daerah, jabatan, kategori templat dan fixture sesi. Akaun runtime makmal lalai mendapat grant minimum baseline. Tetapkan flag `ORACLE_LAB_ENABLE_AUTH`, `ORACLE_LAB_ENABLE_MANAGEMENT`, `ORACLE_LAB_ENABLE_COMPANY_INVITATIONS` dan `ORACLE_LAB_ENABLE_DOCUMENT_SCAN` kepada `true` pada arahan seed untuk memberi grant tambahan bagi skop makmal yang dipilih. Ujian integrasi menggunakan kedua-dua fail env Oracle serta Mailpit loopback pada port SMTP 1025 dan HTTP 8025.
+
+```bash
+node --env-file="$ORACLE_LAB_RUNTIME_ENV" --import tsx scripts/oracle/retry-email.ts
+node --env-file="$ORACLE_LAB_RUNTIME_ENV" --import tsx scripts/oracle/scan-documents.ts
+```
+
+Percubaan semula emel Oracle terhad kepada SMTP loopback dan penerima `@example.test`. Rekod dengan status `SENDING` memerlukan rekonsiliasi jika pengesahan pangkalan data gagal selepas SMTP menerima mesej. Worker pengimbas memerlukan stor kuarantin dan ClamAV yang sah mengikut prasyarat sedia ada.
+
+### Latihan import dan pemulihan logik
+
+Sediakan skema sumber dan skema pemulihan berasingan dengan nama makmal dan DDL baseline sepadan. Pembacaan eksport menggunakan satu transaksi baca sahaja. Pemulihan menyemak cap SHA-256, susunan kebergantungan FK dan cap jari baris sebelum komit. Oracle mengekalkan constraint serta pencetus semasa latihan. Fail dicipta dengan mod `0600`, had 64 MiB dan nama baharu. Letakkan fail data sintetik di luar Git.
+
+```bash
+node --env-file="$ORACLE_LAB_OWNER_ENV" --import tsx scripts/oracle/backup.ts export "$ORACLE_LAB_BACKUP"
+node --env-file="$ORACLE_LAB_RESTORE_ENV" --import tsx scripts/oracle/install.ts apply
+node --env-file="$ORACLE_LAB_RESTORE_ENV" --import tsx scripts/oracle/backup.ts restore "$ORACLE_LAB_BACKUP"
+```
+
+Untuk latihan lintas enjin, tetapkan `ORACLE_LAB_POSTGRES_URL` dengan URL PostgreSQL loopback khusus berformat `staylink_*_test`. Gunakan satu lagi skema destinasi makmal kosong yang telah melalui `install.ts apply`.
+
+```bash
+node --env-file="$ORACLE_LAB_IMPORT_ENV" --import tsx scripts/oracle/backup.ts import-postgres
+```
+
+Import meliputi 31 jadual aplikasi daripada manifest. Konfigurasi JSON disimpan dalam objek berversi supaya nilai skalar seperti `false` dan rentetan kosong boleh digunakan dengan kekangan Oracle 19c. Latihan menguji data aplikasi dalam jadual. Objek fail persendirian, kunci penyulitan, grant, konfigurasi luaran, Data Pump dan RMAN memerlukan prosedur operasi serta pengesahan pemulihan berasingan.
+
+**Bukti sambungan.** Oracle Free 23.26.4 digunakan untuk ujian DDL, repository, HTTP terpilih dan latihan import serta pemulihan dengan cap jari sepadan. Pemulihan ke destinasi berisi dan input dengan cap jari yang berubah ditolak. Pengesahan Oracle 19.30 SE2 dan portal Oracle hujung ke hujung masih terbuka.
+
+## Rekod baseline awal
+
+Jadual dan bukti di bawah ialah rekod sebelum sambungan ini.
+
 ## Inventori dan audit baseline
 
 - `prisma/schema.prisma` mempunyai 31 model berpeta. `database/oracle/001-baseline.sql` meliputi kesemuanya. `000-history.sql` menambah jadual sejarah. Senarai nama jadual, indeks, constraint, pencetus, segmen LOB dan view ada dalam `001-inventory.json`. Langkah 000 menambah `STL_SCHEMA_MIGRATIONS`, indeks `STL_HIST_PK` dan constraint `STL_HIST_VERSION_NN`, `STL_HIST_CHECKSUM_NN`, `STL_HIST_STATE_NN`, `STL_HIST_START_NN`, `STL_HIST_PK` dan `STL_HIST_STATE_CK`.

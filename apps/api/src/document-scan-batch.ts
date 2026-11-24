@@ -1,4 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
+import {
+  documentScanRepository,
+  type DocumentScanRepository,
+} from "./document-scan-repository.js";
 import type { PrivateDocumentStore } from "./private-document-store.js";
 import type { DocumentMalwareScanner } from "./document-malware-scanner.js";
 import { processPendingDocumentScan } from "./document-scan-worker.js";
@@ -14,7 +18,7 @@ export type ScanBatchSummary = {
 // Internal job-runner entrypoint, not an HTTP route.
 // No auto-loop: scheduler, storage and scanner must be explicitly configured.
 export async function processPendingDocumentScanBatch(
-  db: PrismaClient,
+  db: PrismaClient | DocumentScanRepository,
   store: PrivateDocumentStore,
   scanner: DocumentMalwareScanner,
   options: { limit?: number } = {},
@@ -22,27 +26,26 @@ export async function processPendingDocumentScanBatch(
   const limit = options.limit ?? 10;
   if (!Number.isInteger(limit) || limit < 1 || limit > 50)
     throw new Error("Had kelompok imbasan mesti antara 1 hingga 50.");
-  const pending = await db.applicationDocument.findMany({
-    where: {
-      supersededAt: null,
-      OR: [
-        { scanStatus: "PENDING" },
-        { scanStatus: "SCANNING", scanLeaseExpiresAt: { lt: new Date() } },
-      ],
-    },
-    select: { id: true },
-    orderBy: [{ uploadedAt: "asc" }, { id: "asc" }],
-    take: limit,
-  });
+  const repository = documentScanRepository(db);
+  const pending = await repository.pending(limit);
   const summary: ScanBatchSummary = {
-    examined: pending.length, clean: 0, infected: 0, failed: 0, skipped: 0,
+    examined: pending.length,
+    clean: 0,
+    infected: 0,
+    failed: 0,
+    skipped: 0,
   };
   for (const document of pending) {
     // A single unexpected worker error must not prevent later documents from being scanned.
     // Count it as FAILED so the CLI returns a nonzero exit status for operator follow-up.
     let result: "CLEAN" | "INFECTED" | "FAILED" | "SKIPPED";
     try {
-      result = await processPendingDocumentScan(db, store, scanner, document.id);
+      result = await processPendingDocumentScan(
+        repository,
+        store,
+        scanner,
+        document.id,
+      );
     } catch {
       result = "FAILED";
     }
