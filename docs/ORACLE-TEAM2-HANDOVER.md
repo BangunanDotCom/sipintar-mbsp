@@ -15,6 +15,8 @@ Branch `feature/oracle-team2-parity` bermula daripada kepala Draft PR #64, `4b55
 | K11 | Ringkasan pekerja baseline. Medan majikan pilihan kekal keputusan Team 1 dan pemilik proses. |
 | Operasi | Templat berversi, konfigurasi, audit berskop, notifikasi, senarai pegawai, tugasan kawasan, seed, migrasi, import 31 jadual dan pemulihan skema sintetik. |
 
+Calon P0 surat kuasa menggunakan cabang integrasi berasingan. Lihat keputusan A/B, bukti pemulihan, baki dan semakan Oracle 19.30 SE2. [Matriks calon P0](ORACLE-DELEGATION-P0-MATRIX.md) · [Checklist JTIK](ORACLE-JTIK-CHECKLIST.md)
+
 ## Penyelarasan Team 1
 
 Peristiwa Issue #68 dalam PR #69 dan #70 sepadan byte demi byte. PR #71 menggunakan peristiwa tersebut dalam audit sedia ada dan menambah indeks Oracle untuk carian sejarah. Laluan Team 1 yang menggunakan Prisma secara terus dipisahkan kepada adapter PostgreSQL dan Oracle dengan satu pelaksanaan HTTP bersama. Pemilik proses menentukan peraturan rasmi, kadar fi, retensi dan pengaktifan. [Kontrak yang disemak dan perbezaan adapter](ORACLE-ISSUE68-PARITY.md)

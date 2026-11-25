@@ -1,3 +1,4 @@
+import { oracleDelegationRoutes } from "./delegation-routes.js";
 import { completionConfig } from "../synthetic-portal-completion.js";
 import {
   assertOracleCompletionMigration,
@@ -19,6 +20,7 @@ import { createOracleManagementRepository } from "./management.js";
 import type { OraclePool } from "./pool.js";
 
 export type OracleLabRepositories = DatabaseRepositories & {
+  registerDelegationLab(app: FastifyInstance): Promise<void>;
   registerSyntheticLab(app: FastifyInstance): Promise<void>;
   checkConnection(): Promise<void>;
   training(): { review: boolean; completion: boolean };
@@ -56,6 +58,9 @@ export function createOracleRepositories(
           policy?.config.billing.mode === "MOCK" &&
           oracleCompletionEnabled(),
       };
+    },
+    async registerDelegationLab(app) {
+      await oracleDelegationRoutes(app, pool, auth);
     },
     async registerSyntheticLab(app) {
       if (

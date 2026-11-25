@@ -1,3 +1,4 @@
+import { verifiedDelegation } from "./delegation-evidence.js";
 import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import { syntheticDocumentFacts } from "./synthetic-owner-policy.js";
 import {
@@ -67,6 +68,7 @@ export type SyntheticSubmissionTransaction = {
   ): Promise<"PEMOHON" | "WAKIL_SYARIKAT">;
   draft(userId: string, id: string): Promise<ApplicationDraft>;
   authority(userId: string, companyId: string): Promise<NonNullable<Authority>>;
+  proof(authority: NonNullable<Authority>): Promise<DelegationProof>;
   lockDraftVersion(draft: ApplicationDraft): Promise<number | undefined>;
   submissionByKey(
     draftId: string,
@@ -110,6 +112,7 @@ export async function captureSyntheticSubmission(
       },
       draft: (user, id) => authorizedDraft(tx, user, id),
       authority: (user, company) => companyAuthority(tx, user, company),
+      proof: (authority) => verifiedDelegation(tx, authority),
       async lockDraftVersion(draft) {
         const [current] = await tx.$queryRaw<{ version: number }[]>`
           SELECT version FROM application_drafts WHERE id = ${draft.id} FOR UPDATE`;
@@ -196,7 +199,8 @@ export async function captureInTransaction(
       savedPolicy.data.policyFingerprint !== policy.owner.fingerprint
     )
       fail(409, "Serahan latihan ini menggunakan polisi terdahulu.");
-    if (enforcePortal) await assertSnapshotAuthority(prior, tx.authority);
+    if (authority || enforcePortal)
+      await assertSnapshotAuthority(prior, tx.authority, tx.proof);
     if (
       prior.actorId !== userId ||
       prior.draftVersion !== input.version ||
@@ -223,8 +227,12 @@ export async function captureInTransaction(
           : policy.correctionFor !== latest.id)))
   )
     fail(409, "Pembetulan sintetik belum dibenarkan.");
-  if (latest && enforcePortal) {
-    const original = await assertSnapshotAuthority(latest, tx.authority);
+  if (latest && (authority || enforcePortal)) {
+    const original = await assertSnapshotAuthority(
+      latest,
+      tx.authority,
+      tx.proof,
+    );
     if (
       original.capacity !== draft.capacity ||
       original.companyId !== draft.companyId
@@ -236,6 +244,7 @@ export async function captureInTransaction(
   }
 
   await tx.requireUnclosed(draft.id);
+  const authorityProof = authority ? await tx.proof(authority) : null;
   await tx.lockEvidence(draft.id);
   const { premises, floors, eligible, evidence, readiness } =
     evaluateSyntheticReadiness(
@@ -266,6 +275,7 @@ export async function captureInTransaction(
       }),
       districtId: premises.districtId,
       representativeId: authority?.id ?? null,
+      authorityProof,
       authorityType: authority?.authorityType ?? null,
       floors: floors.map(
         ({ id, floorLabel, rooms, beds, workers, areaSqm, facilities }) => ({
@@ -443,6 +453,7 @@ export async function loadSyntheticReadiness(
     documents: Awaited<ReturnType<typeof loadSyntheticEvidence>>;
   },
 ) {
+  if (authority) await verifiedDelegation(tx, authority);
   return evaluateSyntheticReadiness(
     draft,
     authority,
@@ -521,12 +532,20 @@ export function evaluateSyntheticReadiness(
   return { premises, floors, eligible, evidence, readiness };
 }
 
+export type DelegationProof = {
+  id: string;
+  version: number | null;
+  sha256: string;
+};
+
 export async function requireSyntheticSnapshotAuthority(
   tx: Prisma.TransactionClient,
   row: { snapshot: Prisma.JsonValue; actorId: string },
 ) {
-  return assertSnapshotAuthority(row, (userId, companyId) =>
-    companyAuthority(tx, userId, companyId),
+  return assertSnapshotAuthority(
+    row,
+    (userId, companyId) => companyAuthority(tx, userId, companyId),
+    (rep) => verifiedDelegation(tx, rep),
   );
 }
 
@@ -536,11 +555,21 @@ export async function assertSnapshotAuthority(
     userId: string,
     companyId: string,
   ) => Promise<NonNullable<Authority>>,
+  proof: (authority: NonNullable<Authority>) => Promise<DelegationProof>,
 ) {
   const context = z
     .object({
       capacity: z.enum(["INDIVIDUAL", "COMPANY"]),
       companyId: z.uuid().nullable(),
+      representativeId: z.uuid().nullable().optional(),
+      authorityProof: z
+        .object({
+          id: z.uuid(),
+          version: z.number().int().positive(),
+          sha256: z.string(),
+        })
+        .nullable()
+        .optional(),
     })
     .safeParse(row.snapshot);
   if (
@@ -553,7 +582,15 @@ export async function assertSnapshotAuthority(
       row.actorId,
       context.data.companyId,
     );
-    if (authority.status !== "VERIFIED")
+    const current = await proof(authority);
+    const saved = context.data.authorityProof;
+    if (
+      !saved ||
+      context.data.representativeId !== authority.id ||
+      current.id !== saved.id ||
+      current.version !== saved.version ||
+      current.sha256 !== saved.sha256
+    )
       fail(409, "Kuasa serahan sintetik tidak lagi disahkan.");
   }
   return context.data;

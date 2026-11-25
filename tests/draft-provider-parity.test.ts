@@ -571,8 +571,8 @@ for (const { name, enabled } of variants) {
         (await app.inject({ url: path, headers: outsider })).statusCode,
       ).toBe(404);
       const download = await app.inject({ url: path, headers: manager });
-      expect(download.statusCode, download.body).toBe(200);
-      expect(download.rawPayload).toEqual(pdf);
+      expect(download.statusCode, download.body).toBe(404);
+      expect(download.body).not.toContain("Latihan");
       const updated = await app.inject({
         method: "PATCH",
         url: uri,

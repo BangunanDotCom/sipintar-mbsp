@@ -1,3 +1,4 @@
+import { verifiedDelegation } from "./delegation-evidence.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import {
   completionConfig,
@@ -65,6 +66,7 @@ export type SyntheticPortalDraftTransaction = Pick<
   | "lockApplicant"
   | "draft"
   | "authority"
+  | "proof"
   | "latestSubmission"
   | "inventory"
   | "evidence"
@@ -111,6 +113,7 @@ const postgresPortalDrafts: SyntheticPortalDraftRepository = {
           },
           draft: (userId, id) => authorizedDraft(tx, userId, id),
           authority: (userId, id) => companyAuthority(tx, userId, id),
+          proof: (rep) => verifiedDelegation(tx, rep),
           async latestSubmission(draftId) {
             return tx.syntheticSubmission.findFirst({
               where: { draftId },
@@ -276,6 +279,7 @@ export async function registerSyntheticPortal(
           const context = documentContext(draft, inventory, evidence);
           let blocker = "";
           try {
+            if (authority) await tx.proof(authority);
             evaluateSyntheticReadiness(
               draft,
               authority,
@@ -348,8 +352,7 @@ export async function registerSyntheticPortal(
             fail(409, "Versi draf telah berubah.");
           if (draft.companyId) {
             const authority = await tx.authority(userId, draft.companyId);
-            if (authority.status !== "VERIFIED")
-              fail(409, "Kuasa wakil sintetik belum disahkan.");
+            await tx.proof(authority);
           }
           if (!(await tx.claimVersion(userId, id, input.version)))
             fail(409, "Versi draf telah berubah.");

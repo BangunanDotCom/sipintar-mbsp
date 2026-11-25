@@ -38,6 +38,7 @@ export async function buildOracleLabApp(repositories: OracleLabRepositories) {
     repositories.checkConnection,
     repositories.training,
   );
+  await repositories.registerDelegationLab(app);
   await repositories.registerSyntheticLab(app);
   return app;
 }

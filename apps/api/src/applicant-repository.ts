@@ -1,6 +1,9 @@
-import type { Company, Prisma } from "@prisma/client";
+import {
+  delegationMetadata,
+  delegationSummary as evidenceSummary,
+} from "./delegation-evidence.js";
+import type { Company } from "@prisma/client";
 import { db } from "./core.js";
-import { fail } from "./auth.js";
 import type { protectIdentification } from "./identity.js";
 
 export type CompanyDetails = Pick<
@@ -8,15 +11,6 @@ export type CompanyDetails = Pick<
   "name" | "address" | "phone" | "email"
 >;
 type Identification = ReturnType<typeof protectIdentification>;
-type VerificationStatus = "VERIFIED" | "DOCUMENT_UPDATE_REQUIRED";
-
-export const delegationSummary = {
-  id: true,
-  fileName: true,
-  status: true,
-  validUntil: true,
-} as const;
-
 export const postgresApplicantRepository = {
   async setIdentification(
     userId: string,
@@ -57,18 +51,47 @@ export const postgresApplicantRepository = {
   },
   async companies(userId: string) {
     const now = new Date();
-    return db.companyRepresentative.findMany({
+    const memberships = await db.companyRepresentative.findMany({
       where: {
         userId,
+        company: { status: "ACTIVE" },
         status: { not: "REVOKED" },
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
       },
-      include: {
-        company: { include: { documents: { select: delegationSummary } } },
+      include: { company: true },
+    });
+    const documents = await db.delegationDocument.findMany({
+      where: {
+        representativeId: { in: memberships.map(({ id }) => id) },
+        supersededAt: null,
+        revokedAt: null,
       },
+      select: delegationMetadata,
+    });
+    return memberships.map((rep) => {
+      const visible = documents
+        .filter(
+          (doc) =>
+            doc.representativeId === rep.id &&
+            doc.authorityType === rep.authorityType,
+        )
+        .map((doc) => ({ ...evidenceSummary(doc, now), status: rep.status }));
+      const status =
+        rep.status === "VERIFIED" &&
+        !visible.some(
+          (doc) => doc.id === rep.verifiedDocumentId && doc.downloadable,
+        )
+          ? "DOCUMENT_UPDATE_REQUIRED"
+          : rep.status;
+      return {
+        ...rep,
+        status,
+        company: { ...rep.company, documents: visible },
+      };
     });
   },
+
   async createCompany(
     userId: string,
     data: CompanyDetails & { registrationNumber: string },
@@ -99,64 +122,6 @@ export const postgresApplicantRepository = {
     return db.systemConfiguration.findMany({
       where: { key: { in: keys } },
       select: { key: true, value: true },
-    });
-  },
-  async uploadDelegation(data: Prisma.DelegationDocumentUncheckedCreateInput) {
-    return db.delegationDocument.create({
-      data,
-      select: { id: true, fileName: true, status: true },
-    });
-  },
-  async delegation(id: string) {
-    return db.delegationDocument.findUnique({
-      where: { id },
-      select: { id: true, companyId: true, fileName: true, content: true },
-    });
-  },
-  async representations() {
-    return db.companyRepresentative.findMany({
-      take: 100,
-      include: {
-        user: { select: { id: true, name: true } },
-        company: {
-          select: {
-            id: true,
-            name: true,
-            documents: {
-              select: { id: true, fileName: true, uploadedBy: true },
-            },
-          },
-        },
-      },
-    });
-  },
-  async representative(id: string) {
-    return db.companyRepresentative.findUniqueOrThrow({ where: { id } });
-  },
-  async verifyRepresentative(
-    id: string,
-    companyId: string,
-    userId: string,
-    status: VerificationStatus,
-  ) {
-    const valid = {
-      companyId,
-      OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
-    };
-    await db.$transaction(async (tx) => {
-      if (
-        status === "VERIFIED" &&
-        !(await tx.delegationDocument.count({ where: valid }))
-      )
-        fail(400, "Surat kuasa sah diperlukan.");
-      await tx.companyRepresentative.update({
-        where: { id },
-        data: { status, verifiedBy: userId },
-      });
-      await tx.delegationDocument.updateMany({
-        where: valid,
-        data: { status },
-      });
     });
   },
 };

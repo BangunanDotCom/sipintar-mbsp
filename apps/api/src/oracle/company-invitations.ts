@@ -1,3 +1,4 @@
+import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Connection } from "oracledb";
 import { fail } from "../auth.js";
@@ -30,6 +31,7 @@ type ListRow = Omit<
 export function createOracleCompanyInvitationRepository(
   pool: OraclePool,
 ): CompanyInvitationRepository {
+  const delegationEvidence = oracleDelegationEvidence(pool);
   const companies = oracleTable(pool, "STL_COMPANIES");
   const reps = oracleTable(pool, "STL_COMPANY_REPRESENTATIVES");
   const invites = oracleTable(pool, "STL_COMPANY_REP_INVITATIONS");
@@ -39,7 +41,8 @@ export function createOracleCompanyInvitationRepository(
   const audit = createOracleAuditRepository(pool);
   const repColumns = `R.ID AS "id", R.USER_ID AS "userId", R.COMPANY_ID AS "companyId",
     R.AUTHORITY_TYPE AS "authorityType", R.STARTS_AT AS "startsAt", R.ENDS_AT AS "endsAt",
-    R.STATUS AS "status", R.VERIFIED_BY AS "verifiedBy", R.CAN_MANAGE_REPRESENTATIVES AS "canManageRepresentatives"`;
+    R.STATUS AS "status", R.VERIFIED_BY AS "verifiedBy",
+    R.VERIFIED_DOCUMENT_ID AS "verifiedDocumentId", R.VERIFICATION_REVISION AS "verificationRevision", R.CAN_MANAGE_REPRESENTATIVES AS "canManageRepresentatives"`;
 
   async function preview(connection: Connection, tokenHash: string) {
     const [row] = await queryRows<InviteRow>(
@@ -81,9 +84,9 @@ export function createOracleCompanyInvitationRepository(
       binds,
     );
     if (!representative) return false;
-    const rows = await queryRows(
+    const [rep] = await queryRows<RepRow>(
       connection,
-      `SELECT 1 FROM ${reps} R JOIN ${users} U ON U.ID=R.USER_ID
+      `SELECT ${repColumns} FROM ${reps} R JOIN ${users} U ON U.ID=R.USER_ID
        WHERE R.COMPANY_ID=:companyId AND R.USER_ID=:userId AND R.STATUS<>'REVOKED'
          AND (R.CAN_MANAGE_REPRESENTATIVES=1 OR R.STATUS='VERIFIED') AND R.STARTS_AT<=SYSTIMESTAMP
          AND (R.ENDS_AT IS NULL OR R.ENDS_AT>SYSTIMESTAMP) AND U.STATUS='ACTIVE' AND U.EMAIL_VERIFIED=1
@@ -92,7 +95,20 @@ export function createOracleCompanyInvitationRepository(
              AND (A.ENDS_AT IS NULL OR A.ENDS_AT>SYSTIMESTAMP) AND P.ACTION='companies')`,
       binds,
     );
-    return rows.length > 0;
+    if (!rep) return false;
+    if (rep.canManageRepresentatives === 1) return true;
+    try {
+      await delegationEvidence.verified(connection, rep);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "statusCode" in error &&
+        error.statusCode === 409
+      )
+        return false;
+      throw error;
+    }
   }
 
   return {

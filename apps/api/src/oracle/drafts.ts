@@ -94,6 +94,8 @@ const representativeFields = [
   "startsAt",
   "endsAt",
   "verifiedBy",
+  "verifiedDocumentId",
+  "verificationRevision",
   "canManageRepresentatives",
 ];
 const companyFields = [

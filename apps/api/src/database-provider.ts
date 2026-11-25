@@ -1,3 +1,5 @@
+import { delegationRoutes } from "./delegation-routes.js";
+import { companyInvitationRoutes as postgresInvitationRoutes } from "./delegation-company-invitations.js";
 import { postgresAdmin } from "./admin-repository.js";
 import { routes as adminRoutes } from "./routes.js";
 import { postgresDashboard } from "./dashboard-repository.js";
@@ -47,7 +49,12 @@ export async function registerRepositoryRoutes(
   await adminRoutes(app, admin, auth);
   dashboardRoutes(app, dashboard, applicants, auth, training);
   await applicantRoutes(app, applicants, auth, companyInvitations);
-  await companyInvitationRoutes(app, companyInvitations, auth);
+  if (auth === postgresAuth) {
+    await delegationRoutes(app);
+    await postgresInvitationRoutes(app);
+  } else {
+    await companyInvitationRoutes(app, companyInvitations, auth);
+  }
   await applicationDraftRoutes(app, drafts, auth);
   await premisesRoutes(app, drafts, auth);
   await premiseFloorRoutes(app, drafts, auth);

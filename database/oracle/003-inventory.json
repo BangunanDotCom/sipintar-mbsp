@@ -1,0 +1,16 @@
+[
+  {"type": "CONSTRAINT", "name": "STL_NN_DEL_REVISION"},
+  {"type": "CONSTRAINT", "name": "STL_UK_DEL_REP_COMP"},
+  {"type": "CONSTRAINT", "name": "STL_NN_DEL_SCAN"},
+  {"type": "CONSTRAINT", "name": "STL_UK_DEL_BINDING"},
+  {"type": "CONSTRAINT", "name": "STL_UK_DEL_VERSION"},
+  {"type": "CONSTRAINT", "name": "STL_FK_DEL_REP"},
+  {"type": "CONSTRAINT", "name": "STL_CK_DEL_VERSION"},
+  {"type": "CONSTRAINT", "name": "STL_FK_DEL_PROOF"},
+  {"type": "INDEX", "name": "STL_UX_DEL_REP_COMP"},
+  {"type": "INDEX", "name": "STL_UX_DEL_BINDING"},
+  {"type": "INDEX", "name": "STL_UX_DEL_VERSION"},
+  {"type": "INDEX", "name": "STL_UX_DEL_CURRENT"},
+  {"type": "INDEX", "name": "STL_IX_DEL_SCAN"},
+  {"type": "TRIGGER", "name": "STL_TR_DEL_IMMUTABLE"}
+]

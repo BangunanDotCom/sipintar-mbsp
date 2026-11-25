@@ -5,6 +5,7 @@ import oracledb, { type Connection } from "oracledb";
 const directory = new URL("../../database/oracle/", import.meta.url);
 const baselineVersion = "001-baseline";
 const completionVersion = "002-completion-audit";
+const delegationVersion = "003-delegation-evidence";
 type InventoryRow = { type: string; name: string };
 const canonical = (entry: InventoryRow) => `${entry.type}:${entry.name}`;
 
@@ -178,13 +179,18 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
     ].map((suffix) => `CONSTRAINT:STL_HIST_${suffix}`),
   ])
     baseline.expected.add(name);
-  const expected = new Set([...baseline.expected, ...completion.expected]);
+  const delegation = await loadMigration(delegationVersion);
+  const migrations = [baseline, completion, delegation];
+  const inventoryThrough = (count: number) =>
+    new Set(
+      migrations.slice(0, count).flatMap(({ expected }) => [...expected]),
+    );
   const existing = await namespace(connection);
   if (!existing.size) {
     if (!apply) return "EMPTY";
     await connection.execute(historyDdl.trim());
-    await applyMigration(connection, baseline, baseline.expected);
-    await applyMigration(connection, completion, expected);
+    for (const [index, migration] of migrations.entries())
+      await applyMigration(connection, migration, inventoryThrough(index + 1));
     return "APPLIED";
   }
   if (!existing.has("TABLE:STL_SCHEMA_MIGRATIONS"))
@@ -198,7 +204,7 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
       CHECKSUM: string;
       STATE: string;
     }>(
-      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 3 ROWS ONLY",
+      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 4 ROWS ONLY",
       {},
       { outFormat: oracledb.OUT_FORMAT_OBJECT },
     ));
@@ -207,9 +213,9 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
   }
   if (
     !history?.length ||
-    history.length > 2 ||
+    history.length > migrations.length ||
     history.some((row, index) => {
-      const migration = index === 0 ? baseline : completion;
+      const migration = migrations[index];
       return (
         row.VERSION !== migration.version ||
         row.CHECKSUM !== migration.checksum ||
@@ -220,9 +226,15 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
     throw Error(
       "Sejarah tidak sepadan atau DDL separa. Hentikan pemasangan untuk semakan pemulihan.",
     );
-  const upgraded = history.length === 2;
-  await validate(connection, upgraded ? expected : baseline.expected);
-  if (apply && !upgraded)
-    await applyMigration(connection, completion, expected);
+  await validate(connection, inventoryThrough(history.length));
+  if (apply)
+    for (const [offset, migration] of migrations
+      .slice(history.length)
+      .entries())
+      await applyMigration(
+        connection,
+        migration,
+        inventoryThrough(history.length + offset + 1),
+      );
   return "APPLIED";
 }

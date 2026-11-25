@@ -117,6 +117,14 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
           );
       }
       if (env.ORACLE_LAB_ENABLE_APPLICANTS === "true") {
+        const existing = await connection.execute(
+          "SELECT 1 FROM USER_TAB_PRIVS WHERE TABLE_NAME='STL_DELEGATION_DOCUMENTS' AND GRANTEE=:userName AND PRIVILEGE='INSERT'",
+          { userName: runtime.user },
+        );
+        if (existing.rows?.length)
+          await connection.execute(
+            `REVOKE INSERT ON STL_DELEGATION_DOCUMENTS FROM ${runtime.user}`,
+          );
         const grants = [
           [
             "STL_USERS",
@@ -129,14 +137,37 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
           ],
           [
             "STL_COMPANY_REPRESENTATIVES",
-            "SELECT, INSERT, UPDATE (STATUS, VERIFIED_BY)",
+            "SELECT, INSERT, UPDATE (STATUS, VERIFIED_BY, VERIFIED_DOCUMENT_ID, VERIFICATION_REVISION)",
           ],
-          ["STL_DELEGATION_DOCUMENTS", "SELECT, INSERT, UPDATE (STATUS)"],
+          [
+            "STL_DELEGATION_DOCUMENTS",
+            "SELECT, INSERT (ID, COMPANY_ID, REPRESENTATIVE_ID, VERSION, AUTHORITY_TYPE, UPLOADED_BY, FILE_NAME, MIME_TYPE, CONTENT, SHA256, BYTE_SIZE, VALID_FROM, VALID_UNTIL), UPDATE (SUPERSEDED_AT, REVOKED_AT)",
+          ],
+          ["STL_NOTIFICATIONS", "INSERT"],
           ["STL_SYSTEM_CONFIGURATIONS", "SELECT"],
         ];
         for (const [table, privileges] of grants)
           await connection.execute(
             `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
+          );
+      }
+      const scanUser = env.ORACLE_LAB_DELEGATION_SCANNER_USER;
+      if (scanUser) {
+        if (
+          !/^STL_LAB_[A-Z][A-Z0-9_]{0,19}$/.test(scanUser) ||
+          [config.user, runtime.user].includes(scanUser)
+        )
+          throw Error("Akaun worker surat kuasa makmal mesti berasingan.");
+        for (const [table, privileges] of [
+          ["STL_COMPANIES", "SELECT"],
+          ["STL_COMPANY_REPRESENTATIVES", "SELECT"],
+          [
+            "STL_DELEGATION_DOCUMENTS",
+            "SELECT, UPDATE (SCAN_STATUS, SCAN_LEASE_TOKEN, SCAN_LEASE_EXPIRES_AT, SCAN_SHA256, SCAN_ENGINE, SCAN_VALID_UNTIL)",
+          ],
+        ])
+          await connection.execute(
+            `GRANT ${privileges} ON ${table} TO ${scanUser}`,
           );
       }
       if (env.ORACLE_LAB_ENABLE_DRAFTS === "true") {
