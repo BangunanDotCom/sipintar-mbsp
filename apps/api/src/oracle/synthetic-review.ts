@@ -1,3 +1,4 @@
+import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Prisma, SyntheticSubmission } from "@prisma/client";
 import type { Connection } from "oracledb";
@@ -43,6 +44,7 @@ export function createOracleSyntheticReviewRepository(
 ): SyntheticReviewRepository & {
   onConnection(connection: Connection): SyntheticReviewTransaction;
 } {
+  const delegationEvidence = oracleDelegationEvidence(pool);
   const draftRepository = createOracleDraftRepository(pool);
   const submissionRepository = createOracleSyntheticSubmissions(pool);
   const lockSession = oracleSyntheticSession(pool);
@@ -184,7 +186,9 @@ export function createOracleSyntheticReviewRepository(
         }));
       },
       requireSnapshotAuthority: (row) =>
-        assertSnapshotAuthority(row, draftTx.companyAuthority),
+        assertSnapshotAuthority(row, draftTx.companyAuthority, (rep) =>
+          delegationEvidence.verified(connection, rep),
+        ),
       async lockSubmission(id, officer) {
         await connection.execute(
           `SELECT S.ID FROM ${submissions} S WHERE S.ID=:id ${officer ? "AND " + inDistrict : ""} FOR UPDATE`,

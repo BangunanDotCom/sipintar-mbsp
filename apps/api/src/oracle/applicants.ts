@@ -1,9 +1,15 @@
+import { oracleDelegationPrincipal } from "./delegation-principal.js";
+import {
+  delegationSummary,
+  isCurrentDelegation,
+} from "../delegation-evidence.js";
+import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Company, CompanyRepresentative, District } from "@prisma/client";
-import oracledb, { type Connection } from "oracledb";
+import type { Connection } from "oracledb";
 import type { ApplicantRepository } from "../applicant-repository.js";
 import { fail } from "../auth.js";
-import { fromOracleBoolean, oracleBinary } from "./codecs.js";
+import { fromOracleBoolean } from "./codecs.js";
 import { decodeOracleConfig } from "./config-value.js";
 import type { OraclePool } from "./pool.js";
 import {
@@ -20,6 +26,7 @@ const companyFields = `ID AS "id", NAME AS "name", ADDRESS AS "address", PHONE A
   REGISTRATION_NUMBER AS "registrationNumber", STATUS AS "status", INFORMATION_STATUS AS "informationStatus", CREATED_AT AS "createdAt"`;
 const representativeFields = `ID AS "id", USER_ID AS "userId", COMPANY_ID AS "companyId", STATUS AS "status",
   AUTHORITY_TYPE AS "authorityType", STARTS_AT AS "startsAt", ENDS_AT AS "endsAt", VERIFIED_BY AS "verifiedBy",
+  VERIFIED_DOCUMENT_ID AS "verifiedDocumentId", VERIFICATION_REVISION AS "verificationRevision",
   CAN_MANAGE_REPRESENTATIVES AS "canManageRepresentatives"`;
 type RepRow = Omit<CompanyRepresentative, "canManageRepresentatives"> & {
   canManageRepresentatives: number;
@@ -30,16 +37,6 @@ const representativeDto = (row: RepRow) => ({
 });
 type Profile = Awaited<ReturnType<ApplicantRepository["updateProfile"]>>;
 type ProfileRow = Omit<Profile, "emailVerified"> & { emailVerified: number };
-type FileSummary = Awaited<
-  ReturnType<ApplicantRepository["companies"]>
->[number]["company"]["documents"][number];
-type OfficerFile = Awaited<
-  ReturnType<ApplicantRepository["representations"]>
->[number]["company"]["documents"][number];
-type Download = NonNullable<
-  Awaited<ReturnType<ApplicantRepository["delegation"]>>
->;
-
 function isDuplicate(error: unknown, constraint: RegExp) {
   return (
     error instanceof Error &&
@@ -52,17 +49,15 @@ function isDuplicate(error: unknown, constraint: RegExp) {
 export function createOracleApplicantRepository(
   pool: OraclePool,
 ): ApplicantRepository {
+  const delegationEvidence = oracleDelegationEvidence(pool);
+  const principalAtUse = oracleDelegationPrincipal(pool);
   const users = oracleTable(pool, "STL_USERS");
   const districts = oracleTable(pool, "STL_DISTRICTS");
   const companies = oracleTable(pool, "STL_COMPANIES");
   const representatives = oracleTable(pool, "STL_COMPANY_REPRESENTATIVES");
-  const documents = oracleTable(pool, "STL_DELEGATION_DOCUMENTS");
   const settings = oracleTable(pool, "STL_SYSTEM_CONFIGURATIONS");
   const validRepresentative =
     "STATUS<>'REVOKED' AND STARTS_AT<=SYSTIMESTAMP AND (ENDS_AT IS NULL OR ENDS_AT>SYSTIMESTAMP)";
-  const validDocument =
-    "COMPANY_ID=:companyId AND (VALID_UNTIL IS NULL OR VALID_UNTIL>SYSTIMESTAMP)";
-
   async function findCompany(connection: Connection, companyId: string) {
     const [row] = await queryRows<Company>(
       connection,
@@ -148,27 +143,52 @@ export function createOracleApplicantRepository(
           {},
         ),
       ),
-    companies: (userId) =>
+    companies: (principal, includeDocuments) =>
       pool.transaction(async (connection) => {
-        await connection.execute("SET TRANSACTION READ ONLY");
-        const list = await queryRows<RepRow>(
+        await principalAtUse(connection, principal, false);
+        const userId = principal.userId;
+        const now = new Date();
+        const list = await queryRows<{ ID: string; COMPANY_ID: string }>(
           connection,
-          `SELECT ${representativeFields} FROM ${representatives} WHERE USER_ID=:userId AND ${validRepresentative} ORDER BY ID`,
+          `SELECT ID,COMPANY_ID FROM ${representatives} WHERE USER_ID=:userId AND ${validRepresentative} ORDER BY COMPANY_ID,ID`,
           { userId },
         );
         const output: Awaited<ReturnType<ApplicantRepository["companies"]>> =
           [];
-        for (const row of list) {
-          const company = await findCompany(connection, row.companyId);
-          const files = await queryRows<FileSummary>(
-            connection,
-            `SELECT ID AS "id", FILE_NAME AS "fileName", STATUS AS "status", VALID_UNTIL AS "validUntil"
-           FROM ${documents} WHERE COMPANY_ID=:companyId ORDER BY CREATED_AT,ID`,
-            { companyId: company.id },
+        for (const { ID: id, COMPANY_ID: companyId } of list) {
+          await lockCompany(connection, companyId);
+          await connection.execute(
+            `SELECT ID FROM ${representatives} WHERE ID=:id FOR UPDATE WAIT 5`,
+            { id },
           );
+          const [row] = await queryRows<RepRow>(
+            connection,
+            `SELECT ${representativeFields} FROM ${representatives} WHERE ID=:id AND USER_ID=:userId AND ${validRepresentative}`,
+            { id, userId },
+          );
+          if (!row) continue;
+          const company = await findCompany(connection, companyId);
+          if (company.status !== "ACTIVE") continue;
+          const { verifiedDocumentId, ...rep } = representativeDto(row);
+          const files = (await delegationEvidence.current(connection, row.id))
+            .filter(
+              (doc) =>
+                doc.companyId === row.companyId &&
+                doc.authorityType === row.authorityType &&
+                isCurrentDelegation(doc, now),
+            )
+            .map((doc) => delegationSummary(doc, now));
+          const status =
+            rep.status === "VERIFIED" &&
+            !files.some(
+              (doc) => doc.id === verifiedDocumentId && doc.downloadable,
+            )
+              ? "DOCUMENT_UPDATE_REQUIRED"
+              : rep.status;
           output.push({
-            ...representativeDto(row),
-            company: { ...company, documents: files },
+            ...rep,
+            status,
+            company: { ...company, documents: includeDocuments ? files : [] },
           });
         }
         return output;
@@ -226,128 +246,6 @@ export function createOracleApplicantRepository(
           key,
           value: decodeOracleConfig(value),
         }));
-      }),
-    uploadDelegation: (data) =>
-      pool.transaction(async (connection) => {
-        await lockCompany(connection, data.companyId);
-        await assertRepresentative(connection, data.companyId, data.uploadedBy);
-        const id = randomUUID();
-        const {
-          companyId,
-          uploadedBy,
-          fileName,
-          mimeType,
-          content,
-          sha256,
-          validUntil,
-        } = data;
-        await connection.execute(
-          `INSERT INTO ${documents} (ID,COMPANY_ID,UPLOADED_BY,FILE_NAME,MIME_TYPE,CONTENT,SHA256,VALID_UNTIL)
-          VALUES (:id,:companyId,:uploadedBy,:fileName,:mimeType,:content,:sha256,:validUntil)`,
-          {
-            id,
-            companyId,
-            uploadedBy,
-            fileName,
-            mimeType,
-            content: oracleBinary(content),
-            sha256,
-            validUntil: timestamp(validUntil ? new Date(validUntil) : null),
-          },
-        );
-        return { id, fileName, status: "UNVERIFIED" };
-      }),
-    delegation: (id) =>
-      pool.use(async (connection) => {
-        const result = await connection.execute<Download>(
-          `SELECT ID AS "id", COMPANY_ID AS "companyId", FILE_NAME AS "fileName", CONTENT AS "content"
-          FROM ${documents} WHERE ID=:id`,
-          { id },
-          {
-            outFormat: oracledb.OUT_FORMAT_OBJECT,
-            fetchTypeHandler: ({ dbType }) =>
-              dbType === oracledb.DB_TYPE_BLOB
-                ? { type: oracledb.BUFFER }
-                : undefined,
-          },
-        );
-        return result.rows?.[0] ?? null;
-      }),
-    representations: () =>
-      pool.transaction(async (connection) => {
-        await connection.execute("SET TRANSACTION READ ONLY");
-        const list = await queryRows<RepRow>(
-          connection,
-          `SELECT ${representativeFields} FROM ${representatives} ORDER BY ID FETCH FIRST 100 ROWS ONLY`,
-          {},
-        );
-        const output: Awaited<
-          ReturnType<ApplicantRepository["representations"]>
-        > = [];
-        const companyDetails = new Map<
-          string,
-          (typeof output)[number]["company"]
-        >();
-        for (const row of list) {
-          let company = companyDetails.get(row.companyId);
-          if (!company) {
-            const { id, name } = await findCompany(connection, row.companyId);
-            const files = await queryRows<OfficerFile>(
-              connection,
-              `SELECT ID AS "id", FILE_NAME AS "fileName", UPLOADED_BY AS "uploadedBy" FROM ${documents} WHERE COMPANY_ID=:id`,
-              { id },
-            );
-            company = { id, name, documents: files };
-            companyDetails.set(id, company);
-          }
-          const [user] = await queryRows<{ id: string; name: string }>(
-            connection,
-            `SELECT ID AS "id", NAME AS "name" FROM ${users} WHERE ID=:userId`,
-            { userId: row.userId },
-          );
-          output.push({
-            ...representativeDto(row),
-            user: requireRecord(user),
-            company,
-          });
-        }
-        return output;
-      }),
-    representative: (id) =>
-      pool.use(async (connection) => {
-        const [row] = await queryRows<RepRow>(
-          connection,
-          `SELECT ${representativeFields} FROM ${representatives} WHERE ID=:id`,
-          { id },
-        );
-        return representativeDto(requireRecord(row));
-      }),
-    verifyRepresentative: (id, companyId, userId, status) =>
-      pool.transaction(async (connection) => {
-        await lockCompany(connection, companyId);
-        const [row] = await queryRows<{ USER_ID: string }>(
-          connection,
-          `SELECT USER_ID FROM ${representatives} WHERE ID=:id AND COMPANY_ID=:companyId FOR UPDATE`,
-          { id, companyId },
-        );
-        if (requireRecord(row).USER_ID === userId)
-          fail(403, "Pengesah bebas diperlukan.");
-        if (status === "VERIFIED") {
-          const [valid] = await queryRows(
-            connection,
-            `SELECT ID FROM ${documents} WHERE ${validDocument} AND ROWNUM=1`,
-            { companyId },
-          );
-          if (!valid) fail(400, "Surat kuasa sah diperlukan.");
-        }
-        await connection.execute(
-          `UPDATE ${representatives} SET STATUS=:status,VERIFIED_BY=:userId WHERE ID=:id`,
-          { status, userId, id },
-        );
-        await connection.execute(
-          `UPDATE ${documents} SET STATUS=:status WHERE ${validDocument}`,
-          { status, companyId },
-        );
       }),
   };
 }

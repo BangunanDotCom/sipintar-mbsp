@@ -1,3 +1,5 @@
+import { companyInvitationRoutes } from "../company-invitations.js";
+import { oracleDelegationRoutes } from "./delegation-routes.js";
 import { completionConfig } from "../synthetic-portal-completion.js";
 import {
   assertOracleCompletionMigration,
@@ -19,6 +21,7 @@ import { createOracleManagementRepository } from "./management.js";
 import type { OraclePool } from "./pool.js";
 
 export type OracleLabRepositories = DatabaseRepositories & {
+  registerDelegationLab(app: FastifyInstance): Promise<void>;
   registerSyntheticLab(app: FastifyInstance): Promise<void>;
   checkConnection(): Promise<void>;
   training(): { review: boolean; completion: boolean };
@@ -30,6 +33,7 @@ export function createOracleRepositories(
   if (pool.purpose !== "runtime")
     throw Error("API Oracle memerlukan akaun runtime makmal.");
   const auth = createOracleAuthRepository(pool);
+  const companyInvitations = createOracleCompanyInvitationRepository(pool);
   return {
     auth,
     admin: createOracleAdmin(pool),
@@ -40,7 +44,7 @@ export function createOracleRepositories(
         await connection.execute("SELECT 1 FROM DUAL");
       });
     },
-    companyInvitations: createOracleCompanyInvitationRepository(pool),
+    companyInvitations,
     drafts: createOracleDraftRepository(pool),
     management: createOracleManagementRepository(pool),
     training() {
@@ -56,6 +60,10 @@ export function createOracleRepositories(
           policy?.config.billing.mode === "MOCK" &&
           oracleCompletionEnabled(),
       };
+    },
+    async registerDelegationLab(app) {
+      await oracleDelegationRoutes(app, pool, auth);
+      await companyInvitationRoutes(app, companyInvitations, auth);
     },
     async registerSyntheticLab(app) {
       if (

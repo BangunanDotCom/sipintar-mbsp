@@ -4,18 +4,16 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   companySchema,
   identificationSchema,
-  independent,
 } from "../../../packages/shared/src/index.js";
 import { postgresApplicantRepository } from "./applicant-repository.js";
 import { postgresAuth } from "./auth-repository.js";
 import { postgresCompanyInvitations } from "./company-invitation-repository.js";
 import { validRepresentative } from "./company-representative-policy.js";
 import { authorize, session, fail } from "./auth.js";
-import { hash, safeUser } from "./core.js";
+import { safeUser } from "./core.js";
 import { protectIdentification } from "./identity.js";
 import {
   delegationLimitMiB,
-  validateDelegationPdf,
   UPLOAD_CATEGORIES,
   uploadLimitMiB,
   uploadPolicyKey,
@@ -30,9 +28,7 @@ export async function applicantRoutes(
   auth = postgresAuth,
   representatives = postgresCompanyInvitations,
 ) {
-  const { audit, notify } = auth;
-  const scopedDistricts = (s: Awaited<ReturnType<typeof authorize>>) =>
-    s.assignments.every((a) => a.districtId !== null);
+  const { audit } = auth;
   async function ownCompany(req: FastifyRequest, companyId: string) {
     const s = await authorize(req, "companies", auth);
     const representative = await representatives.representative(
@@ -86,9 +82,10 @@ export async function applicantRoutes(
     await audit(s.userId, s.activeRole, "PROFILE_UPDATED", s.userId);
     return safeUser(u);
   });
-  app.get("/api/companies", async (req) => {
+  app.get("/api/companies", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
     const s = await authorize(req, "companies", auth);
-    return repository.companies(s.userId);
+    return repository.companies(s, true);
   });
   app.post("/api/companies", async (req, reply) => {
     const s = await authorize(req, "companies", auth);
@@ -164,119 +161,5 @@ export async function applicantRoutes(
       ]),
     );
     return { delegationPdfMiB: maxMiB, categories };
-  });
-  app.post("/api/companies/:id/documents", async (req) => {
-    const companyId = id(req),
-      s = await ownCompany(req, companyId);
-    const b = z
-      .object({
-        fileName: z
-          .string()
-          .min(1)
-          .max(120)
-          .regex(/^[^/\\]+\.pdf$/i),
-        content: z
-          .string()
-          .max(27962028)
-          .regex(/^[A-Za-z0-9+/]*={0,2}$/),
-        validUntil: z.iso.datetime().optional(),
-      })
-      .parse(req.body);
-    if (b.validUntil && new Date(b.validUntil) <= new Date())
-      fail(400, "Tarikh sah dokumen mesti pada masa hadapan.");
-    const [setting] = await repository.settings([
-      "technical.upload_delegation_mib",
-    ]);
-    const maxMiB = delegationLimitMiB(setting?.value);
-    let content: Buffer;
-    try {
-      content = validateDelegationPdf(b.content, maxMiB);
-    } catch (error) {
-      fail(
-        400,
-        error instanceof Error ? error.message : "Dokumen PDF tidak sah.",
-      );
-    }
-    const doc = await repository.uploadDelegation({
-      companyId,
-      uploadedBy: s.userId,
-      fileName: b.fileName,
-      mimeType: "application/pdf",
-      content: new Uint8Array(content),
-      sha256: hash(content.toString("base64")),
-      validUntil: b.validUntil ? new Date(b.validUntil) : null,
-    });
-    await audit(s.userId, s.activeRole, "DOCUMENT_UPLOADED", doc.id);
-    return doc;
-  });
-  app.get("/api/documents/:id", async (req, reply) => {
-    const doc = await repository.delegation(id(req));
-    if (!doc) fail(404, "Dokumen tidak ditemui.");
-    const s = await ownCompany(req, doc.companyId);
-    await audit(s.userId, s.activeRole, "DOCUMENT_READ", doc.id);
-    reply
-      .header(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(doc.fileName)}"`,
-      )
-      .type("application/pdf");
-    return Buffer.from(doc.content);
-  });
-  // Fasa 1: authorized PIC verification is explicit; no counter clerk role receives this permission.
-  app.get("/api/representations", async (req) => {
-    const s = await authorize(req, "representation.verify", auth);
-    const districts = scopedDistricts(s);
-    if (districts)
-      fail(
-        403,
-        "Dokumen belum dipautkan kepada lokasi permohonan. Pengesahan memerlukan PIC dengan skop seluruh daerah atau proses Fasa 2.",
-      );
-    await audit(s.userId, s.activeRole, "REPRESENTATION_LIST_READ");
-    return repository.representations();
-  });
-  app.get("/api/representation-documents/:id", async (req, reply) => {
-    const s = await authorize(req, "representation.verify", auth);
-    if (scopedDistricts(s))
-      fail(403, "Skop kawasan belum dapat ditentukan tanpa permohonan.");
-    const doc = await repository.delegation(id(req));
-    if (!doc) fail(404, "Dokumen tidak ditemui.");
-    await audit(s.userId, s.activeRole, "REPRESENTATION_DOCUMENT_READ", doc.id);
-    reply
-      .header(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(doc.fileName)}"`,
-      )
-      .type("application/pdf");
-    return Buffer.from(doc.content);
-  });
-  app.post("/api/representations/:id/verify", async (req) => {
-    const s = await authorize(req, "representation.verify", auth);
-    if (scopedDistricts(s))
-      fail(403, "Skop kawasan belum dapat ditentukan tanpa permohonan.");
-    const rep = await repository.representative(id(req));
-    if (!independent(rep.userId, s.userId))
-      fail(403, "Pengesah bebas diperlukan.");
-    const b = z
-      .object({
-        status: z.enum(["VERIFIED", "DOCUMENT_UPDATE_REQUIRED"]),
-        reason: z.string().min(5).max(500),
-      })
-      .parse(req.body);
-    await repository.verifyRepresentative(
-      rep.id,
-      rep.companyId,
-      s.userId,
-      b.status,
-    );
-    await audit(
-      s.userId,
-      s.activeRole,
-      "REPRESENTATION_VERIFIED",
-      rep.id,
-      "SUCCESS",
-      { reason: b.reason },
-    );
-    await notify(rep.userId, "COMPANY", "Status perwakilan berubah", b.reason);
-    return { ok: true };
   });
 }

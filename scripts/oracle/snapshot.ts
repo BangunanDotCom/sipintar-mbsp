@@ -273,8 +273,19 @@ export async function restoreOracleSnapshot(
       if (existing.length)
         throw Error("Semua jadual destinasi Oracle mesti kosong.");
     }
+    // The proof and representative form a cycle. Validate it before commit.
+    const representatives = plan.find(
+      ({ name }) => name === "STL_COMPANY_REPRESENTATIVES",
+    );
+    const boundProof = representatives?.columns.some(
+      ({ COLUMN_NAME }) => COLUMN_NAME === "VERIFIED_DOCUMENT_ID",
+    );
+    if (boundProof)
+      await connection.execute("SET CONSTRAINT STL_FK_DEL_PROOF DEFERRED");
     for (const [index, table] of plan.entries())
       await restoreTable(connection, table, snapshot.tables[index]);
+    if (boundProof)
+      await connection.execute("SET CONSTRAINT STL_FK_DEL_PROOF IMMEDIATE");
     const restored: TableData[] = [];
     for (const table of plan) restored.push(await readTable(connection, table));
     if (checksum !== digest(restored)) {

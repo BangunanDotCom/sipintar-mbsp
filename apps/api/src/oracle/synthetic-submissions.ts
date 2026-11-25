@@ -1,3 +1,4 @@
+import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { requireOracleUnclosedDraft } from "./completion-gate.js";
 import { randomUUID } from "node:crypto";
 import type { SyntheticSubmission } from "@prisma/client";
@@ -20,6 +21,7 @@ type SubmissionRow = Omit<SyntheticSubmission, "snapshot"> & {
 };
 
 export function createOracleSyntheticSubmissions(pool: OraclePool) {
+  const delegationEvidence = oracleDelegationEvidence(pool);
   const drafts = createOracleDraftRepository(pool);
   const submissions = oracleTable(pool, "STL_SYNTHETIC_SUBMISSIONS");
   const auditLogs = oracleTable(pool, "STL_AUDIT_LOGS");
@@ -74,6 +76,7 @@ export function createOracleSyntheticSubmissions(pool: OraclePool) {
         return draft;
       },
       authority: draftTx.companyAuthority,
+      proof: (rep) => delegationEvidence.verified(connection, rep),
       // findDraft acquires and holds the parent write lock before reading the version.
       lockDraftVersion: async (draft) => draft.version,
       submissionByKey: (draftId, key) =>

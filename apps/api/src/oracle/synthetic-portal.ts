@@ -23,7 +23,11 @@ export function createOracleSyntheticPortal(pool: OraclePool) {
         return action({
           ...submissionTx,
           requireSnapshotAuthority: (row) =>
-            assertSnapshotAuthority(row, draftTx.companyAuthority),
+            assertSnapshotAuthority(
+              row,
+              draftTx.companyAuthority,
+              submissionTx.proof,
+            ),
           review: (row) => loadSyntheticReview(reviewTx, row),
           claimVersion: draftTx.saveDraft,
           async documentVersions(draftId, categories) {

@@ -35,7 +35,7 @@ export function dashboardRoutes(
     if (!current.length) fail(403, "Pilih peranan aktif.");
     const companies =
       role === "PEMOHON" || role === "WAKIL_SYARIKAT"
-        ? await applicants.companies(s.userId)
+        ? await applicants.companies(s, false)
         : [];
     const notifications = await repository.notifications(s.userId);
     const areaAssignments =

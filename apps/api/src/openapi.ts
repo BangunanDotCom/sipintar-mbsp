@@ -198,8 +198,12 @@ const bodies: Record<string, unknown> = {
       content: {
         type: "string",
         contentEncoding: "base64",
-        description: "PDF maksimum 2 MiB, tandatangan %PDF- diperlukan.",
+        description:
+          "PDF dalam had muat naik yang ditetapkan. Tandatangan %PDF- diperlukan.",
       },
+      representativeId: uuid,
+      expectedDocumentId: { ...uuid, nullable: true },
+      validFrom: date,
       validUntil: date,
     },
     ["fileName", "content"],
@@ -207,6 +211,8 @@ const bodies: Record<string, unknown> = {
   "POST /api/representations/:id/verify": object({
     status: { type: "string", enum: ["VERIFIED", "DOCUMENT_UPDATE_REQUIRED"] },
     reason: string,
+    documentId: uuid,
+    expectedRevision: { type: "integer", minimum: 0 },
   }),
   "POST /api/admin/officers": object(
     { name: string, email, phone: string, ...appointment },
