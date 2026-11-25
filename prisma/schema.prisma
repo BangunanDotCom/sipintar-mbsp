@@ -161,6 +161,8 @@ model CompanyRepresentative {
  endsAt DateTime?
  status String @default("UNVERIFIED")
  verifiedBy String?
+ verifiedDocumentId String?
+ verificationRevision Int @default(0)
  canManageRepresentatives Boolean @default(false)
  @@unique([userId,companyId])
  @@map("company_representatives")
@@ -191,6 +193,19 @@ model DelegationDocument {
  sha256 String
  status String @default("UNVERIFIED")
  validUntil DateTime?
+ representativeId String?
+ version Int?
+ validFrom DateTime?
+ byteSize Int?
+ authorityType String?
+ supersededAt DateTime?
+ revokedAt DateTime?
+ scanStatus String @default("LEGACY")
+ scanLeaseToken String?
+ scanLeaseExpiresAt DateTime?
+ scanSha256 String?
+ scanEngine String?
+ scanValidUntil DateTime?
  createdAt DateTime @default(now())
  @@map("delegation_documents")
 }

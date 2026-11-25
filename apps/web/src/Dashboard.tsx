@@ -920,7 +920,7 @@ function Companies() {
                             await api(
                               `/companies/${r.companyId}/documents`,
                               "POST",
-                              { fileName: file.name, content: base64 },
+                              { fileName: file.name, content: base64, expectedDocumentId: r.company.documents[0]?.id ?? null },
                             );
                             refresh();
                           } catch (e: any) {
@@ -931,10 +931,21 @@ function Companies() {
                     </label>
                     {r.company.documents.map((d: any) => (
                       <p key={d.id}>
-                        <a href={`/api/documents/${d.id}`} download>
-                          {d.fileName}
-                        </a>{" "}
-                        <span className="badge">{d.status}</span>
+                        {d.downloadable ? (
+                          <a href={`/api/documents/${d.id}`} download>{d.fileName}</a>
+                        ) : <span>{d.fileName}</span>}{" "}
+                        <span className="badge">{d.scanStatus === "PENDING" || d.scanStatus === "SCANNING"
+                          ? "Menunggu imbasan keselamatan" : d.downloadable ? "Imbasan sah" : "Tidak tersedia"}</span>
+                        {" "}
+                        <button type="button" onClick={async () => {
+                          if (!window.confirm("Tarik balik surat kuasa versi ini?")) return;
+                          try {
+                            await api(`/companies/${r.companyId}/documents/${d.id}/revoke`, "POST");
+                            refresh();
+                          } catch (e: any) {
+                            setError(e.message);
+                          }
+                        }}>Tarik balik versi ini</button>
                       </p>
                     ))}
                   </details>
@@ -1631,17 +1642,25 @@ function Representations() {
                 </p>
                 {r.company.documents.map((d: any) => (
                   <p key={d.id}>
-                    <a href={`/api/representation-documents/${d.id}`} download>
-                      {d.fileName}
-                    </a>
+                    {d.downloadable ? (
+                      <a href={`/api/representation-documents/${d.id}`} download>{d.fileName}</a>
+                    ) : <span>{d.fileName} (semakan keselamatan belum sah)</span>}
+                    {" · Versi "}{d.version}
                   </p>
                 ))}
                 <Notice>
                   Semak dokumen asal melalui proses yang dibenarkan. Pautan
                   permohonan mengikut kawasan akan diperkenalkan dalam Fasa 2.
                 </Notice>
+                {r.company.documents.some((d: any) => d.downloadable) && (
                 <Form
                   fields={[
+                    {
+                      name: "documentId",
+                      label: "Versi surat kuasa",
+                      options: r.company.documents.filter((d: any) => d.downloadable)
+                        .map((d: any) => ({ value: d.id, label: `${d.fileName} · v${d.version}` })),
+                    },
                     {
                       name: "status",
                       label: "Keputusan",
@@ -1660,10 +1679,11 @@ function Representations() {
                     },
                   ]}
                   onSubmit={async (b) => {
-                    await api(`/representations/${r.id}/verify`, "POST", b);
+                    await api(`/representations/${r.id}/verify`, "POST", { ...b, expectedRevision: r.verificationRevision });
                     refresh();
                   }}
                 />
+                )}
               </article>
             ))
           ) : (

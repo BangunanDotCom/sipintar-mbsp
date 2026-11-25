@@ -1,3 +1,4 @@
+import { scanDelegationDocument } from "../apps/api/src/delegation-scan-worker";
 import { syntheticPortalDatabase } from "../apps/api/src/synthetic-portal-gate";
 import { emptyPremises } from "../packages/shared/src/premises";
 import { protectIdentification } from "../apps/api/src/identity";
@@ -427,10 +428,11 @@ describe("companies, IDOR and secure document storage", () => {
     expect(
       (await request(other, `/api/documents/${doc.json().id}`)).statusCode,
     ).toBe(404);
-    const download = await request(
-      applicant,
-      `/api/documents/${doc.json().id}`,
-    );
+    expect((await request(applicant, `/api/documents/${doc.json().id}`)).statusCode).toBe(404);
+    await expect(scanDelegationDocument(db, {
+      scan: async () => ({ status: "CLEAN", engine: "synthetic" }),
+    }, doc.json().id)).resolves.toBe(true);
+    const download = await request(applicant, `/api/documents/${doc.json().id}`);
     expect(download.statusCode).toBe(200);
     expect(download.headers["content-disposition"]).toContain("attachment");
   });
@@ -735,6 +737,230 @@ describe("authentication rate limiting", () => {
   });
 });
 
+describe("P0 surat kuasa Team 3", () => {
+  const pdf = Buffer.from("%PDF-1.4\nDATA P0 SINTETIK\n%%EOF");
+  const clean = { scan: async () => ({ status: "CLEAN" as const, engine: "synthetic" }) };
+  async function fixture() {
+    const owner = await actor("PEMOHON");
+    const reviewer = await actor("PIC_KAWASAN");
+    const company = await request(owner, "/api/companies", "POST", {
+      name: "Syarikat sintetik P0", registrationNumber: `P0${randomBytes(8).toString("hex")}`,
+      address: "Alamat sintetik", phone: "0100000000", email: "fixture@example.test",
+      authorityType: "PENGARAH",
+    });
+    expect(company.statusCode).toBe(201);
+    const companyId = company.json().id;
+    const own = await db.companyRepresentative.findUniqueOrThrow({
+      where: { userId_companyId: { userId: owner.id, companyId } },
+    });
+    const path = `/api/companies/${companyId}/documents`;
+    const upload = (actor = owner, input = {}) => request(actor, path, "POST", {
+      fileName: "synthetic-p0.pdf", content: pdf.toString("base64"), ...input,
+    });
+    const uploaded = await upload();
+    expect(uploaded.statusCode).toBe(200);
+    return { owner, reviewer, own, companyId, path, upload, id: uploaded.json().id as string };
+  }
+  function review(f: Awaited<ReturnType<typeof fixture>>, documentId = f.id, expectedRevision = 1, reviewer = f.reviewer) {
+    return request(reviewer, `/api/representations/${f.own.id}/verify`, "POST", {
+      documentId, expectedRevision, status: "VERIFIED", reason: "Semakan sintetik P0",
+    });
+  }
+
+  it("A-N01/A-P01/A-N05 gates both routes and audits only successful bytes", async () => {
+    const f = await fixture();
+    const ownerPath = `/api/documents/${f.id}`;
+    const reviewerPath = `/api/representation-documents/${f.id}`;
+    for (const scanStatus of ["PENDING", "SCANNING", "INFECTED", "FAILED", "CLEAN"]) {
+      await db.delegationDocument.update({ where: { id: f.id }, data: { scanStatus } });
+      for (const [who, path] of [[f.owner, ownerPath], [f.reviewer, reviewerPath]] as const) {
+        const response = await request(who, path);
+        expect(response.statusCode).toBe(404);
+        expect(response.body).not.toContain("DATA P0");
+        expect(response.headers["cache-control"]).toContain("no-store");
+      }
+    }
+    const legacy = await db.delegationDocument.create({ data: {
+      companyId: f.companyId, uploadedBy: f.owner.id, fileName: "legacy.pdf",
+      content: pdf, mimeType: "application/pdf", sha256: hash("legacy"),
+    } });
+    expect((await request(f.owner, `/api/documents/${legacy.id}`)).statusCode).toBe(404);
+    const outcome = { target: f.id, outcome: "SUCCESS", action: { in: ["DOCUMENT_READ", "REPRESENTATION_DOCUMENT_READ"] } };
+    expect(await db.auditLog.count({where: outcome})).toBe(0);
+    await db.delegationDocument.update({ where: { id: f.id }, data: { scanStatus: "PENDING" } });
+    expect(await scanDelegationDocument(db, clean, f.id)).toBe(true);
+    for (const [who, path] of [[f.owner, ownerPath], [f.reviewer, reviewerPath]] as const) {
+      const response = await request(who, path);
+      expect(response.statusCode).toBe(200);
+      expect(response.rawPayload).toEqual(pdf);
+      expect(response.headers).toMatchObject({
+        "cache-control": "private, no-store", "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer", "content-security-policy": "sandbox",
+      });
+    }
+    expect(await db.auditLog.count({where: outcome})).toBe(2);
+    expect((await request(await actor("PEMOHON"), ownerPath)).statusCode).toBe(404);
+  });
+
+  it("A-N02/A-N03/B-N02/B-N03 binds digest, freshness, MFA and officer scope", async () => {
+    const f = await fixture();
+    expect(await scanDelegationDocument(db, clean, f.id)).toBe(true);
+    expect((await review(f, f.id, 1, pic)).statusCode).toBe(403);
+    expect((await review(f, f.id, 1, ppsk)).statusCode).toBe(403);
+    const reviewerPath = `/api/representation-documents/${f.id}`;
+    const scoped = await request(pic, reviewerPath);
+    expect(scoped.statusCode).toBe(403);
+    await db.session.updateMany({where:{userId:f.reviewer.id}, data:{mfaVerified:false}});
+    expect((await request(f.reviewer, reviewerPath)).statusCode).toBe(403);
+    expect((await review(f)).statusCode).toBe(403);
+    await db.session.updateMany({where:{userId:f.reviewer.id}, data:{mfaVerified:true}});
+    expect((await review(f, f.id, 1, {...f.reviewer, csrf: token()})).statusCode).toBe(403);
+    await db.delegationDocument.update({where:{id:f.id},data:{scanSha256:"0".repeat(64)}});
+    expect((await request(f.owner, `/api/documents/${f.id}`)).statusCode).toBe(404);
+    expect((await review(f)).statusCode).toBe(409);
+    await db.delegationDocument.update({where:{id:f.id},data:{scanValidUntil:new Date(0)}});
+    expect((await request(f.reviewer, reviewerPath)).statusCode).toBe(404);
+    await expect(db.delegationDocument.update({where:{id:f.id},data:{content:Buffer.from("changed")}})).rejects.toThrow();
+  });
+
+  it("A-N04/B-N04 rejects late scanner answers, duplicate leases and replaced versions", async () => {
+    const f = await fixture();
+    const now = new Date(Date.now() + 1000);
+    const time = () => now;
+    let release!: () => void;
+    let started!: () => void;
+    const start = new Promise<void>((resolve) => { started = resolve; });
+    const scan = scanDelegationDocument(db, { scan: async () => {
+      started();
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { status: "CLEAN", engine: "synthetic" };
+    } }, f.id, time);
+    await start;
+    expect(await scanDelegationDocument(db, clean, f.id, time)).toBe(false);
+    const replacements = await Promise.all([
+      f.upload(f.owner, { expectedDocumentId: f.id }),
+      f.upload(f.owner, { expectedDocumentId: f.id }),
+    ]);
+    release();
+    expect(await scan).toBe(false);
+    expect(replacements.map((r) => r.statusCode).sort()).toEqual([200,409]);
+    expect((await request(f.owner, `/api/documents/${f.id}`)).statusCode).toBe(404);
+    expect((await review(f, f.id, 2)).statusCode).toBe(409);
+    const next = replacements.find((r)=>r.statusCode===200)!.json().id;
+    expect(await scanDelegationDocument(db, { scan: async () => { throw Error("timeout"); } }, next)).toBe(true);
+    expect((await db.delegationDocument.findUniqueOrThrow({where:{id:next}})).scanStatus).toBe("FAILED");
+  });
+
+  it("A-N04 discards an expired scan when another worker owns the lease", async () => {
+    const f = await fixture();
+    let instant = Date.now() + 1_000;
+    const clock = () => new Date(instant);
+    let entered!: () => void;
+    let finish!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const stale = scanDelegationDocument(db, { scan: async () => {
+      entered();
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return { status: "CLEAN", engine: "stale" };
+    } }, f.id, clock);
+    await started;
+    instant += 60_001;
+    try {
+      expect(await scanDelegationDocument(db, {
+        scan: async () => ({ status: "INFECTED", engine: "synthetic" }),
+      }, f.id, clock)).toBe(true);
+    } finally {
+      finish();
+    }
+    expect(await stale).toBe(false);
+    expect((await db.delegationDocument.findUniqueOrThrow({where:{id:f.id}})).scanStatus).toBe("INFECTED");
+    expect((await request(f.owner, `/api/documents/${f.id}`)).statusCode).toBe(404);
+  });
+
+  it("B-N05 rolls back proof, successful audit and notification on either write failure", async () => {
+    const f = await fixture();
+    expect(await scanDelegationDocument(db, clean, f.id)).toBe(true);
+    await db.$executeRaw`CREATE FUNCTION p0_fixture_notify_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.message = 'Semakan sintetik P0' THEN RAISE EXCEPTION 'synthetic notification failure'; END IF;
+        RETURN NEW;
+      END $$`;
+    await db.$executeRaw`CREATE FUNCTION p0_fixture_audit_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.metadata->>'reason' = 'Semakan sintetik P0' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF;
+        RETURN NEW;
+      END $$`;
+    try {
+      await db.$executeRaw`CREATE TRIGGER p0_fixture_audit_abort BEFORE INSERT ON audit_logs
+        FOR EACH ROW EXECUTE FUNCTION p0_fixture_audit_abort()`;
+      try {
+        expect((await review(f)).statusCode).toBe(500);
+      } finally {
+        await db.$executeRaw`DROP TRIGGER p0_fixture_audit_abort ON audit_logs`;
+      }
+      await db.$executeRaw`CREATE TRIGGER p0_fixture_notify_abort BEFORE INSERT ON notifications
+        FOR EACH ROW EXECUTE FUNCTION p0_fixture_notify_abort()`;
+      try {
+        expect((await review(f)).statusCode).toBe(500);
+      } finally {
+        await db.$executeRaw`DROP TRIGGER p0_fixture_notify_abort ON notifications`;
+      }
+      const membership = await db.companyRepresentative.findUniqueOrThrow({where:{id:f.own.id}});
+      expect(membership.verifiedDocumentId).toBeNull();
+      expect(membership.verificationRevision).toBe(1);
+      expect(await db.auditLog.count({where:{
+        target:f.own.id, outcome:"SUCCESS", action:"REPRESENTATION_VERIFIED",
+      }})).toBe(0);
+      expect(await db.notification.count({where:{userId:f.owner.id,message:"Semakan sintetik P0"}})).toBe(0);
+      expect((await review(f)).statusCode).toBe(200);
+      expect((await review(f)).statusCode).toBe(409);
+      expect(await db.notification.count({where:{userId:f.owner.id,message:"Semakan sintetik P0"}})).toBe(1);
+    } finally {
+      await db.$executeRaw`DROP FUNCTION p0_fixture_audit_abort()`;
+      await db.$executeRaw`DROP FUNCTION p0_fixture_notify_abort()`;
+    }
+  });
+
+  it("B-N01/B-N04/B-N05/B-P01 keeps proof and audit bound to one representative and rejects replays", async () => {
+    const f = await fixture();
+    const other = await actor("PEMOHON");
+    const rep = await db.companyRepresentative.create({
+      data: { companyId:f.companyId, userId:other.id, authorityType:"PEKERJA" },
+    });
+    const otherDoc = await f.upload(other);
+    expect(otherDoc.statusCode).toBe(200);
+    const otherId = otherDoc.json().id;
+    expect(await scanDelegationDocument(db, clean, f.id)).toBe(true);
+    expect(await scanDelegationDocument(db, clean, otherId)).toBe(true);
+    const another = await fixture();
+    expect((await review(f, another.id)).statusCode).toBe(404);
+    expect((await review(f, otherId)).statusCode).toBe(404);
+    expect((await review(f, randomUUID())).statusCode).toBe(404);
+    expect((await request(f.reviewer, `/api/representations/${f.own.id}/verify`, "POST",
+      {status:"VERIFIED",reason:"Missing proof"})).statusCode).toBe(400);
+    const originMismatch = await app.inject({
+      url: `/api/representations/${f.own.id}/verify`, method: "POST",
+      headers: { cookie: f.reviewer.cookie, origin: "https://invalid.example.test", "x-csrf-token": f.reviewer.csrf },
+      payload: { documentId: f.id, expectedRevision: 1, status: "VERIFIED", reason: "Semakan sintetik P0" },
+    });
+    expect(originMismatch.statusCode).toBe(403);
+    const outcomes = await Promise.all([review(f), review(f)]);
+    expect(outcomes.map((r) => r.statusCode).sort()).toEqual([200,409]);
+    expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:rep.id}})).verifiedDocumentId).toBeNull();
+    expect((await review({...f, own:rep, id:otherId})).statusCode).toBe(200);
+    for (const [id, proof] of [[f.own.id,f.id],[rep.id,otherId]]) {
+      expect((await db.companyRepresentative.findUniqueOrThrow({where:{id}})).verifiedDocumentId).toBe(proof);
+      const decisions = await db.auditLog.findMany({where:{target:id,outcome:"SUCCESS",action:"REPRESENTATION_VERIFIED"}});
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].metadata).toMatchObject({documentId:proof,representativeId:id,companyId:f.companyId});
+    }
+    expect((await request(f.owner, `${f.path}/${f.id}/revoke`, "POST")).statusCode).toBe(200);
+    expect((await review(f, f.id, 3)).statusCode).toBe(409);
+    expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:f.own.id}})).verifiedDocumentId).toBeNull();
+    expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:rep.id}})).verifiedDocumentId).toBe(otherId);
+  });
+});
+
 describe("Phase 2A applicant identity and company representation", () => {
   const registration = (
     identificationNumber: string,
@@ -993,7 +1219,7 @@ describe("Phase 2A applicant identity and company representation", () => {
       }),
     ).toBe(1);
   });
-  it("stores delegation PDFs privately with pending verification for all valid representatives", async () => {
+  it("isolates a quarantined delegation PDF from another representative", async () => {
     const owner = await actor("PEMOHON"),
       recipient = await actor("PEMOHON");
     const c = await company(owner),
@@ -1009,7 +1235,7 @@ describe("Phase 2A applicant identity and company representation", () => {
     expect(doc.json().status).toBe("UNVERIFIED");
     expect(
       (await request(recipient, `/api/documents/${doc.json().id}`)).statusCode,
-    ).toBe(200);
+    ).toBe(404);
     await db.companyRepresentative.update({
       where: { userId_companyId: { userId: recipient.id, companyId: c } },
       data: { endsAt: new Date(Date.now() - 1000) },
@@ -2961,10 +3187,20 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(company.statusCode).toBe(201);
       const companyId = company.json().id as string;
       const where = { userId_companyId: { userId: applicant.id, companyId } };
-      await db.companyRepresentative.update({
-        where,
-        data: { status: "VERIFIED" },
+      const representative = await db.companyRepresentative.findUniqueOrThrow({ where });
+      const uploaded = await request(applicant, `/api/companies/${companyId}/documents`, "POST", {
+        fileName: "proof-synthetic.pdf",
+        content: Buffer.from("%PDF-1.4\nDATA UJIAN\n%%EOF").toString("base64"),
       });
+      expect(uploaded.statusCode).toBe(200);
+      const proofId = uploaded.json().id;
+      expect(await scanDelegationDocument(db, {
+        scan: async () => ({ status: "CLEAN", engine: "synthetic" }),
+      }, proofId)).toBe(true);
+      const verifier = await actor("PIC_KAWASAN");
+      expect((await request(verifier, `/api/representations/${representative.id}/verify`, "POST", {
+        documentId: proofId, expectedRevision: 1, status: "VERIFIED", reason: "Semakan sintetik P0",
+      })).statusCode).toBe(200);
       const created = await request(
         applicant,
         "/api/application-drafts",

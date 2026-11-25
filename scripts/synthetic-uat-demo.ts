@@ -6,6 +6,7 @@ import { join } from "node:path";
 import argon2 from "argon2";
 import { Secret } from "otpauth";
 import { db, encrypt, hash } from "../apps/api/src/core.js";
+import { delegationDigest } from "../apps/api/src/delegation-evidence.js";
 import { protectIdentification } from "../apps/api/src/identity.js";
 import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
 import {
@@ -133,8 +134,8 @@ async function prepareDemo() {
           where: { id: accounts.find(({ label }) => label === "wakil")!.id },
         })
       : applicant;
-    const companyFor = (expired: boolean) =>
-      tx.company.create({
+    const companyFor = async (expired: boolean) => {
+      const company = await tx.company.create({
         data: {
           name: expired
             ? "Syarikat latihan — kuasa luput"
@@ -155,6 +156,27 @@ async function prepareDemo() {
         },
         include: { representatives: true },
       });
+      if (!expired) {
+        const rep = company.representatives[0];
+        const now = new Date();
+        const content = Buffer.from("%PDF-1.4\n% Surat kuasa latihan sintetik\n%%EOF");
+        const sha256 = delegationDigest(content);
+        const doc = await tx.delegationDocument.create({
+          data: {
+            companyId: company.id, representativeId: rep.id, version: 1,
+            fileName: "surat-kuasa-latihan.pdf", mimeType: "application/pdf",
+            uploadedBy: representative.id, authorityType: rep.authorityType,
+            content, sha256, byteSize: content.length, validFrom: now,
+            scanStatus: "CLEAN", scanSha256: sha256, scanEngine: "SYNTHETIC-FIXTURE",
+            scanValidUntil: new Date(now.getTime() + 86_400_000),
+          },
+        });
+        await tx.companyRepresentative.update({
+          where: { id: rep.id }, data: { verifiedDocumentId: doc.id, verificationRevision: 1 },
+        });
+      }
+      return company;
+    };
     async function scenario(
       label: string,
       unitCount: number,

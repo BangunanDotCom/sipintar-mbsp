@@ -12,6 +12,7 @@ import { authorizedDraft } from "./premise-floors.js";
 import { validDraftApplicantContext } from "./draft-applicant-context.js";
 import { premisesFields } from "./premises.js";
 import { evaluateDraftReadiness } from "../../../packages/shared/src/draft-readiness.js";
+import { verifiedDelegation } from "./delegation-evidence.js";
 import { companyAuthority } from "./application-drafts.js";
 import {
   evaluateDocumentPolicy,
@@ -99,7 +100,7 @@ export async function captureSyntheticSubmission(
         savedPolicy.data.policyFingerprint !== policy.owner.fingerprint
       )
         fail(409, "Serahan latihan ini menggunakan polisi terdahulu.");
-      if (syntheticPortalDatabase())
+      if (authority || syntheticPortalDatabase())
         await requireSyntheticSnapshotAuthority(tx, prior);
       if (
         prior.actorId !== userId ||
@@ -142,7 +143,7 @@ export async function captureSyntheticSubmission(
 
     // A scan-state change cannot invalidate these rows until the capture commits.
     await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draft.id} FOR SHARE`;
-    const { premises, floors, eligible, evidence, readiness } =
+    const { premises, floors, eligible, evidence, readiness, authorityProof } =
       await loadSyntheticReadiness(tx, draft, authority, policy);
 
     const row = await tx.syntheticSubmission.create({
@@ -165,6 +166,7 @@ export async function captureSyntheticSubmission(
           }),
           districtId: premises.districtId,
           representativeId: authority?.id ?? null,
+          authorityProof,
           authorityType: authority?.authorityType ?? null,
           floors: floors.map(
             ({
@@ -338,6 +340,7 @@ export async function loadSyntheticReadiness(
   },
 ) {
   assertSyntheticCapacity(draft, authority);
+  const authorityProof = authority ? await verifiedDelegation(tx, authority) : null;
   const inventory =
     loaded?.inventory ?? (await loadSyntheticInventory(tx, draft.id));
   const { premises, floors } = inventory;
@@ -400,7 +403,7 @@ export async function loadSyntheticReadiness(
   )
     fail(409, "Bukti dokumen sintetik belum lengkap.");
 
-  return { premises, floors, eligible, evidence, readiness };
+  return { premises, floors, eligible, evidence, readiness, authorityProof };
 }
 
 export async function requireSyntheticSnapshotAuthority(
@@ -411,6 +414,8 @@ export async function requireSyntheticSnapshotAuthority(
     .object({
       capacity: z.enum(["INDIVIDUAL", "COMPANY"]),
       companyId: z.uuid().nullable(),
+      representativeId: z.uuid().nullable().optional(),
+      authorityProof: z.object({ id: z.uuid(), version: z.number().int().positive(), sha256: z.string() }).nullable().optional(),
     })
     .safeParse(row.snapshot);
   if (
@@ -424,7 +429,10 @@ export async function requireSyntheticSnapshotAuthority(
       row.actorId,
       context.data.companyId,
     );
-    if (authority.status !== "VERIFIED")
+    const current = await verifiedDelegation(tx, authority);
+    const saved = context.data.authorityProof;
+    if (!saved || context.data.representativeId !== authority.id ||
+        current.id !== saved.id || current.version !== saved.version || current.sha256 !== saved.sha256)
       fail(409, "Kuasa serahan sintetik tidak lagi disahkan.");
   }
   return context.data;

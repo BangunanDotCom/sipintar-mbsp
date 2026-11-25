@@ -356,7 +356,7 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       buffer: delegationPdf(),
     });
     await expect(
-      card.getByRole("link", { name: "surat-kuasa-ujian.pdf" }),
+      card.getByText("Menunggu imbasan keselamatan", { exact: true }),
     ).toBeVisible();
     await card.getByText("Jemput wakil syarikat", { exact: true }).click();
     const invite = card
@@ -401,11 +401,7 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       received.getByText("DATA UJIAN Wakil B", { exact: true }),
     ).toBeVisible();
     await received.getByText("Surat kuasa & dokumen", { exact: true }).click();
-    const [download] = await Promise.all([
-      recipientPage.waitForEvent("download"),
-      received.getByRole("link", { name: "surat-kuasa-ujian.pdf" }).click(),
-    ]);
-    expect(download.suggestedFilename()).toBe("surat-kuasa-ujian.pdf");
+    await expect(received.getByText("surat-kuasa-ujian.pdf", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Ringkasan", exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.emulateMedia({ reducedMotion: "reduce" });
