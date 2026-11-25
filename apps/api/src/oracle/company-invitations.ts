@@ -1,3 +1,11 @@
+import {
+  acceptanceNotice,
+  boundToken,
+  invitationProofCurrent,
+  matchesInvitationToken,
+} from "../invitation-proof.js";
+import { hash, token } from "../core.js";
+import { oracleDelegationPrincipal } from "./delegation-principal.js";
 import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Connection } from "oracledb";
@@ -10,7 +18,7 @@ import type {
 import { createOracleAuditRepository } from "./audit.js";
 import { fromOracleBoolean } from "./codecs.js";
 import type { OraclePool } from "./pool.js";
-import { affected, oracleTable, queryRows, timestamp } from "./query.js";
+import { affected, clob, oracleTable, queryRows, timestamp } from "./query.js";
 
 type RepRow = Omit<Representative, "canManageRepresentatives"> & {
   canManageRepresentatives: number;
@@ -39,6 +47,8 @@ export function createOracleCompanyInvitationRepository(
   const assignments = oracleTable(pool, "STL_USER_ROLE_ASSIGNMENTS");
   const permissions = oracleTable(pool, "STL_PERMISSIONS");
   const audit = createOracleAuditRepository(pool);
+  const notifications = oracleTable(pool, "STL_NOTIFICATIONS");
+  const principalAtUse = oracleDelegationPrincipal(pool);
   const repColumns = `R.ID AS "id", R.USER_ID AS "userId", R.COMPANY_ID AS "companyId",
     R.AUTHORITY_TYPE AS "authorityType", R.STARTS_AT AS "startsAt", R.ENDS_AT AS "endsAt",
     R.STATUS AS "status", R.VERIFIED_BY AS "verifiedBy",
@@ -74,16 +84,16 @@ export function createOracleCompanyInvitationRepository(
     const binds = { companyId, userId };
     const [company] = await queryRows<{ ID: string }>(
       connection,
-      `SELECT ID FROM ${companies} WHERE ID=:companyId AND STATUS='ACTIVE' FOR UPDATE`,
+      `SELECT ID FROM ${companies} WHERE ID=:companyId AND STATUS='ACTIVE' FOR UPDATE WAIT 5`,
       { companyId },
     );
-    if (!company) return false;
+    if (!company) return null;
     const [representative] = await queryRows<{ ID: string }>(
       connection,
-      `SELECT ID FROM ${reps} WHERE COMPANY_ID=:companyId AND USER_ID=:userId FOR UPDATE`,
+      `SELECT ID FROM ${reps} WHERE COMPANY_ID=:companyId AND USER_ID=:userId FOR UPDATE WAIT 5`,
       binds,
     );
-    if (!representative) return false;
+    if (!representative) return null;
     const [rep] = await queryRows<RepRow>(
       connection,
       `SELECT ${repColumns} FROM ${reps} R JOIN ${users} U ON U.ID=R.USER_ID
@@ -95,18 +105,18 @@ export function createOracleCompanyInvitationRepository(
              AND (A.ENDS_AT IS NULL OR A.ENDS_AT>SYSTIMESTAMP) AND P.ACTION='companies')`,
       binds,
     );
-    if (!rep) return false;
-    if (rep.canManageRepresentatives === 1) return true;
+    if (!rep) return null;
+    if (rep.canManageRepresentatives === 1) return { rep, proof: null };
     try {
-      await delegationEvidence.verified(connection, rep);
-      return true;
+      const proof = await delegationEvidence.lockedVerified(connection, rep);
+      return { rep, proof };
     } catch (error) {
       if (
         error instanceof Error &&
         "statusCode" in error &&
         error.statusCode === 409
       )
-        return false;
+        return null;
       throw error;
     }
   }
@@ -147,9 +157,15 @@ export function createOracleCompanyInvitationRepository(
           user: { name: userName },
         }));
       }),
-    invite: (data) =>
+    invite: (data, principal) =>
       pool.transaction(async (connection) => {
-        if (!(await lockAuthority(connection, data.companyId, data.invitedBy)))
+        await principalAtUse(connection, principal, false);
+        const authority = await lockAuthority(
+          connection,
+          data.companyId,
+          principal.userId,
+        );
+        if (!authority)
           fail(403, "Anda tidak mempunyai kuasa mengurus wakil syarikat ini.");
         const [recipient] = await queryRows(
           connection,
@@ -169,6 +185,12 @@ export function createOracleCompanyInvitationRepository(
         if (existing)
           fail(409, "Pengguna telah mempunyai rekod perwakilan syarikat ini.");
         const id = randomUUID();
+        const raw = boundToken(
+          token().slice(0, 32),
+          authority.rep,
+          data.recipientId,
+          authority.proof,
+        );
         await connection.execute(
           `INSERT INTO ${invites} (ID,COMPANY_ID,RECIPIENT_ID,INVITED_BY,AUTHORITY_TYPE,
           AUTHORITY_ENDS_AT,TOKEN_HASH,EXPIRES_AT)
@@ -176,15 +198,24 @@ export function createOracleCompanyInvitationRepository(
           {
             ...data,
             id,
+            invitedBy: principal.userId,
+            tokenHash: hash(raw),
             authorityEndsAt: timestamp(data.authorityEndsAt),
             expiresAt: timestamp(data.expiresAt),
           },
         );
-        return { id };
+        await audit.append(connection, {
+          actorId: principal.userId,
+          activeRole: principal.activeRole,
+          action: "COMPANY_REPRESENTATIVE_INVITED",
+          target: id,
+        });
+        return { id, raw };
       }),
-    accept: (tokenHash, userId, activeRole) =>
+    accept: (raw, principal) =>
       pool.transaction(async (connection) => {
-        const invitation = await preview(connection, tokenHash);
+        const { userId, activeRole } = principal;
+        const invitation = await preview(connection, hash(raw));
         const now = new Date();
         if (
           !invitation ||
@@ -195,20 +226,46 @@ export function createOracleCompanyInvitationRepository(
           (invitation.authorityEndsAt && invitation.authorityEndsAt <= now)
         )
           fail(400, "Jemputan tidak sah, luput atau bukan untuk akaun ini.");
+        const accounts = { userId, invitedBy: invitation.invitedBy };
+        await connection.execute(
+          `SELECT ID FROM ${users} WHERE ID IN (:userId,:invitedBy) ORDER BY ID FOR UPDATE WAIT 5`,
+          accounts,
+        );
+        await connection.execute(
+          `SELECT ID FROM ${assignments} WHERE USER_ID IN (:userId,:invitedBy) ORDER BY USER_ID,ID FOR UPDATE WAIT 5`,
+          accounts,
+        );
+        await principalAtUse(connection, principal, false);
+        const authority = await lockAuthority(
+          connection,
+          invitation.companyId,
+          invitation.invitedBy,
+        );
+        if (!authority) fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
         if (
-          !(await lockAuthority(
-            connection,
-            invitation.companyId,
-            invitation.invitedBy,
-          ))
+          !matchesInvitationToken(raw, authority.rep, userId, authority.proof)
+        )
+          fail(
+            403,
+            "Bukti kuasa jemputan telah berubah. Minta jemputan baharu.",
+          );
+        const checkedAt = new Date();
+        if (
+          !invitationProofCurrent(authority.proof, checkedAt) ||
+          (authority.rep.endsAt && authority.rep.endsAt <= checkedAt)
         )
           fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
         const claimed = await affected(
           connection,
           `UPDATE ${invites} SET ACCEPTED_AT=SYSTIMESTAMP
-        WHERE ID=:id AND RECIPIENT_ID=:userId AND ACCEPTED_AT IS NULL AND EXPIRES_AT>SYSTIMESTAMP
+        WHERE ID=:id AND RECIPIENT_ID=:userId AND COMPANY_ID=:companyId AND INVITED_BY=:invitedBy AND ACCEPTED_AT IS NULL AND EXPIRES_AT>SYSTIMESTAMP
           AND (AUTHORITY_ENDS_AT IS NULL OR AUTHORITY_ENDS_AT>SYSTIMESTAMP)`,
-          { id: invitation.id, userId },
+          {
+            id: invitation.id,
+            userId,
+            companyId: invitation.companyId,
+            invitedBy: invitation.invitedBy,
+          },
         );
         if (!claimed) fail(400, "Jemputan telah digunakan.");
         const id = randomUUID();
@@ -243,6 +300,24 @@ export function createOracleCompanyInvitationRepository(
           action: "COMPANY_INVITATION_ACCEPTED",
           target: id,
         });
+        await connection.execute(
+          `INSERT INTO ${notifications} (ID,USER_ID,TYPE,TITLE,MESSAGE)
+          VALUES (:notificationId,:userId,:type,:title,:message)`,
+          {
+            notificationId: randomUUID(),
+            userId,
+            ...acceptanceNotice,
+            message: clob(acceptanceNotice.message),
+          },
+        );
+        const finalCheck = new Date();
+        if (
+          !invitationProofCurrent(authority.proof, finalCheck) ||
+          (authority.rep.endsAt && authority.rep.endsAt <= finalCheck) ||
+          (invitation.authorityEndsAt &&
+            invitation.authorityEndsAt <= finalCheck)
+        )
+          fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
         return { id };
       }),
   };

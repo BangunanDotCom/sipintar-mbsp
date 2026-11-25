@@ -12,7 +12,6 @@ import { applicationDraftRoutes } from "./application-drafts.js";
 import { postgresAuth } from "./auth-repository.js";
 import { authRoutes } from "./auth.js";
 import { postgresCompanyInvitations } from "./company-invitation-repository.js";
-import { companyInvitationRoutes } from "./company-invitations.js";
 import { postgresDraftRepository } from "./draft-repository.js";
 import { postgresManagement } from "./management-repository.js";
 import { managementRoutes } from "./management-routes.js";
@@ -52,8 +51,6 @@ export async function registerRepositoryRoutes(
   if (auth === postgresAuth) {
     await delegationRoutes(app);
     await postgresInvitationRoutes(app);
-  } else {
-    await companyInvitationRoutes(app, companyInvitations, auth);
   }
   await applicationDraftRoutes(app, drafts, auth);
   await premisesRoutes(app, drafts, auth);

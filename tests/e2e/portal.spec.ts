@@ -342,22 +342,86 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
     await page.getByRole("button", { name: "Syarikat & wakil" }).click();
     const companyName = `DATA UJIAN Syarikat A ${randomBytes(3).toString("hex")}`;
     await addCompany(page, companyName);
-    await addCompany(
-      page,
-      `DATA UJIAN Syarikat B ${randomBytes(3).toString("hex")}`,
-    );
+    const unrelatedCompany = `DATA UJIAN Syarikat B ${randomBytes(3).toString("hex")}`;
+    await addCompany(page, unrelatedCompany);
     const card = page.locator("article.company-record").filter({
       has: page.getByRole("heading", { name: companyName, exact: true }),
     });
     await card.getByText("Surat kuasa & dokumen", { exact: true }).click();
+    const uploadResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        /\/api\/companies\/[^/]+\/documents$/.test(response.url()),
+    );
     await card.getByLabel("Muat naik surat kuasa").setInputFiles({
       name: "surat-kuasa-ujian.pdf",
       mimeType: "application/pdf",
       buffer: delegationPdf(),
     });
     await expect(
-      card.getByRole("link", { name: "surat-kuasa-ujian.pdf" }),
+      card.getByText("Menunggu imbasan keselamatan", { exact: true }),
     ).toBeVisible();
+    const upload = await uploadResponse;
+    expect(upload.ok()).toBe(true);
+    const { id: documentId } = await upload.json();
+    const downloadUrl = `/api/documents/${documentId}`;
+    const quarantined = await page.request.get(downloadUrl);
+    expect(quarantined.status()).toBe(404);
+    expect(quarantined.headers()["cache-control"]).toContain("no-store");
+
+    const fixture = {
+      scan: async () => ({
+        status: "CLEAN" as const,
+        engine: "synthetic-browser",
+      }),
+    };
+    if (process.env.STAYLINK_ORACLE_LAB_HTTP === "true") {
+      const { readFile } = await import("node:fs/promises");
+      const { parse } = await import("dotenv");
+      const { oracleConfig } =
+        await import("../../apps/api/src/oracle/config.js");
+      const { createOraclePool } =
+        await import("../../apps/api/src/oracle/pool.js");
+      const { createOracleDelegationScanner } =
+        await import("../../apps/api/src/oracle/delegation-scan.js");
+      const worker = await createOraclePool(
+        oracleConfig(
+          parse(await readFile(process.env.ORACLE_P0_SCANNER_ENV!)),
+          "runtime",
+        ),
+      );
+      try {
+        expect(
+          await createOracleDelegationScanner(worker).scan(fixture, documentId),
+        ).toBe(true);
+      } finally {
+        await worker.close();
+      }
+    } else {
+      const { syntheticPortalDatabase } =
+        await import("../../apps/api/src/synthetic-portal-gate.js");
+      if (
+        !syntheticPortalDatabase() ||
+        process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL
+      )
+        throw Error(
+          "Ujian surat kuasa memerlukan PostgreSQL sintetik loopback.",
+        );
+      const { db } = await import("../../apps/api/src/core.js");
+      const { scanDelegationDocument } =
+        await import("../../apps/api/src/delegation-scan-worker.js");
+      try {
+        expect(await scanDelegationDocument(db, fixture, documentId)).toBe(
+          true,
+        );
+      } finally {
+        await db.$disconnect();
+      }
+    }
+    const released = await page.request.get(downloadUrl);
+    expect(released.status()).toBe(200);
+    expect(released.headers()["cache-control"]).toBe("private, no-store");
+    expect(await released.body()).toEqual(delegationPdf());
     await card.getByText("Jemput wakil syarikat", { exact: true }).click();
     const invite = card
       .locator("details")
@@ -381,6 +445,17 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       "Perwakilan diterima",
     );
     await recipientPage.getByRole("button", { name: "Ke dashboard" }).click();
+    await expect(
+      recipientPage.getByText(unrelatedCompany, { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      recipientPage.getByText("surat-kuasa-ujian.pdf", { exact: true }),
+    ).toHaveCount(0);
+    const dashboard = await recipientPage.request.get("/api/dashboard");
+    expect(dashboard.status()).toBe(200);
+    expect(dashboard.headers()["cache-control"]).toContain("no-store");
+    expect(await dashboard.text()).not.toContain(documentId);
+
     await recipientPage
       .getByRole("button", { name: "Syarikat & wakil" })
       .click();
@@ -401,11 +476,17 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       received.getByText("DATA UJIAN Wakil B", { exact: true }),
     ).toBeVisible();
     await received.getByText("Surat kuasa & dokumen", { exact: true }).click();
-    const [download] = await Promise.all([
-      recipientPage.waitForEvent("download"),
-      received.getByRole("link", { name: "surat-kuasa-ujian.pdf" }).click(),
-    ]);
-    expect(download.suggestedFilename()).toBe("surat-kuasa-ujian.pdf");
+    await expect(
+      received.getByText("surat-kuasa-ujian.pdf", { exact: true }),
+    ).toHaveCount(0);
+    const companyDetails = await recipientPage.request.get("/api/companies");
+    expect(companyDetails.status()).toBe(200);
+    expect(await companyDetails.text()).not.toContain(documentId);
+    const crossRepresentative = await recipientPage.request.get(downloadUrl);
+    expect(crossRepresentative.status()).toBe(404);
+    expect(crossRepresentative.headers()["cache-control"]).toContain(
+      "no-store",
+    );
     await page.getByRole("button", { name: "Ringkasan", exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -728,9 +809,15 @@ async function openPremisesDraft(page: import("@playwright/test").Page) {
   return { id: page.url().split("/").at(-2)! };
 }
 async function inventorySession(page: import("@playwright/test").Page) {
-  if (process.env.STAYLINK_ORACLE_LAB_HTTP !== "true") return premisesSession(page);
+  if (process.env.STAYLINK_ORACLE_LAB_HTTP !== "true")
+    return premisesSession(page);
   const email = `inventory-${randomUUID()}@example.test`;
-  await registerApplicant(page, email, "DATA UJIAN Inventori", `Aa1!${randomBytes(24).toString("hex")}`);
+  await registerApplicant(
+    page,
+    email,
+    "DATA UJIAN Inventori",
+    `Aa1!${randomBytes(24).toString("hex")}`,
+  );
   return openPremisesDraft(page);
 }
 
@@ -831,12 +918,17 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
     exact: true,
   });
   await expect(reviewButton).toBeDisabled();
-  await page.getByRole("button", { name: "Tambah tingkat", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Tambah tingkat", exact: true })
+    .click();
   for (const [index, floorLabel, area] of [
     [1, "Tingkat Bawah", "125"],
     [2, "Tingkat 1", "125.75"],
   ] as const) {
-    const floor = page.getByRole("group", { name: `Aras ${index}`, exact: true });
+    const floor = page.getByRole("group", {
+      name: `Aras ${index}`,
+      exact: true,
+    });
     await floor.getByLabel("Nama tingkat", { exact: true }).fill(floorLabel);
     await floor.getByLabel("Bilik", { exact: true }).fill("6");
     await floor.getByLabel("Katil", { exact: true }).fill("18");
@@ -852,8 +944,12 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
   const floorSummary = page.getByRole("table").filter({
     has: page.getByRole("rowheader", { name: "JUMLAH", exact: true }),
   });
-  await expect(floorSummary.getByRole("rowheader", { name: "Tingkat Bawah" })).toBeVisible();
-  await expect(floorSummary.getByRole("rowheader", { name: "Tingkat 1" })).toBeVisible();
+  await expect(
+    floorSummary.getByRole("rowheader", { name: "Tingkat Bawah" }),
+  ).toBeVisible();
+  await expect(
+    floorSummary.getByRole("rowheader", { name: "Tingkat 1" }),
+  ).toBeVisible();
   await expect(
     floorSummary.getByRole("row", { name: /^JUMLAH\b/ }).getByRole("cell"),
   ).toHaveText(["12", "36", "36", "250.75", "0", "0", "0", "0", "0", "0"]);
@@ -948,10 +1044,13 @@ test("floor UUID survives an editor rename and reload", async ({ page }) => {
   const label = page.getByLabel("Nama tingkat", { exact: true });
   const save = async () => {
     const result = page.waitForResponse(
-      (response) => response.url().endsWith("/floors") &&
+      (response) =>
+        response.url().endsWith("/floors") &&
         response.request().method() === "PUT",
     );
-    await page.getByRole("button", { name: "Simpan draf tingkat", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Simpan draf tingkat", exact: true })
+      .click();
     const response = await result;
     expect(response.status()).toBe(200);
     return (await response.json()).floors[0].id as string;
@@ -959,7 +1058,9 @@ test("floor UUID survives an editor rename and reload", async ({ page }) => {
 
   await label.fill("Aras Ujian");
   const floorId = await save();
-  await expect(page.getByText("Maklumat tingkat berjaya disimpan sebagai draf.")).toBeVisible();
+  await expect(
+    page.getByText("Maklumat tingkat berjaya disimpan sebagai draf."),
+  ).toBeVisible();
   await label.fill("Aras Ujian Dikemas Kini");
   expect(await save()).toBe(floorId);
   await page.reload();
@@ -968,41 +1069,69 @@ test("floor UUID survives an editor rename and reload", async ({ page }) => {
   expect((await result.json()).floors[0].id).toBe(floorId);
 });
 
-test("K02 records one physical unit across two floors and keeps its UUID", async ({ page }) => {
+test("K02 records one physical unit across two floors and keeps its UUID", async ({
+  page,
+}) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
   const { id } = await inventorySession(page);
   const root = `/api/application-drafts/${id}`;
   const session = await page.request.get("/api/auth/me");
-  const headers = { Origin: "http://localhost:5173", "X-CSRF-Token": (await session.json()).csrf };
+  const headers = {
+    Origin: "http://localhost:5173",
+    "X-CSRF-Token": (await session.json()).csrf,
+  };
   const draft = await page.request.get(root);
   const { emptyPremises } = await import("../../packages/shared/src/premises");
   const premise = await page.request.put(root + "/premises", {
     headers,
-    data: { version: (await draft.json()).version, premises: { ...emptyPremises, accommodationUnits: 3 } },
+    data: {
+      version: (await draft.json()).version,
+      premises: { ...emptyPremises, accommodationUnits: 3 },
+    },
   });
   expect(premise.status()).toBe(200);
   const floors = await page.request.put(root + "/floors", {
     headers,
-    data: { version: (await premise.json()).version, floors: ["Tingkat Bawah", "Tingkat 1"].map((floorLabel) => ({
-      floorLabel, rooms: 1, beds: 2, workers: 2, areaSqm: 50,
-      facilities: { toilets: 1, bathrooms: 1, sinks: 1, diningTables: 0, diningChairs: 0, fireExtinguishers: 1 },
-    })) },
+    data: {
+      version: (await premise.json()).version,
+      floors: ["Tingkat Bawah", "Tingkat 1"].map((floorLabel) => ({
+        floorLabel,
+        rooms: 1,
+        beds: 2,
+        workers: 2,
+        areaSqm: 50,
+        facilities: {
+          toilets: 1,
+          bathrooms: 1,
+          sinks: 1,
+          diningTables: 0,
+          diningChairs: 0,
+          fireExtinguishers: 1,
+        },
+      })),
+    },
   });
   expect(floors.status()).toBe(200);
 
   await page.getByRole("link", { name: "4 · Unit fizikal" }).click();
-  await expect(page.getByRole("heading", { name: "Unit fizikal premis" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Unit fizikal premis" }),
+  ).toBeVisible();
   await expect(page.getByText("Bilangan diisytiharkan: 3")).toBeVisible();
-  await expect(page.getByText("Inventori unit belum direkod.", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("Inventori unit belum direkod.", { exact: false }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Tambah unit" }).click();
   const label = page.getByRole("textbox", { name: "Label unit" });
   await label.fill("Kedai Ujian");
   await page.getByRole("checkbox", { name: "Tingkat Bawah" }).check();
   await page.getByRole("checkbox", { name: "Tingkat 1", exact: true }).check();
   const save = async () => {
-    const pending = page.waitForResponse((response) =>
-      response.url().endsWith("/units") && response.request().method() === "PUT",
+    const pending = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/units") &&
+        response.request().method() === "PUT",
     );
     await page.getByRole("button", { name: "Simpan draf unit" }).click();
     const result = await pending;
@@ -1013,8 +1142,12 @@ test("K02 records one physical unit across two floors and keeps its UUID", async
   await expect(page.getByText("Unit berdaftar dalam draf: 1")).toBeVisible();
   await expect(page.getByRole("button", { name: "Buang unit" })).toBeDisabled();
   await page.reload();
-  await expect(page.getByRole("checkbox", { name: "Tingkat Bawah" })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "Tingkat 1", exact: true })).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Tingkat Bawah" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Tingkat 1", exact: true }),
+  ).toBeChecked();
   await label.fill("Kedai Ujian Baharu");
   expect(await save()).toBe(unitId);
 });

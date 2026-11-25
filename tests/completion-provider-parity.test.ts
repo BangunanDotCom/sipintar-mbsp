@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildOracleLabApp } from "../apps/api/src/app";
 import { postgresAuth } from "../apps/api/src/auth-repository";
 import { db, hash, origin } from "../apps/api/src/core";
+import { queryRows, timestamp } from "../apps/api/src/oracle/query";
 import { oracleConfig } from "../apps/api/src/oracle/config";
 import { createOraclePool } from "../apps/api/src/oracle/pool";
 import { createOracleRepositories } from "../apps/api/src/oracle/provider";
@@ -397,12 +398,112 @@ for (const { name, enabled } of variants) {
               policyFingerprint: ready.policyFingerprint,
               previousId: null,
             };
-            const submitted = await app.inject({
-              method: "POST",
-              url: appUrl + "/submit",
-              headers: owner,
-              payload: submission,
-            });
+            const submit = () =>
+              app.inject({
+                method: "POST",
+                url: appUrl + "/submit",
+                headers: owner,
+                payload: submission,
+              });
+            if (proofId) {
+              if (ownerPool) {
+                await ownerPool.use((connection) =>
+                  connection.execute(
+                    `CREATE TRIGGER STL_LAB_SUBMIT_PAUSE BEFORE INSERT ON STL_AUDIT_LOGS FOR EACH ROW
+                   BEGIN IF :NEW.ACTION='SYNTHETIC_SUBMISSION_CAPTURED' THEN DBMS_SESSION.SLEEP(3); END IF; END;`,
+                  ),
+                );
+              } else {
+                await db.$executeRaw`CREATE FUNCTION p0_delay_capture() RETURNS trigger LANGUAGE plpgsql AS $$
+                  BEGIN IF NEW.action='SYNTHETIC_SUBMISSION_CAPTURED' THEN PERFORM pg_sleep(3); END IF; RETURN NEW; END $$`;
+                await db.$executeRaw`CREATE TRIGGER p0_delay_capture BEFORE INSERT ON audit_logs
+                  FOR EACH ROW EXECUTE FUNCTION p0_delay_capture()`;
+              }
+              try {
+                const expiresAt = new Date(Date.now() + 2200);
+                if (ownerPool)
+                  await ownerPool.transaction((c) =>
+                    c.execute(
+                      "UPDATE STL_DELEGATION_DOCUMENTS SET SCAN_VALID_UNTIL=:expiresAt WHERE ID=:id",
+                      { expiresAt: timestamp(expiresAt), id: proofId },
+                    ),
+                  );
+                else
+                  await db.delegationDocument.update({
+                    where: { id: proofId },
+                    data: { scanValidUntil: expiresAt },
+                  });
+                const start = Date.now();
+                const rejected = await submit();
+                expect(rejected.statusCode, rejected.body).toBe(409);
+                expect(Date.now() - start).toBeGreaterThanOrEqual(2900);
+                if (ownerPool) {
+                  const counts = await ownerPool.use(
+                    async (c) =>
+                      (
+                        await queryRows<{ N: number; A: number }>(
+                          c,
+                          `SELECT (SELECT COUNT(*) FROM STL_SYNTHETIC_SUBMISSIONS WHERE DRAFT_ID=:draft) N,
+                     (SELECT COUNT(*) FROM STL_AUDIT_LOGS WHERE ACTOR_ID=:actor AND ACTION='SYNTHETIC_SUBMISSION_CAPTURED') A FROM DUAL`,
+                          { draft, actor: owner.userId },
+                        )
+                      )[0],
+                  );
+                  expect(counts).toEqual({ N: 0, A: 0 });
+                } else {
+                  expect(
+                    await db.syntheticSubmission.count({
+                      where: { draftId: draft },
+                    }),
+                  ).toBe(0);
+                  expect(
+                    await db.auditLog.count({
+                      where: {
+                        actorId: owner.userId,
+                        action: "SYNTHETIC_SUBMISSION_CAPTURED",
+                      },
+                    }),
+                  ).toBe(0);
+                }
+              } finally {
+                if (ownerPool)
+                  await ownerPool.use((c) =>
+                    c.execute("DROP TRIGGER STL_LAB_SUBMIT_PAUSE"),
+                  );
+                else {
+                  await db.$executeRaw`DROP TRIGGER p0_delay_capture ON audit_logs`;
+                  await db.$executeRaw`DROP FUNCTION p0_delay_capture()`;
+                }
+              }
+              const scanner = {
+                scan: async () => ({
+                  status: "CLEAN" as const,
+                  engine: "synthetic",
+                }),
+              };
+              if (ownerPool) {
+                const worker = await createOraclePool(
+                  oracleConfig(
+                    parse(await readFile(process.env.ORACLE_P0_SCANNER_ENV!)),
+                    "runtime",
+                  ),
+                );
+                try {
+                  expect(
+                    await createOracleDelegationScanner(worker).scan(
+                      scanner,
+                      proofId,
+                    ),
+                  ).toBe(true);
+                } finally {
+                  await worker.close();
+                }
+              } else
+                expect(await scanDelegationDocument(db, scanner, proofId)).toBe(
+                  true,
+                );
+            }
+            const submitted = await submit();
             expect(submitted.statusCode, submitted.body).toBe(200);
             const { id } = submitted.json();
             const review = root + "/reviews/" + id;

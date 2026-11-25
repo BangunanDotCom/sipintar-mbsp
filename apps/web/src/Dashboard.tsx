@@ -526,7 +526,11 @@ export default function Dashboard() {
                   </div>
                 )}
                 {["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
-                  <SyntheticOfficerPanel key={me.user.id + me.activeRole} userId={me.user.id} activeRole={me.activeRole} />
+                  <SyntheticOfficerPanel
+                    key={me.user.id + me.activeRole}
+                    userId={me.user.id}
+                    activeRole={me.activeRole}
+                  />
                 )}
                 {me.activeRole === "PIC_KAWASAN" && (
                   <section className="panel">
@@ -888,8 +892,9 @@ function Companies() {
                   <details>
                     <summary>Surat kuasa & dokumen</summary>
                     <p>
-                      PDF maksimum mengikut konfigurasi pentadbir (lalai 10 MiB). Dokumen disimpan secara peribadi dan
-                      dimuat turun sebagai lampiran.
+                      PDF maksimum mengikut konfigurasi pentadbir (lalai 10
+                      MiB). Dokumen disimpan secara peribadi dan dimuat turun
+                      sebagai lampiran.
                     </p>
                     <label>
                       Muat naik surat kuasa
@@ -916,7 +921,12 @@ function Companies() {
                             await api(
                               `/companies/${r.companyId}/documents`,
                               "POST",
-                              { fileName: file.name, content: base64 },
+                              {
+                                fileName: file.name,
+                                content: base64,
+                                expectedDocumentId:
+                                  r.company.documents[0]?.id ?? null,
+                              },
                             );
                             refresh();
                           } catch (e: any) {
@@ -927,10 +937,43 @@ function Companies() {
                     </label>
                     {r.company.documents.map((d: any) => (
                       <p key={d.id}>
-                        <a href={`/api/documents/${d.id}`} download>
-                          {d.fileName}
-                        </a>{" "}
-                        <span className="badge">{d.status}</span>
+                        {d.downloadable ? (
+                          <a href={`/api/documents/${d.id}`} download>
+                            {d.fileName}
+                          </a>
+                        ) : (
+                          <span>{d.fileName}</span>
+                        )}{" "}
+                        <span className="badge">
+                          {d.scanStatus === "PENDING" ||
+                          d.scanStatus === "SCANNING"
+                            ? "Menunggu imbasan keselamatan"
+                            : d.downloadable
+                              ? "Imbasan sah"
+                              : "Tidak tersedia"}
+                        </span>{" "}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                "Tarik balik surat kuasa versi ini?",
+                              )
+                            )
+                              return;
+                            try {
+                              await api(
+                                `/companies/${r.companyId}/documents/${d.id}/revoke`,
+                                "POST",
+                              );
+                              refresh();
+                            } catch (e: any) {
+                              setError(e.message);
+                            }
+                          }}
+                        >
+                          Tarik balik versi ini
+                        </button>
                       </p>
                     ))}
                   </details>
@@ -1485,31 +1528,55 @@ function Config({ scope }: { scope: string }) {
         <section className="panel">
           <h3>Had maksimum muat naik mengikut kategori</h3>
           <Notice>
-            Nilai dikawal oleh Pentadbir ICT dan direkodkan dalam sejarah konfigurasi.
-            Had untuk dokumen permohonan baharu ialah persediaan polisi;
-            modul muat naiknya belum diaktifkan.
+            Nilai dikawal oleh Pentadbir ICT dan direkodkan dalam sejarah
+            konfigurasi. Had untuk dokumen permohonan baharu ialah persediaan
+            polisi; modul muat naiknya belum diaktifkan.
           </Notice>
-          {([
-            ["upload_delegation_mib", "Surat kuasa PDF", 10, 20],
-            ["upload_supporting_mib", "Dokumen sokongan PDF", 20, 50],
-            ["upload_plan_mib", "Pelan bangunan PDF", 50, 100],
-            ["upload_photo_mib", "Gambar premis JPEG/PNG", 10, 20],
-          ] as const).map(([key, label, defaultMiB, ceiling]) => {
-            const current = q.data?.find((item: any) => item.key === `technical.${key}`);
+          {(
+            [
+              ["upload_delegation_mib", "Surat kuasa PDF", 10, 20],
+              ["upload_supporting_mib", "Dokumen sokongan PDF", 20, 50],
+              ["upload_plan_mib", "Pelan bangunan PDF", 50, 100],
+              ["upload_photo_mib", "Gambar premis JPEG/PNG", 10, 20],
+            ] as const
+          ).map(([key, label, defaultMiB, ceiling]) => {
+            const current = q.data?.find(
+              (item: any) => item.key === `technical.${key}`,
+            );
             return (
               <div className="company-record" key={key}>
                 <strong>{label}</strong>
-                <p>Had semasa: {typeof current?.value === "number" ? current.value : defaultMiB} MiB · Julat 1–{ceiling} MiB</p>
+                <p>
+                  Had semasa:{" "}
+                  {typeof current?.value === "number"
+                    ? current.value
+                    : defaultMiB}{" "}
+                  MiB · Julat 1–{ceiling} MiB
+                </p>
                 <Form
                   fields={[
                     { name: "maxMiB", label: "Saiz maksimum (MiB)" },
-                    { name: "reason", label: "Sebab perubahan", type: "textarea" },
+                    {
+                      name: "reason",
+                      label: "Sebab perubahan",
+                      type: "textarea",
+                    },
                   ]}
                   onSubmit={async (b) => {
                     const value = Number(b.maxMiB);
-                    if (!Number.isInteger(value) || value < 1 || value > ceiling)
-                      throw Error(`Masukkan nombor bulat antara 1 hingga ${ceiling} MiB.`);
-                    await api("/config/technical", "POST", { key, value, reason: b.reason });
+                    if (
+                      !Number.isInteger(value) ||
+                      value < 1 ||
+                      value > ceiling
+                    )
+                      throw Error(
+                        `Masukkan nombor bulat antara 1 hingga ${ceiling} MiB.`,
+                      );
+                    await api("/config/technical", "POST", {
+                      key,
+                      value,
+                      reason: b.reason,
+                    });
                     refresh();
                   }}
                 />
@@ -1627,39 +1694,63 @@ function Representations() {
                 </p>
                 {r.company.documents.map((d: any) => (
                   <p key={d.id}>
-                    <a href={`/api/representation-documents/${d.id}`} download>
-                      {d.fileName}
-                    </a>
+                    {d.downloadable ? (
+                      <a
+                        href={`/api/representation-documents/${d.id}`}
+                        download
+                      >
+                        {d.fileName}
+                      </a>
+                    ) : (
+                      <span>{d.fileName} (semakan keselamatan belum sah)</span>
+                    )}
+                    {" · Versi "}
+                    {d.version}
                   </p>
                 ))}
                 <Notice>
                   Semak dokumen asal melalui proses yang dibenarkan. Pautan
                   permohonan mengikut kawasan akan diperkenalkan dalam Fasa 2.
                 </Notice>
-                <Form
-                  fields={[
-                    {
-                      name: "status",
-                      label: "Keputusan",
-                      options: [
-                        { value: "VERIFIED", label: "Disahkan" },
-                        {
-                          value: "DOCUMENT_UPDATE_REQUIRED",
-                          label: "Dokumen perlu dikemas kini",
-                        },
-                      ],
-                    },
-                    {
-                      name: "reason",
-                      label: "Sebab / rujukan semakan",
-                      type: "textarea",
-                    },
-                  ]}
-                  onSubmit={async (b) => {
-                    await api(`/representations/${r.id}/verify`, "POST", b);
-                    refresh();
-                  }}
-                />
+                {r.company.documents.some((d: any) => d.downloadable) && (
+                  <Form
+                    fields={[
+                      {
+                        name: "documentId",
+                        label: "Versi surat kuasa",
+                        options: r.company.documents
+                          .filter((d: any) => d.downloadable)
+                          .map((d: any) => ({
+                            value: d.id,
+                            label: `${d.fileName} · v${d.version}`,
+                          })),
+                      },
+                      {
+                        name: "status",
+                        label: "Keputusan",
+                        options: [
+                          { value: "VERIFIED", label: "Disahkan" },
+                          {
+                            value: "DOCUMENT_UPDATE_REQUIRED",
+                            label: "Dokumen perlu dikemas kini",
+                          },
+                        ],
+                      },
+                      {
+                        name: "reason",
+                        label: "Sebab / rujukan semakan",
+                        type: "textarea",
+                      },
+                    ]}
+                    onSubmit={async (b) => {
+                      await api(`/representations/${r.id}/verify`, "POST", {
+                        ...b,
+                        expectedRevision: r.verificationRevision,
+                      });
+                      refresh();
+                    }}
+                  />
+                )}
               </article>
             ))
           ) : (

@@ -38,3 +38,26 @@ Ini kontrak pindaan untuk PR #70. Team 2 perlu menggunakan migrasi berversi tamb
 | Pelayar | `tests/e2e/portal.spec.ts` menguji paparan kuarantin, muat turun CLEAN melalui proksi pelayar, dan pengasingan dokumen antara wakil |
 
 Ujian bersepadu menggunakan verdict pengimbas sintetik. Penerimaan operasi memerlukan pengesahan ClamAV terurus dan polisi cache proksi sebenar. Matriks ini perlu disemak Team 3 bersama bukti ujian.
+
+## Semakan susulan PR #73
+
+Calon kod `ca0633006d318af7edcd714a60b3424f58d3c758` menggantikan calon `2b6ee226` yang disemak Team 3. Matriks ini merekod bukti latihan Team 1 dan baki penerimaan bebas. Gunakan [run yang sepadan dengan commit terkini PR #73](https://github.com/BangunanDotCom/sipintar-mbsp/pull/73/checks) untuk bukti CI.
+
+| Kriteria | Bukti pada calon susulan | Baki penerimaan |
+| --- | --- | --- |
+| A-N01 | Lulus API. Kedua-dua laluan bait menolak kuarantin, verdict hilang dan dokumen warisan. Unit menolak verdict tidak dikenali. | Sahkan dengan pengimbas terurus. |
+| A-N02 | Lulus API dan unit. Digest/saiz salah dan versi diganti gagal tertutup. Ketakbolehubahan bait dikuatkuasakan oleh PostgreSQL. | Jalankan senario stor terurus tidak tersedia jika seni bina sasaran menggunakan stor luaran. |
+| A-N03 | Lulus API. Dashboard menggugurkan butiran dokumen. Paparan syarikat dan pegawai menapis syarikat, wakil, skop kuasa dan versi semasa. Sesi tamat, wakil ditarik dan PIC luar skop ditolak. Playwright menyemak pengasingan yang sama untuk akaun jemputan. | Semakan bebas Team 3. |
+| A-N04 | Lulus API. Pengimbas duplikat, hasil selepas pajakan luput, penggantian semasa imbasan dan kegagalan imbasan kekal tertutup. | Jalankan semula pada ClamAV terurus. |
+| A-N05 | Lulus API. Muat turun dan metadata peribadi menggunakan `no-store`. Akaun lain disemak semula. Playwright menguji gerbang melalui proksi setempat. | Proksi/cache yang diluluskan. |
+| A-P01 | Lulus API dengan bait tepat, header dan audit bagi pemohon serta PIC global dengan MFA. | Pengimbas dan proksi yang diluluskan. |
+| B-N01 | Lulus API. Dokumen tiada, salah wakil atau salah syarikat ditolak. Jemputan menolak penerima salah dan parameter syarikat tambahan. | Semakan bebas Team 3. |
+| B-N02 | Lulus API. Penerimaan ditolak selepas verdict luput, surat dibatalkan, kuasa ditarik atau surat pengganti sudah disahkan. | Semakan bebas dan kesetaraan Oracle. |
+| B-N03 | Lulus API. Pengesah sendiri, PIC luar skop, peranan salah, MFA tiada, CSRF/Origin salah dan sesi tamat ditolak. | Semakan bebas Team 3. |
+| B-N04 | Lulus API. Ujian PostgreSQL menunggu sehingga transaksi penerimaan disekat oleh kunci pembatalan, kemudian memeriksa penolakan dan jemputan kekal belum digunakan. Revisi lapuk dan pengesahan bersaing turut ditolak. | Semak semantik kunci Oracle. |
+| B-N05 | Lulus API. Kegagalan audit/notifikasi pengesahan menggulung balik transaksi. Penerimaan yang ditolak tidak menghasilkan keahlian. Replay ditolak. | Semakan bebas dan kesetaraan Oracle. |
+| B-P01 | Lulus API. Wakil disahkan secara bebas, satu penerimaan dibenarkan dengan bukti tepat dan mandat pengurusan langsung aktif masih boleh menjemput tanpa surat. | Semakan bebas Team 3. |
+
+Jemputan baharu mengekalkan format 64 aksara heksadesimal dan penyimpanan hash sedia ada. Token mengikat syarikat, pemberi, penerima serta mandat langsung atau versi surat kuasa dengan hash bait dan tarikh luput verdict. Penerimaan mengira semula ikatan pada bukti semasa dalam transaksi yang memegang kunci wakil, syarikat dan dokumen. Imbasan semula yang menghasilkan tarikh luput baharu memerlukan jemputan baharu. Pautan lama yang diterbitkan sebelum pengikatan ini juga perlu dijana semula. Perubahan ini menggunakan skema sedia ada. Kontrak tersebut disediakan untuk semakan kesetaraan dalam PR Oracle #74.
+
+P0 A/B kekal **OPEN** sehingga Team 3 mengesahkan calon yang sama dan menilai baki bukti operasi.

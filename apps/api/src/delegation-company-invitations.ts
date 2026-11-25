@@ -1,8 +1,17 @@
+import {
+  boundToken,
+  matchesInvitationToken,
+  invitationProofCurrent,
+  acceptanceNotice,
+} from "./invitation-proof.js";
 import type { CompanyRepresentative, Prisma } from "@prisma/client";
-import { verifiedDelegation } from "./delegation-evidence.js";
+import {
+  lockedVerifiedDelegation,
+  principalAtUse,
+} from "./delegation-evidence.js";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
-import { db, audit, notify, hash, token, origin } from "./core.js";
+import { db, notify, hash, token, origin } from "./core.js";
 import { authorize, fail } from "./auth.js";
 import { isCurrent } from "../../../packages/shared/src/index.js";
 export function validRepresentative(
@@ -32,9 +41,9 @@ async function requireManagement(
   tx: Prisma.TransactionClient,
   rep: CompanyRepresentative,
 ) {
-  if (rep.canManageRepresentatives) return;
+  if (rep.canManageRepresentatives) return null;
   try {
-    await verifiedDelegation(tx, rep);
+    return await lockedVerifiedDelegation(tx, rep);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -49,7 +58,7 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
   app.post("/api/company-invitations/preview", async (req) => {
     const s = await authorize(req, "companies");
     const { token: raw } = z
-      .object({ token: z.string().regex(/^[a-f0-9]{64}$/) })
+      .strictObject({ token: z.string().regex(/^[a-f0-9]{64}$/) })
       .parse(req.body);
     const invitation = await db.companyRepresentationInvitation.findUnique({
       where: { tokenHash: hash(raw) },
@@ -111,49 +120,62 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
         .parse(req.body);
       if (b.endsAt && new Date(b.endsAt) <= new Date())
         fail(400, "Tarikh tamat kuasa mesti pada masa hadapan.");
-      const raw = token();
-      const { invitation, recipientId } = await db.$transaction(async (tx) => {
-        const rep = await requireMembership(tx, s.userId, id);
-        await requireManagement(tx, rep);
-        const recipient = await tx.user.findUnique({
-          where: { email: b.email },
-        });
-        if (
-          !recipient ||
-          !recipient.emailVerified ||
-          recipient.kind !== "APPLICANT" ||
-          recipient.status !== "ACTIVE"
-        )
-          fail(
-            400,
-            "Penerima perlu mendaftar dan mengesahkan akaun pemohon dahulu.",
+      const { invitation, recipientId, raw } = await db.$transaction(
+        async (tx) => {
+          await principalAtUse(tx, s, "COMPANY");
+          const rep = await requireMembership(tx, s.userId, id);
+          const proof = await requireManagement(tx, rep);
+          const recipient = await tx.user.findUnique({
+            where: { email: b.email },
+          });
+          if (
+            !recipient ||
+            !recipient.emailVerified ||
+            recipient.kind !== "APPLICANT" ||
+            recipient.status !== "ACTIVE"
+          )
+            fail(
+              400,
+              "Penerima perlu mendaftar dan mengesahkan akaun pemohon dahulu.",
+            );
+          if (
+            await tx.companyRepresentative.findUnique({
+              where: {
+                userId_companyId: { userId: recipient.id, companyId: id },
+              },
+            })
+          )
+            fail(
+              409,
+              "Pengguna telah mempunyai rekod perwakilan syarikat ini.",
+            );
+          const raw = boundToken(
+            token().slice(0, 32),
+            rep,
+            recipient.id,
+            proof,
           );
-        if (
-          await tx.companyRepresentative.findUnique({
-            where: {
-              userId_companyId: { userId: recipient.id, companyId: id },
+          const invitation = await tx.companyRepresentationInvitation.create({
+            data: {
+              companyId: id,
+              recipientId: recipient.id,
+              invitedBy: s.userId,
+              authorityType: b.authorityType,
+              authorityEndsAt: b.endsAt ? new Date(b.endsAt) : null,
+              tokenHash: hash(raw),
+              expiresAt: new Date(Date.now() + 24 * 3600000),
             },
-          })
-        )
-          fail(409, "Pengguna telah mempunyai rekod perwakilan syarikat ini.");
-        const invitation = await tx.companyRepresentationInvitation.create({
-          data: {
-            companyId: id,
-            recipientId: recipient.id,
-            invitedBy: s.userId,
-            authorityType: b.authorityType,
-            authorityEndsAt: b.endsAt ? new Date(b.endsAt) : null,
-            tokenHash: hash(raw),
-            expiresAt: new Date(Date.now() + 24 * 3600000),
-          },
-        });
-        return { invitation, recipientId: recipient.id };
-      });
-      await audit(
-        s.userId,
-        s.activeRole,
-        "COMPANY_REPRESENTATIVE_INVITED",
-        invitation.id,
+          });
+          await tx.auditLog.create({
+            data: {
+              actorId: s.userId,
+              activeRole: s.activeRole,
+              action: "COMPANY_REPRESENTATIVE_INVITED",
+              target: invitation.id,
+            },
+          });
+          return { invitation, recipientId: recipient.id, raw };
+        },
       );
       await notify(
         recipientId,
@@ -174,7 +196,7 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
     if (!s.user.identificationHash)
       fail(409, "Lengkapkan nombor pengenalan dalam Profil saya dahulu.");
     const b = z
-      .object({ token: z.string().regex(/^[a-f0-9]{64}$/) })
+      .strictObject({ token: z.string().regex(/^[a-f0-9]{64}$/) })
       .parse(req.body);
     const representative = await db.$transaction(async (tx) => {
       const invitation = await tx.companyRepresentationInvitation.findUnique({
@@ -191,13 +213,20 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
         (invitation.authorityEndsAt && invitation.authorityEndsAt <= now)
       )
         fail(400, "Jemputan tidak sah, luput atau bukan untuk akaun ini.");
+      await tx.$queryRaw`SELECT id FROM users
+        WHERE id IN (${s.userId},${invitation.invitedBy}) ORDER BY id FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM user_role_assignments
+        WHERE "userId" IN (${s.userId},${invitation.invitedBy}) ORDER BY "userId",id FOR SHARE`;
+      await principalAtUse(tx, s, "COMPANY");
       const membership = await requireMembership(
         tx,
         invitation.invitedBy,
         invitation.companyId,
         403,
       );
-      await requireManagement(tx, membership);
+      const proof = await requireManagement(tx, membership);
+      if (!matchesInvitationToken(b.token, membership, s.userId, proof))
+        fail(403, "Bukti kuasa jemputan telah berubah. Minta jemputan baharu.");
       const inviter = await tx.companyRepresentative.findUnique({
         where: {
           userId_companyId: {
@@ -213,21 +242,36 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
           },
         },
       });
+      const acceptedAt = new Date();
       if (
         !inviter ||
-        !validRepresentative(inviter, now) ||
+        !validRepresentative(inviter, acceptedAt) ||
         inviter.user.status !== "ACTIVE" ||
         !inviter.user.emailVerified ||
         !inviter.user.roles.some(
           (a) =>
-            isCurrent(a, now) &&
+            isCurrent(a, acceptedAt) &&
             a.role.permissions.some((p) => p.action === "companies"),
         )
       )
         fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
+      if (
+        !validRepresentative(membership, acceptedAt) ||
+        (invitation.authorityEndsAt &&
+          invitation.authorityEndsAt <= acceptedAt) ||
+        !invitationProofCurrent(proof, acceptedAt)
+      )
+        fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
       const claimed = await tx.companyRepresentationInvitation.updateMany({
-        where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: now } },
-        data: { acceptedAt: now },
+        where: {
+          id: invitation.id,
+          companyId: invitation.companyId,
+          recipientId: s.userId,
+          invitedBy: invitation.invitedBy,
+          acceptedAt: null,
+          expiresAt: { gt: acceptedAt },
+        },
+        data: { acceptedAt },
       });
       if (!claimed.count) fail(400, "Jemputan telah digunakan.");
       const r = await tx.companyRepresentative.create({
@@ -247,14 +291,23 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
           target: r.id,
         },
       });
+      await tx.notification.create({
+        data: { userId: s.userId, ...acceptanceNotice },
+      });
+      const finalCheck = new Date();
+      if (
+        !validRepresentative(membership, finalCheck) ||
+        !inviter.user.roles.some(
+          (role) =>
+            isCurrent(role, finalCheck) &&
+            role.role.permissions.some((p) => p.action === "companies"),
+        ) ||
+        !invitationProofCurrent(proof, finalCheck) ||
+        (invitation.authorityEndsAt && invitation.authorityEndsAt <= finalCheck)
+      )
+        fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
       return r;
     });
-    await notify(
-      s.userId,
-      "COMPANY",
-      "Perwakilan syarikat diterima",
-      "Anda kini boleh mengurus profil syarikat yang diwakili. Pengesahan rasmi dokumen menunggu semakan pegawai MBSP.",
-    );
     return {
       id: representative.id,
       message:

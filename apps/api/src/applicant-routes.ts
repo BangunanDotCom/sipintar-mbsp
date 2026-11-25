@@ -85,7 +85,7 @@ export async function applicantRoutes(
   app.get("/api/companies", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store");
     const s = await authorize(req, "companies", auth);
-    return repository.companies(s.userId);
+    return repository.companies(s, true);
   });
   app.post("/api/companies", async (req, reply) => {
     const s = await authorize(req, "companies", auth);

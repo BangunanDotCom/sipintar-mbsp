@@ -314,6 +314,7 @@ export async function captureInTransaction(
       }),
     },
   });
+  if (authority) await tx.proof(authority);
   return { id: row.id, version: row.draftVersion };
 }
 

@@ -1,8 +1,31 @@
 # Matriks calon integrasi surat kuasa P0
 
+## Calon gabungan selepas audit `850ad35`
+
+Calon pada Draft PR #74 mengambil kontrak PostgreSQL `0fe8c7a3984e9472dd38ad2bc686a87f37952a9d` dan adapter Oracle `3d1477c927e1dad5294d081b258a73b768b6ac34`. Fungsi bersama mengira ikatan token v2 menggunakan identiti syarikat, rekod wakil pemberi, penerima dan mandat. Bagi surat kuasa, ikatan turut memerlukan ID, versi, SHA-256 dan tarikh CLEAN. Simpanan kekal hash token; migrasi tambahan tidak diperlukan. Jemputan lama perlu dikeluarkan semula. Penerimaan mengesahkan identiti, kuasa dan kelayakan semasa dalam transaksi yang menulis keahlian, tuntutan, audit dan notifikasi. Serahan menyemak semula bukti terkunci selepas penulisan audit sebelum komit.
+
+| ID | Bukti pada calon gabungan | Baki penerimaan |
+| --- | --- | --- |
+| A-N01 | Dua laluan bait menolak setiap status kuarantin, LEGACY dan CLEAN tanpa bukti. | Team 3 ulang pada SHA calon. |
+| A-N02 | Perbezaan bait/saiz dan kegagalan baca yang disuntik selepas gerbang menghasilkan respons bersih tanpa lampiran atau bait separa pada kedua-dua enjin. | Ulang gangguan dengan stor yang diluluskan JTIK. |
+| A-N03 | Dashboard menggugurkan metadata surat kuasa. Paparan syarikat dan PIC dihadkan kepada syarikat, wakil, skop kuasa dan versi semasa. Playwright menguji dua akaun dan dua syarikat. | Semakan bebas Team 3. |
+| A-N04 | Penarikan kuasa ketika pengimbas memegang pajakan menolak verdict lapuk. Runtime Oracle tidak boleh menulis verdict dan worker tidak boleh mengesahkan wakil. | ClamAV terurus dan grants SE2. |
+| A-N05 | Playwright melalui proksi Vite, Fastify no-store dan permintaan semula akaun lain. | Jalankan probe cache/redaksi pada proksi TLS JTIK. |
+| A-P01 | Kedua-dua laluan memulangkan bait dan audit yang dijangka untuk CLEAN sintetik. | Ulang dengan scanner terurus. |
+| B-N01 | Penerima lain, dokumen silang wakil/syarikat dan versi tiada ditolak. | Semakan bebas Team 3. |
+| B-N02 | Verdict luput, imbasan semula, versi ganti yang diluluskan, penarikan dokumen dan kehilangan mandat menolak jemputan asal. Ujian melambatkan audit serahan sehingga CLEAN luput dan mengesahkan serahan dan audit tidak dikomit. | Pengesahan bebas dan Oracle 19.30 SE2. |
+| B-N03 | Peranan, daerah, MFA, Origin, CSRF dan pengesahan sendiri diuji dalam suite P0. | Pengesahan bebas Team 3. |
+| B-N04 | Penerimaan bertindih dengan pembatalan menghasilkan penolakan selepas kunci dilepaskan. | Ulang di bawah beban SE2. |
+| B-N05 | Kegagalan audit/notifikasi dan replay diperiksa. Kegagalan penerimaan meninggalkan tuntutan kosong serta sifar keahlian, audit dan notifikasi kejayaan. | Latihan DR dan penghantaran notifikasi di staging. |
+| B-P01 | Jemputan bukti tepat dan mandat langsung masing-masing diterima sekali. | Pengesahan bebas Team 3. |
+
+Oracle Free 23.26.4, PostgreSQL dan Mailpit menggunakan data sintetik. Skrip probe dan checklist JTIK disertakan. Bukti bagi Oracle 19.30 SE2, ClamAV terurus, cache/redaksi proksi produksi, prestasi, backup fizikal dan DR masih menunggu persekitaran yang diluluskan. P0 A/B masih terbuka dan Personal Demo kekal ditangguhkan. [Audit PR #72](https://github.com/BangunanDotCom/sipintar-mbsp/blob/850ad35/docs/audit-pr67/AUDIT-CALON-P0.md) · [Checklist JTIK](ORACLE-JTIK-CHECKLIST.md)
+
 Calon berasingan `integration/oracle-team2-p0` bermula pada kepala Draft PR #71 `035fb7ebf14441d1dbadaeb5849dc6a55215bf86`. Sumber PostgreSQL Team 1 dipinkan pada `2b6ee2268cb44bca74ecfb9e6e7b0c672e7b1cec` dan kriteria penerimaan pada draf audit `4a15d22c615f121e5e1060776ae0ac5d8f604bdb`. Head Team 1 yang lebih baharu daripada `f0fdb02` menyemak semula bukti hidup ketika mencipta dan menerima jemputan. [Calon Team 1](https://github.com/BangunanDotCom/sipintar-mbsp/commit/2b6ee2268cb44bca74ecfb9e6e7b0c672e7b1cec) · [Kriteria A/B](https://github.com/BangunanDotCom/sipintar-mbsp/blob/4a15d22c615f121e5e1060776ae0ac5d8f604bdb/docs/audit-pr67/PENERIMAAN-SURAT-KUASA.md) · [Draft PR #71](https://github.com/BangunanDotCom/sipintar-mbsp/pull/71)
 
 Calon mengekalkan migrasi, gerbang HTTP dan worker PostgreSQL Team 1. Ia menyambungkan bukti berikat kepada adapter Team 2 tanpa mengubah cabang sumber. Oracle menggunakan migrasi tambahan 003 yang mengasingkan rekod warisan daripada versi baharu, mengikat FK komposit wakil–versi–syarikat dan mengehadkan setiap wakil kepada satu versi semasa. Runtime Oracle memasukkan rekod PENDING melalui lalai skema. Akaun worker berasingan memiliki hak kemas kini lajur verdict dan pajakan. Kunci Oracle disusun mengikut pengguna/peranan/sesi, syarikat, wakil dan dokumen agar sepadan dengan kunci draf dan jemputan sedia ada. PostgreSQL terus menggunakan kunci dalam pengendali Team 1.
+
+## Bukti terdahulu pada PR #74 `3d1477c`
 
 ## Kriteria penerimaan
 

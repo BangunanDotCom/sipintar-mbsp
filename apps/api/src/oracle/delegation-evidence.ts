@@ -72,7 +72,7 @@ export function oracleDelegationEvidence(pool: OraclePool) {
         { representativeId },
       );
     },
-    async verified(
+    async lockedVerified(
       connection: Connection,
       rep: {
         id: string;
@@ -104,7 +104,23 @@ export function oracleDelegationEvidence(pool: OraclePool) {
           fail(409, "Surat kuasa versi semasa belum dapat disahkan.");
         throw error;
       }
-      return { id: doc.id, version: doc.version, sha256: doc.sha256 };
+      return doc;
+    },
+    async verified(
+      connection: Connection,
+      rep: {
+        id: string;
+        companyId: string;
+        status: string;
+        authorityType: string;
+        verifiedDocumentId: string | null;
+      },
+    ) {
+      const { id, version, sha256 } = await this.lockedVerified(
+        connection,
+        rep,
+      );
+      return { id, version, sha256 };
     },
   };
 }

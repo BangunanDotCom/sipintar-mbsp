@@ -1,3 +1,4 @@
+import { oracleDelegationPrincipal } from "./delegation-principal.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import oracledb, { type Connection } from "oracledb";
@@ -6,6 +7,7 @@ import type { AuthRepository } from "../auth-repository.js";
 import { authorize, fail } from "../auth.js";
 import {
   cleanDelegation,
+  isCurrentDelegation,
   delegationDigest,
   delegationSummary,
 } from "../delegation-evidence.js";
@@ -48,9 +50,6 @@ export async function oracleDelegationRoutes(
   const reps = oracleTable(pool, "STL_COMPANY_REPRESENTATIVES");
   const companies = oracleTable(pool, "STL_COMPANIES");
   const users = oracleTable(pool, "STL_USERS");
-  const sessions = oracleTable(pool, "STL_SESSIONS");
-  const assignments = oracleTable(pool, "STL_USER_ROLE_ASSIGNMENTS");
-  const permissions = oracleTable(pool, "STL_PERMISSIONS");
   const configs = oracleTable(pool, "STL_SYSTEM_CONFIGURATIONS");
   const notifications = oracleTable(pool, "STL_NOTIFICATIONS");
   const evidence = oracleDelegationEvidence(pool);
@@ -63,47 +62,7 @@ export async function oracleDelegationRoutes(
     R.ENDS_AT AS "endsAt",R.VERIFIED_BY AS "verifiedBy",R.VERIFIED_DOCUMENT_ID AS "verifiedDocumentId",
     R.VERIFICATION_REVISION AS "verificationRevision",R.CAN_MANAGE_REPRESENTATIVES AS "canManageRepresentatives"`;
 
-  async function principalAtUse(
-    connection: Connection,
-    principal: Principal,
-    pic: boolean,
-  ) {
-    const { id, userId, csrfHash, activeRole } = principal;
-    if (pic && activeRole !== "PIC_KAWASAN")
-      fail(403, "Skop sesi tidak sah untuk surat kuasa.");
-    await connection.execute(
-      `SELECT ID FROM ${users} WHERE ID=:userId FOR UPDATE WAIT 5`,
-      { userId },
-    );
-    await connection.execute(
-      `SELECT ID FROM ${assignments} WHERE USER_ID=:userId AND ROLE_ID=:activeRole ORDER BY ID FOR UPDATE WAIT 5`,
-      { userId, activeRole },
-    );
-    await connection.execute(
-      `SELECT ID FROM ${sessions} WHERE ID=:id FOR UPDATE WAIT 5`,
-      { id },
-    );
-    const [current] = await queryRows(
-      connection,
-      `SELECT 1 FROM ${sessions} S JOIN ${users} U ON U.ID=S.USER_ID
-       WHERE S.ID=:id AND S.USER_ID=:userId AND S.CSRF_HASH=:csrfHash AND S.ACTIVE_ROLE=:activeRole
-         AND S.EXPIRES_AT>SYSTIMESTAMP AND U.KIND=:kind AND U.STATUS='ACTIVE' AND U.EMAIL_VERIFIED=1
-         ${pic ? "AND S.MFA_VERIFIED=1" : ""} AND EXISTS (
-           SELECT 1 FROM ${assignments} A JOIN ${permissions} P ON P.ROLE_ID=A.ROLE_ID
-           WHERE A.USER_ID=S.USER_ID AND A.ROLE_ID=S.ACTIVE_ROLE AND A.STATUS='ACTIVE'
-             AND A.STARTS_AT<=SYSTIMESTAMP AND (A.ENDS_AT IS NULL OR A.ENDS_AT>SYSTIMESTAMP)
-             AND P.ACTION=:action ${pic ? "AND A.DISTRICT_ID IS NULL" : ""})`,
-      {
-        id,
-        userId,
-        csrfHash,
-        activeRole,
-        kind: pic ? "OFFICER" : "APPLICANT",
-        action: pic ? "representation.verify" : "companies",
-      },
-    );
-    if (!current) fail(403, "Skop sesi tidak sah untuk surat kuasa.");
-  }
+  const principalAtUse = oracleDelegationPrincipal(pool);
 
   async function member(
     connection: Connection,
@@ -391,7 +350,7 @@ export async function oracleDelegationRoutes(
         connection,
         `SELECT ${memberFields},C.NAME AS "companyName",U.NAME AS "userName" FROM ${reps} R
          JOIN ${companies} C ON C.ID=R.COMPANY_ID JOIN ${users} U ON U.ID=R.USER_ID
-         WHERE C.STATUS='ACTIVE' AND ${currentRep} ORDER BY R.ID FETCH FIRST 100 ROWS ONLY`,
+         WHERE C.STATUS='ACTIVE' AND ${currentRep} ORDER BY R.STARTS_AT DESC,R.ID FETCH FIRST 100 ROWS ONLY`,
         {},
       );
       const result = [];
@@ -402,7 +361,12 @@ export async function oracleDelegationRoutes(
         ...rep
       } of list) {
         const documents = (await evidence.current(connection, rep.id))
-          .filter((doc) => doc.authorityType === rep.authorityType)
+          .filter(
+            (doc) =>
+              doc.companyId === rep.companyId &&
+              doc.authorityType === rep.authorityType &&
+              isCurrentDelegation(doc, new Date()),
+          )
           .map((doc) => delegationSummary(doc));
         result.push({
           ...rep,

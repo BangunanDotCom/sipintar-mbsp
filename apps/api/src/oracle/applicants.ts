@@ -1,4 +1,8 @@
-import { delegationSummary } from "../delegation-evidence.js";
+import { oracleDelegationPrincipal } from "./delegation-principal.js";
+import {
+  delegationSummary,
+  isCurrentDelegation,
+} from "../delegation-evidence.js";
 import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Company, CompanyRepresentative, District } from "@prisma/client";
@@ -46,6 +50,7 @@ export function createOracleApplicantRepository(
   pool: OraclePool,
 ): ApplicantRepository {
   const delegationEvidence = oracleDelegationEvidence(pool);
+  const principalAtUse = oracleDelegationPrincipal(pool);
   const users = oracleTable(pool, "STL_USERS");
   const districts = oracleTable(pool, "STL_DISTRICTS");
   const companies = oracleTable(pool, "STL_COMPANIES");
@@ -138,33 +143,52 @@ export function createOracleApplicantRepository(
           {},
         ),
       ),
-    companies: (userId) =>
+    companies: (principal, includeDocuments) =>
       pool.transaction(async (connection) => {
-        await connection.execute("SET TRANSACTION READ ONLY");
-        const list = await queryRows<RepRow>(
+        await principalAtUse(connection, principal, false);
+        const userId = principal.userId;
+        const now = new Date();
+        const list = await queryRows<{ ID: string; COMPANY_ID: string }>(
           connection,
-          `SELECT ${representativeFields} FROM ${representatives} WHERE USER_ID=:userId AND ${validRepresentative} ORDER BY ID`,
+          `SELECT ID,COMPANY_ID FROM ${representatives} WHERE USER_ID=:userId AND ${validRepresentative} ORDER BY COMPANY_ID,ID`,
           { userId },
         );
         const output: Awaited<ReturnType<ApplicantRepository["companies"]>> =
           [];
-        for (const row of list) {
-          const company = await findCompany(connection, row.companyId);
+        for (const { ID: id, COMPANY_ID: companyId } of list) {
+          await lockCompany(connection, companyId);
+          await connection.execute(
+            `SELECT ID FROM ${representatives} WHERE ID=:id FOR UPDATE WAIT 5`,
+            { id },
+          );
+          const [row] = await queryRows<RepRow>(
+            connection,
+            `SELECT ${representativeFields} FROM ${representatives} WHERE ID=:id AND USER_ID=:userId AND ${validRepresentative}`,
+            { id, userId },
+          );
+          if (!row) continue;
+          const company = await findCompany(connection, companyId);
           if (company.status !== "ACTIVE") continue;
+          const { verifiedDocumentId, ...rep } = representativeDto(row);
           const files = (await delegationEvidence.current(connection, row.id))
-            .filter((doc) => doc.authorityType === row.authorityType)
-            .map((doc) => ({ ...delegationSummary(doc), status: row.status }));
+            .filter(
+              (doc) =>
+                doc.companyId === row.companyId &&
+                doc.authorityType === row.authorityType &&
+                isCurrentDelegation(doc, now),
+            )
+            .map((doc) => delegationSummary(doc, now));
           const status =
-            row.status === "VERIFIED" &&
+            rep.status === "VERIFIED" &&
             !files.some(
-              (doc) => doc.id === row.verifiedDocumentId && doc.downloadable,
+              (doc) => doc.id === verifiedDocumentId && doc.downloadable,
             )
               ? "DOCUMENT_UPDATE_REQUIRED"
-              : row.status;
+              : rep.status;
           output.push({
-            ...representativeDto(row),
+            ...rep,
             status,
-            company: { ...company, documents: files },
+            company: { ...company, documents: includeDocuments ? files : [] },
           });
         }
         return output;

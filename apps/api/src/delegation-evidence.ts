@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { CompanyRepresentative, Prisma } from "@prisma/client";
-import { fail } from "./auth.js";
+import { isCurrent } from "../../../packages/shared/src/index.js";
+import { type session, fail } from "./auth.js";
 
 export const delegationMetadata = {
   id: true,
@@ -101,7 +102,7 @@ export async function delegationBytes(
 }
 
 // Membership alone is enough for saving drafts. Submission requires a live proof.
-export async function verifiedDelegation(
+export async function lockedVerifiedDelegation(
   tx: Prisma.TransactionClient,
   rep: CompanyRepresentative,
 ) {
@@ -121,7 +122,15 @@ export async function verifiedDelegation(
   } catch {
     fail(409, "Surat kuasa versi semasa belum dapat disahkan.");
   }
-  return { id: doc.id, version: doc.version, sha256: doc.sha256 };
+  return doc;
+}
+
+export async function verifiedDelegation(
+  tx: Prisma.TransactionClient,
+  rep: CompanyRepresentative,
+) {
+  const { id, version, sha256 } = await lockedVerifiedDelegation(tx, rep);
+  return { id, version, sha256 };
 }
 
 export function delegationSummary(doc: DelegationMetadata, now = new Date()) {
@@ -134,4 +143,116 @@ export function delegationSummary(doc: DelegationMetadata, now = new Date()) {
     scanStatus: doc.scanStatus,
     downloadable: cleanDelegation(doc, now),
   };
+}
+
+export async function principalAtUse(
+  tx: Prisma.TransactionClient,
+  observed: Pick<
+    Awaited<ReturnType<typeof session>>,
+    "userId" | "id" | "activeRole" | "csrfHash"
+  >,
+  mode: "PIC" | "COMPANY",
+) {
+  await tx.$queryRaw`SELECT id FROM users WHERE id = ${observed.userId} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM user_role_assignments WHERE "userId" = ${observed.userId} AND "roleId" = ${observed.activeRole} ORDER BY id FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM sessions WHERE id = ${observed.id} FOR SHARE`;
+  const current = await tx.session.findFirst({
+    where: {
+      id: observed.id,
+      userId: observed.userId,
+      activeRole: observed.activeRole,
+      csrfHash: observed.csrfHash,
+      expiresAt: { gt: new Date() },
+      user: {
+        kind: mode === "PIC" ? "OFFICER" : "APPLICANT",
+        status: "ACTIVE",
+        emailVerified: true,
+      },
+      ...(mode === "PIC" && { mfaVerified: true, activeRole: "PIC_KAWASAN" }),
+    },
+    include: {
+      user: {
+        include: {
+          roles: { include: { role: { include: { permissions: true } } } },
+        },
+      },
+    },
+  });
+  if (
+    !current ||
+    !current.user.roles.some(
+      (role) =>
+        role.roleId === current.activeRole &&
+        isCurrent(role) &&
+        (mode === "COMPANY" || role.districtId === null) &&
+        role.role.permissions.some(
+          (p) =>
+            p.action ===
+            (mode === "PIC" ? "representation.verify" : "companies"),
+        ),
+    )
+  )
+    fail(403, "Skop sesi tidak sah untuk surat kuasa.");
+}
+
+export async function currentDelegationSummaries(
+  tx: Prisma.TransactionClient,
+  reps: Pick<CompanyRepresentative, "id" | "companyId" | "authorityType">[],
+  now: Date,
+) {
+  const docs = await tx.delegationDocument.findMany({
+    where: {
+      OR: reps.map((rep) => ({
+        representativeId: rep.id,
+        companyId: rep.companyId,
+        authorityType: rep.authorityType,
+      })),
+      version: { gt: 0 },
+      validFrom: { lte: now },
+      supersededAt: null,
+      revokedAt: null,
+      AND: [{ OR: [{ validUntil: null }, { validUntil: { gt: now } }] }],
+    },
+    select: delegationMetadata,
+  });
+  const summaries = new Map<string, ReturnType<typeof delegationSummary>[]>();
+  for (const doc of docs) {
+    if (doc.representativeId && isCurrentDelegation(doc, now))
+      summaries.set(doc.representativeId, [delegationSummary(doc, now)]);
+  }
+  return summaries;
+}
+
+export async function companyDelegationViews(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  includeDocuments: boolean,
+) {
+  const now = new Date();
+  const reps = await tx.companyRepresentative.findMany({
+    where: {
+      userId,
+      company: { status: "ACTIVE" },
+      status: { not: "REVOKED" },
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+    include: { company: true },
+  });
+  const summaries = await currentDelegationSummaries(tx, reps, now);
+  return reps.map(({ verifiedDocumentId, ...rep }) => {
+    const documents = summaries.get(rep.id) ?? [];
+    const status =
+      rep.status === "VERIFIED" &&
+      !documents.some(
+        (doc) => doc.id === verifiedDocumentId && doc.downloadable,
+      )
+        ? "DOCUMENT_UPDATE_REQUIRED"
+        : rep.status;
+    return {
+      ...rep,
+      status,
+      company: { ...rep.company, documents: includeDocuments ? documents : [] },
+    };
+  });
 }

@@ -6,7 +6,6 @@ import { authorize, fail } from "./auth.js";
 import { db, audit } from "./core.js";
 import { validRepresentative } from "./company-invitations.js";
 import { delegationLimitMiB, validateDelegationPdf } from "./upload-policy.js";
-import { isCurrent } from "../../../packages/shared/src/index.js";
 import {
   cleanDelegation,
   delegationBytes,
@@ -14,10 +13,11 @@ import {
   delegationMetadata,
   delegationSummary,
   lockedDelegation,
+  principalAtUse,
+  currentDelegationSummaries,
 } from "./delegation-evidence.js";
 
 type Tx = Prisma.TransactionClient;
-type Principal = Awaited<ReturnType<typeof authorize>>;
 const param = z.object({ id: z.uuid() });
 const currentDocument = { supersededAt: null, revokedAt: null };
 const evidenceUnavailable = () => fail(404, "Dokumen tidak ditemui.");
@@ -27,53 +27,6 @@ const pdfHeaders = {
   "Content-Security-Policy": "sandbox",
   "Referrer-Policy": "no-referrer",
 };
-
-async function principalAtUse(
-  tx: Tx,
-  observed: Principal,
-  mode: "PIC" | "COMPANY",
-) {
-  await tx.$queryRaw`SELECT id FROM users WHERE id = ${observed.userId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM user_role_assignments WHERE "userId" = ${observed.userId} AND "roleId" = ${observed.activeRole} ORDER BY id FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM sessions WHERE id = ${observed.id} FOR SHARE`;
-  const current = await tx.session.findFirst({
-    where: {
-      id: observed.id,
-      userId: observed.userId,
-      activeRole: observed.activeRole,
-      csrfHash: observed.csrfHash,
-      expiresAt: { gt: new Date() },
-      user: {
-        kind: mode === "PIC" ? "OFFICER" : "APPLICANT",
-        status: "ACTIVE",
-        emailVerified: true,
-      },
-      ...(mode === "PIC" && { mfaVerified: true, activeRole: "PIC_KAWASAN" }),
-    },
-    include: {
-      user: {
-        include: {
-          roles: { include: { role: { include: { permissions: true } } } },
-        },
-      },
-    },
-  });
-  if (
-    !current ||
-    !current.user.roles.some(
-      (role) =>
-        role.roleId === current.activeRole &&
-        isCurrent(role) &&
-        (mode === "COMPANY" || role.districtId === null) &&
-        role.role.permissions.some(
-          (p) =>
-            p.action ===
-            (mode === "PIC" ? "representation.verify" : "companies"),
-        ),
-    )
-  )
-    fail(403, "Skop sesi tidak sah untuk surat kuasa.");
-}
 
 async function members(
   tx: Tx,
@@ -357,42 +310,35 @@ export async function delegationRoutes(app: FastifyInstance) {
   app.get("/api/representations", async (req, reply) => {
     reply.headers(pdfHeaders);
     const s = await authorize(req, "representation.verify");
-    return db.$transaction(async (tx) => {
-      await principalAtUse(tx, s, "PIC");
-      const reps = await tx.companyRepresentative.findMany({
-        where: {
-          status: { not: "REVOKED" },
-          company: { status: "ACTIVE" },
-          startsAt: { lte: new Date() },
-          OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
-        },
-        take: 100,
-        include: {
-          user: { select: { id: true, name: true } },
-          company: { select: { id: true, name: true } },
-        },
-      });
-      const docs = await tx.delegationDocument.findMany({
-        where: {
-          representativeId: { in: reps.map((r) => r.id) },
-          ...currentDocument,
-        },
-        select: delegationMetadata,
-      });
-      return reps.map((rep) => ({
-        ...rep,
-        company: {
-          ...rep.company,
-          documents: docs
-            .filter(
-              (doc) =>
-                doc.representativeId === rep.id &&
-                doc.authorityType === rep.authorityType,
-            )
-            .map((doc) => delegationSummary(doc)),
-        },
-      }));
-    });
+    return db.$transaction(
+      async (tx) => {
+        await principalAtUse(tx, s, "PIC");
+        const reps = await tx.companyRepresentative.findMany({
+          where: {
+            status: { not: "REVOKED" },
+            company: { status: "ACTIVE" },
+            startsAt: { lte: new Date() },
+            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          },
+          orderBy: [{ startsAt: "desc" }, { id: "asc" }],
+          take: 100,
+          include: {
+            user: { select: { id: true, name: true } },
+            company: { select: { id: true, name: true } },
+          },
+        });
+        const summaries = await currentDelegationSummaries(
+          tx,
+          reps,
+          new Date(),
+        );
+        return reps.map(({ verifiedDocumentId: _proof, ...rep }) => ({
+          ...rep,
+          company: { ...rep.company, documents: summaries.get(rep.id) ?? [] },
+        }));
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
   });
 
   app.post("/api/representations/:id/verify", async (req) => {

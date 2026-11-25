@@ -1,8 +1,10 @@
+import * as pgEvidence from "../apps/api/src/delegation-evidence";
+import * as oraEvidence from "../apps/api/src/oracle/delegation-evidence";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { parse } from "dotenv";
 import oracledb, { type BindParameters } from "oracledb";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance, HTTPMethods } from "fastify";
 import { buildApp, buildOracleLabApp } from "../apps/api/src/app";
 import { postgresAuth } from "../apps/api/src/auth-repository";
@@ -695,6 +697,346 @@ for (const oracle of [false, true]) {
         verificationRevision: 3,
       });
       expect(await decisions(otherRep)).toBe(1);
+    });
+    it("A-N04 discards a clean response when the representative is revoked during scanning", async () => {
+      const f = await fixture();
+      let started!: () => void, finish!: () => void;
+      const entered = new Promise<void>((r) => {
+        started = r;
+      });
+      const held = new Promise<void>((r) => {
+        finish = r;
+      });
+      const scanning = scan(f.id, {
+        scan: async () => {
+          started();
+          await held;
+          return clean.scan();
+        },
+      });
+      try {
+        await Promise.race([
+          entered,
+          scanning.then(() => {
+            throw Error("fixture never held a lease");
+          }),
+        ]);
+        if (oracle)
+          await sql(
+            "UPDATE STL_COMPANY_REPRESENTATIVES SET STATUS='REVOKED' WHERE ID=:id",
+            { id: f.rep },
+          );
+        else
+          await db.companyRepresentative.update({
+            where: { id: f.rep },
+            data: { status: "REVOKED" },
+          });
+      } finally {
+        finish();
+      }
+      expect(await scanning).toBe(false);
+      expect(
+        (await request(f.applicant, `/api/documents/${f.id}`)).statusCode,
+      ).toBe(404);
+      expect(
+        (await request(f.reviewer, `/api/representation-documents/${f.id}`))
+          .statusCode,
+      ).toBe(404);
+    });
+
+    it("A-N02 aborts a read after the eligibility gate without emitting partial PDF bytes", async () => {
+      const f = await fixture();
+      expect(await scan(f.id)).toBe(true);
+      const readFailure = Object.assign(
+        Error("synthetic private BLOB read error"),
+        { code: "ECONNRESET" },
+      );
+      const createEvidence = oraEvidence.oracleDelegationEvidence;
+      const mocked = oracle
+        ? vi
+            .spyOn(oraEvidence, "oracleDelegationEvidence")
+            .mockImplementation((p) => ({
+              ...createEvidence(p),
+              bytes: vi.fn().mockRejectedValue(readFailure),
+            }))
+        : vi
+            .spyOn(pgEvidence, "delegationBytes")
+            .mockRejectedValue(readFailure);
+      let failureApp: FastifyInstance | undefined;
+      try {
+        failureApp = oracle
+          ? await buildOracleLabApp(createOracleRepositories(runtime!))
+          : await buildApp();
+        for (const [path, who] of [
+          [`/api/documents/${f.id}`, f.applicant],
+          [`/api/representation-documents/${f.id}`, f.reviewer],
+        ] as const) {
+          const denied = await failureApp.inject({
+            url: path,
+            headers: who.headers,
+          });
+          expect(denied.statusCode, denied.body).toBe(503);
+          expect(denied.json().code).toBe("DATABASE_UNAVAILABLE");
+          expect(denied.headers["content-disposition"]).toBeUndefined();
+          expect(denied.body).not.toMatch(/%PDF|EXAMPLE P0|synthetic private/);
+        }
+      } finally {
+        mocked.mockRestore();
+        await failureApp?.close();
+      }
+      if (scanner)
+        await expect(
+          scanner.transaction((c) =>
+            c.execute(
+              `UPDATE ${scanner!.owner}.STL_COMPANY_REPRESENTATIVES SET STATUS='VERIFIED' WHERE ID=:id`,
+              { id: f.rep },
+            ),
+          ),
+        ).rejects.toThrow(/ORA-(01031|41900)/);
+      const recovered = await request(f.applicant, `/api/documents/${f.id}`);
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      expect(recovered.rawPayload).toEqual(syntheticPdf);
+    });
+
+    async function inviteFixture(direct = false) {
+      const f = await fixture();
+      if (!direct) {
+        if (oracle)
+          await sql(
+            "UPDATE STL_COMPANY_REPRESENTATIVES SET CAN_MANAGE_REPRESENTATIVES=0 WHERE ID=:id",
+            { id: f.rep },
+          );
+        else
+          await db.companyRepresentative.update({
+            where: { id: f.rep },
+            data: { canManageRepresentatives: false },
+          });
+        expect(await scan(f.id)).toBe(true);
+        expect((await f.verify()).statusCode).toBe(200);
+      }
+      const recipient = await actor();
+      const issued = await request(
+        f.applicant,
+        `/api/companies/${f.companyId}/invitations`,
+        "POST",
+        { email: recipient.email, authorityType: "PEKERJA" },
+      );
+      expect(issued.statusCode, issued.body).toBe(200);
+      let raw: string | null = null;
+      for (let attempt = 0; attempt < 20 && !raw; attempt++) {
+        const query = encodeURIComponent("to:" + recipient.email);
+        const list = await fetch(
+          "http://127.0.0.1:8025/api/v1/search?query=" + query,
+        ).then((r) => r.json());
+        for (const item of list.messages ?? []) {
+          if (!item.Subject.includes("Jemputan wakil syarikat")) continue;
+          const body = await fetch(
+            "http://127.0.0.1:8025/api/v1/message/" + item.ID,
+          ).then((r) => r.json());
+          raw = body.Text.match(/[?&]token=([a-f0-9]{64})/)?.[1] ?? null;
+        }
+        if (!raw) await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!raw) throw Error("Mailpit did not receive the invitation fixture.");
+      const invitationId: string = issued.json().id;
+      const accept = (who = recipient) =>
+        request(who, "/api/company-invitations/accept", "POST", { token: raw });
+      async function unchanged() {
+        if (oracle) {
+          const state = await owner!.use(
+            async (c) =>
+              (
+                await queryRows<{
+                  REPS: number;
+                  CLAIMS: number;
+                  EVENTS: number;
+                  NOTICES: number;
+                }>(
+                  c,
+                  `SELECT (SELECT COUNT(*) FROM STL_COMPANY_REPRESENTATIVES WHERE COMPANY_ID=:companyId AND USER_ID=:recipientId) REPS,
+              (SELECT COUNT(*) FROM STL_COMPANY_REP_INVITATIONS WHERE ID=:invitationId AND ACCEPTED_AT IS NOT NULL) CLAIMS,
+              (SELECT COUNT(*) FROM STL_AUDIT_LOGS WHERE ACTOR_ID=:recipientId AND ACTION='COMPANY_INVITATION_ACCEPTED') EVENTS,
+              (SELECT COUNT(*) FROM STL_NOTIFICATIONS WHERE USER_ID=:recipientId AND TITLE='Perwakilan syarikat diterima') NOTICES FROM DUAL`,
+                  {
+                    companyId: f.companyId,
+                    recipientId: recipient.id,
+                    invitationId,
+                  },
+                )
+              )[0],
+          );
+          expect(state).toEqual({ REPS: 0, CLAIMS: 0, EVENTS: 0, NOTICES: 0 });
+        } else {
+          expect(
+            await db.companyRepresentative.count({
+              where: { companyId: f.companyId, userId: recipient.id },
+            }),
+          ).toBe(0);
+          expect(
+            (
+              await db.companyRepresentationInvitation.findUniqueOrThrow({
+                where: { id: invitationId },
+              })
+            ).acceptedAt,
+          ).toBeNull();
+          expect(
+            await db.auditLog.count({
+              where: {
+                actorId: recipient.id,
+                action: "COMPANY_INVITATION_ACCEPTED",
+              },
+            }),
+          ).toBe(0);
+          expect(
+            await db.notification.count({
+              where: {
+                userId: recipient.id,
+                title: "Perwakilan syarikat diterima",
+              },
+            }),
+          ).toBe(0);
+        }
+      }
+      const expire = () =>
+        oracle
+          ? sql(
+              "UPDATE STL_DELEGATION_DOCUMENTS SET SCAN_VALID_UNTIL=:past WHERE ID=:id",
+              { past: timestamp(new Date(0)), id: f.id },
+            )
+          : db.delegationDocument.update({
+              where: { id: f.id },
+              data: { scanValidUntil: new Date(0) },
+            });
+      return { ...f, recipient, invitationId, accept, unchanged, expire };
+    }
+
+    it("B-N01/B-N02/B-P01 accepts the exact issued proof once and isolates the recipient", async () => {
+      const f = await inviteFixture();
+      const wrong = await actor();
+      expect((await f.accept(wrong)).statusCode).toBe(400);
+      await f.unchanged();
+      const accepted = await f.accept();
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      expect(await proof(accepted.json().id)).toEqual({
+        verifiedDocumentId: null,
+        verificationRevision: 0,
+      });
+      expect((await f.accept()).statusCode).toBe(400);
+    });
+
+    it("B-N02 rejects expired and rescanned proof without changing the invitation or membership", async () => {
+      const f = await inviteFixture();
+      await f.expire();
+      expect((await f.accept()).statusCode).toBe(403);
+      await f.unchanged();
+      expect(await scan(f.id)).toBe(true);
+      expect((await f.accept()).statusCode).toBe(403);
+      await f.unchanged();
+    });
+
+    it("B-N02 rejects replacement and reapproval, withdrawal and revoked direct authority", async () => {
+      const f = await inviteFixture();
+      const replaced = await f.upload(f.applicant, {
+        expectedDocumentId: f.id,
+      });
+      expect(replaced.statusCode, replaced.body).toBe(200);
+      const next = replaced.json().id;
+      expect(await scan(next)).toBe(true);
+      expect((await f.verify(next, 3)).statusCode).toBe(200);
+      expect((await f.accept()).statusCode).toBe(403);
+      await f.unchanged();
+      const revoked = await inviteFixture();
+      expect(
+        (
+          await request(
+            revoked.applicant,
+            `/api/companies/${revoked.companyId}/documents/${revoked.id}/revoke`,
+            "POST",
+          )
+        ).statusCode,
+      ).toBe(200);
+      expect((await revoked.accept()).statusCode).toBe(403);
+      await revoked.unchanged();
+      const direct = await inviteFixture(true);
+      if (oracle)
+        await sql(
+          "UPDATE STL_COMPANY_REPRESENTATIVES SET CAN_MANAGE_REPRESENTATIVES=0 WHERE ID=:id",
+          { id: direct.rep },
+        );
+      else
+        await db.companyRepresentative.update({
+          where: { id: direct.rep },
+          data: { canManageRepresentatives: false },
+        });
+      expect((await direct.accept()).statusCode).toBe(403);
+      await direct.unchanged();
+    });
+
+    it("B-N04/B-N05 rejects committed revocation and rolls back failed acceptance writes", async () => {
+      const f = await inviteFixture(true);
+      let locked!: () => void, release!: () => void;
+      const ready = new Promise<void>((r) => {
+        locked = r;
+      });
+      const held = new Promise<void>((r) => {
+        release = r;
+      });
+      const revoke = oracle
+        ? owner!.transaction(async (c) => {
+            await c.execute(
+              "UPDATE STL_COMPANY_REPRESENTATIVES SET STATUS='REVOKED' WHERE ID=:id",
+              { id: f.rep },
+            );
+            locked();
+            await held;
+          })
+        : db.$transaction(async (tx) => {
+            await tx.companyRepresentative.update({
+              where: { id: f.rep },
+              data: { status: "REVOKED" },
+            });
+            locked();
+            await held;
+          });
+      await Promise.race([
+        ready,
+        revoke.then(() => {
+          throw Error("revocation did not acquire lock");
+        }),
+      ]);
+      const accepting = f.accept();
+      try {
+        await new Promise((r) => setTimeout(r, 100));
+      } finally {
+        release();
+      }
+      await revoke;
+      expect((await accepting).statusCode).toBe(403);
+      await f.unchanged();
+
+      const valid = await inviteFixture(true);
+      if (oracle)
+        await sql(`CREATE TRIGGER STL_P0_ACC_NOTIFY BEFORE INSERT ON STL_NOTIFICATIONS FOR EACH ROW
+        BEGIN IF :NEW.TITLE='Perwakilan syarikat diterima' THEN
+        RAISE_APPLICATION_ERROR(-20022,'Synthetic notification failure'); END IF; END;`);
+      else {
+        await db.$executeRaw`CREATE FUNCTION p0_accept_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN IF NEW.title='Perwakilan syarikat diterima' THEN RAISE EXCEPTION 'Synthetic notification failure'; END IF; RETURN NEW; END $$`;
+        await db.$executeRaw`CREATE TRIGGER p0_accept_abort BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION p0_accept_abort()`;
+      }
+      try {
+        expect((await valid.accept()).statusCode).toBe(500);
+        await valid.unchanged();
+      } finally {
+        if (oracle) await sql("DROP TRIGGER STL_P0_ACC_NOTIFY");
+        else {
+          await db.$executeRaw`DROP TRIGGER p0_accept_abort ON notifications`;
+          await db.$executeRaw`DROP FUNCTION p0_accept_abort()`;
+        }
+      }
+      const accepted = await valid.accept();
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      expect((await valid.accept()).statusCode).toBe(400);
     });
   });
 }

@@ -405,7 +405,6 @@ describe.skipIf(!ownerFile || !runtimeFile)(
       const representativeId = randomUUID();
       const accounts = [randomUUID(), randomUUID()];
       const csrf = randomBytes(32).toString("hex");
-      const token = randomBytes(32).toString("hex");
       const [inviter, recipient] = accounts;
       await owner.transaction(async (connection) => {
         for (const id of accounts) {
@@ -453,15 +452,21 @@ describe.skipIf(!ownerFile || !runtimeFile)(
           repository,
           createOracleAuthRepository(runtime),
         );
-        await repository.invite({
-          companyId,
-          recipientId: recipient,
-          invitedBy: inviter,
-          authorityType: "PEKERJA",
-          authorityEndsAt: null,
-          tokenHash: hash(token),
-          expiresAt: new Date(Date.now() + 3600_000),
-        });
+        const { raw: bound } = await repository.invite(
+          {
+            companyId,
+            recipientId: recipient,
+            authorityType: "PEKERJA",
+            authorityEndsAt: null,
+            expiresAt: new Date(Date.now() + 3600_000),
+          },
+          {
+            id: hash(inviter),
+            userId: inviter,
+            activeRole: "PEMOHON",
+            csrfHash: hash(csrf),
+          },
+        );
         const headers = (id: string) => ({
           cookie: `staylink=${id}`,
           "x-csrf-token": csrf,
@@ -472,7 +477,7 @@ describe.skipIf(!ownerFile || !runtimeFile)(
             url: `/api/company-invitations/${path}`,
             method: "POST",
             headers: headers(id),
-            payload: { token },
+            payload: { token: bound },
           });
         expect((await post("preview", inviter)).statusCode).toBe(404);
         const preview = await post("preview");
