@@ -1,3 +1,4 @@
+import { createOracleCompletionRepository } from "../apps/api/src/oracle/synthetic-completion";
 import { companyInvitationRoutes } from "../apps/api/src/company-invitations";
 import { createOracleCompanyInvitationRepository } from "../apps/api/src/oracle/company-invitations";
 import { createOracleDocumentScanRepository } from "../apps/api/src/oracle/document-scan";
@@ -120,6 +121,82 @@ describe.skipIf(!ownerFile || !runtimeFile)(
         ),
       ).rejects.toMatchObject({
         code: expect.stringMatching(/^ORA-(?:01031|41900)$/),
+      });
+    });
+
+    it("scopes Oracle completion locks by district and actor, replays ordered CLOB events, and rolls back", async () => {
+      const repo = createOracleCompletionRepository(owner);
+      await owner.use(async (connection) => {
+        const draft = randomUUID();
+        const id = randomUUID();
+        const snapshot = { districtId: "SPU", fixture: "é界".repeat(3500) };
+        try {
+          await connection.execute(
+            `INSERT INTO STL_APPLICATION_DRAFTS
+              (ID,INITIATED_BY_USER_ID,CAPACITY,OFFICIAL_APPLICANT_USER_ID,INITIATOR_SNAPSHOT,APPLICANT_SNAPSHOT,UPDATED_AT)
+              VALUES (:draft,:owner,'INDIVIDUAL',:owner,:payload,:payload,SYSTIMESTAMP)`,
+            {
+              draft,
+              owner: labActorId,
+              payload: oracleJson({ synthetic: true }),
+            },
+          );
+          await connection.execute(
+            `INSERT INTO STL_SYNTHETIC_SUBMISSIONS
+              (ID,DRAFT_ID,DRAFT_VERSION,KEY,ACTOR_ID,DECLARATION_VERSION,POLICY_VERSION,SNAPSHOT)
+              VALUES (:id,:draft,1,:reqkey,:owner,'SYNTHETIC-1','SYNTHETIC-1',:snapshot)`,
+            {
+              id,
+              draft,
+              reqkey: randomUUID(),
+              owner: labActorId,
+              snapshot: oracleJson(snapshot),
+            },
+          );
+          const scope = {
+            id,
+            district: "SPU",
+            excludedActorId: randomUUID(),
+          } as const;
+          const actor = { id: scope.excludedActorId, role: "PIC_KAWASAN" };
+          const input = {
+            timestamp: Date.now(),
+            firstPaid: true,
+            feeSen: null,
+            command: { action: "REFER" },
+          };
+          expect(
+            await repo.lockedHistory(connection, { ...scope, district: "SPT" }),
+          ).toBeNull();
+          expect(
+            await repo.lockedHistory(connection, {
+              ...scope,
+              excludedActorId: labActorId,
+            }),
+          ).toBeNull();
+          expect(await repo.append(connection, scope, actor, 0, input)).toBe(1);
+          await expect(
+            repo.append(connection, scope, actor, 0, input),
+          ).rejects.toThrow("sudah berubah");
+          expect(await repo.lockedHistory(connection, scope)).toEqual({
+            snapshot,
+            events: [
+              {
+                actorId: actor.id,
+                activeRole: actor.role,
+                metadata: { ...input, version: 1 },
+              },
+            ],
+          });
+        } finally {
+          await connection.rollback();
+        }
+        const result = await connection.execute<{ N: number }>(
+          "SELECT COUNT(*) N FROM STL_AUDIT_LOGS WHERE TARGET=:id",
+          { id },
+          options,
+        );
+        expect(result.rows?.[0].N).toBe(0);
       });
     });
 

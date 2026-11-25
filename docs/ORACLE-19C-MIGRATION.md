@@ -141,3 +141,7 @@ Pengesahan Oracle 19.30 SE2 sebenar memerlukan akses PDB terasing yang diluluska
 | PostgreSQL rujukan | 79 ujian API dan satu semakan keserasian pada DB berasingan lulus. Playwright biasa 27 lulus. Ujian khusus hos HTTPS dilangkau dalam larian ini dan telah mempunyai bukti pada baseline. |
 | Toolchain | TypeScript, lint dan build lulus. npm audit melaporkan 0 kerentanan. Amaran saiz chunk peta sedia ada kekal. |
 | Belum dipenuhi | Oracle 19.30 SE2, pengujian API/Playwright hujung ke hujung di Oracle, migrasi data dan cutover. Eksport/import serta pemulihan fizikal Oracle belum diuji. |
+
+## Kontrak skop dan sejarah Issue #68
+
+Repository makmal `apps/api/src/oracle/synthetic-completion.ts` menggunakan objek STL sedia ada. Ia mengunci serahan terkini mengikut daerah dan pelaku yang dikecualikan, memeriksa versi peristiwa dan menulis audit CLOB dinamakan dalam transaksi pemanggil. Ujian makmal meliputi perbezaan daerah, konflik versi, pembacaan CLOB dan rollback. Laluan HTTP Oracle untuk rujukan, keputusan, surat dan penutupan masih memerlukan transaksi sesi, peranan, wakil, pembayaran dan notifikasi yang setara serta gerbang runtime penuh. Ujian Oracle Free tidak mengesahkan Oracle 19.30 SE2.
