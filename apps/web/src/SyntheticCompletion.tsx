@@ -321,6 +321,8 @@ function CompletionForm({
                   {scope.unitLabel} · {scope.floorLabel} — {decision.outcome}
                   {decision.conditionUntil &&
                     " hingga " + decision.conditionUntil}
+                  {decision.followUpBy &&
+                    " · Susulan sebelum " + decision.followUpBy}
                 </li>
               )
             );
@@ -347,7 +349,13 @@ function CompletionForm({
           {view.invoice.settled ? "Direkonsiliasi" : "Menunggu bayaran"}.
         </p>
       )}
-      {view.response && <p>Jawapan susulan: {view.response.note}</p>}
+      {view.response && (
+        <p>
+          Jawapan susulan: {view.response.note}
+          {view.response.lateScopes.length > 0 &&
+            ` · ${view.response.lateScopes.length} skop lewat untuk semakan pegawai.`}
+        </p>
+      )}
       {!view.closed && (
         <>
           {role === "PIC_KAWASAN" &&
@@ -446,6 +454,8 @@ function CompletionForm({
                         ...(item?.outcome === "SKB" && {
                           conditionUntil: item.date,
                         }),
+                        ...(item?.outcome === "TANGGUH" &&
+                          item.date && { followUpBy: item.date }),
                       };
                     }),
                   });
@@ -497,12 +507,15 @@ function CompletionForm({
                           }
                         />
                       </label>
-                      {item.outcome === "SKB" && (
+                      {(item.outcome === "SKB" ||
+                        item.outcome === "TANGGUH") && (
                         <label>
-                          Tarikh tamat syarat{" "}
+                          {item.outcome === "SKB"
+                            ? "Tarikh tamat syarat"
+                            : "Tarikh susulan JK (jika ditetapkan)"}{" "}
                           <input
                             type="date"
-                            required
+                            required={item.outcome === "SKB"}
                             value={item.date}
                             onChange={(e) =>
                               setChoice({

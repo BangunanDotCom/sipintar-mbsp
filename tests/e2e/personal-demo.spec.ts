@@ -97,11 +97,58 @@ test("seven private accounts exercise staged cases and district boundaries on HT
         ).status(),
       ).toBe(200);
       const me = await request.get("/api/auth/me");
-      expect((await me.json()).user.id).toBe(account.id);
-      await page.goto("/dashboard");
+      expect(me.status(), label + " sesi").toBe(200);
+      expect(await me.json()).toMatchObject({
+        user: { id: account.id, emailVerified: true },
+        activeRole: account.role,
+        mfaRequired: false,
+      });
+
+      const district = expectedDistricts[label];
+      const reviewPath = "/api/synthetic-portal/reviews";
+      const browserQueue = district
+        ? page.waitForResponse(
+            (response) =>
+              new URL(response.url()).pathname === reviewPath &&
+              response.request().method() === "GET",
+          )
+        : null;
+      const delayed = label === "pic-spt";
+      const started = delayed
+        ? page.waitForRequest(
+            (request) => new URL(request.url()).pathname === reviewPath,
+          )
+        : null;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      if (delayed)
+        await page.route("**" + reviewPath + "?*", async (route) => {
+          await held;
+          await route.continue();
+        });
+      const landing = await page.goto("/dashboard");
+      expect(landing?.status(), label + " dashboard").toBe(200);
       await expect(
         page.getByRole("heading", { name: /Selamat datang/ }),
       ).toBeVisible();
+      if (delayed) {
+        try {
+          await started;
+          await expect(
+            page.getByRole("heading", { name: "Tugasan semakan sintetik" }),
+          ).toBeVisible();
+          await expect(
+            page
+              .getByRole("status")
+              .filter({ hasText: "Memuatkan tugasan latihan" }),
+          ).toBeVisible();
+          await expect(page.getByText(/Kawasan SPT ·/)).toHaveCount(0);
+        } finally {
+          release();
+        }
+      }
       if (label === "pemohon") {
         for (const [scenario, state] of [
           ["single-unit", "SUBMITTED"],
@@ -130,16 +177,15 @@ test("seven private accounts exercise staged cases and district boundaries on HT
           (await request.get("/api/synthetic-portal/reviews")).status(),
         ).toBe(403);
       } else {
-        const district = expectedDistricts[label];
+        const queue = await browserQueue!;
+        expect(queue.status(), label + " GET semakan dalam pelayar").toBe(200);
         await expect(
           page.getByRole("heading", { name: "Tugasan semakan sintetik" }),
         ).toBeVisible();
         await expect(
           page.getByText(new RegExp(`Kawasan ${district} ·`)),
         ).toBeVisible();
-        const url = "/api/synthetic-portal/reviews";
-        const queue = await request.get(url);
-        expect(queue.status()).toBe(200);
+        const url = reviewPath;
         const review = await queue.json();
         expect(review.district).toBe(district);
         const own = submissions.get(
@@ -152,6 +198,9 @@ test("seven private accounts exercise staged cases and district boundaries on HT
         expect(review.reviews.map(({ id }: { id: string }) => id)).toContain(
           own,
         );
+        await expect(
+          page.getByRole("article", { name: `Serahan sintetik ${own}` }),
+        ).toBeVisible();
         const other = submissions.get(
           district === "SPT" ? "district-sps" : "district-spt",
         );

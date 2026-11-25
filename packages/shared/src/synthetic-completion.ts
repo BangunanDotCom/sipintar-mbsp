@@ -1,56 +1,25 @@
-import { z } from "zod";
+import type { z } from "zod";
+import {
+  canActOnCompletion,
+  departments,
+  type TechnicalDepartment,
+  type CompletionRole,
+  type CompletionCommand,
+  type determination,
+} from "./synthetic-completion-contract.js";
+export {
+  canActOnCompletion,
+  completionCommand,
+  completionRoles,
+} from "./synthetic-completion-contract.js";
+export type {
+  CompletionRole,
+  CompletionCommand,
+} from "./synthetic-completion-contract.js";
 
 export const completionDatabaseName =
   /^staylink_issue62_personal_completion[a-z0-9]{0,14}_test$/;
 
-export const departments = ["PERANCANG_BANDAR", "KEJURUTERAAN"] as const;
-export type TechnicalDepartment = (typeof departments)[number];
-export const completionRoles = [
-  ...departments,
-  "URUS_SETIA_JK",
-  "PEGAWAI_PENANDATANGAN",
-] as const;
-export type CompletionRole =
-  | "PIC_KAWASAN"
-  | "PPSK"
-  | "PEMOHON"
-  | "WAKIL_SYARIKAT"
-  | (typeof completionRoles)[number];
-
-const notes = z.string().trim().min(3).max(1000);
-const scope = { unitId: z.uuid(), floorId: z.uuid() };
-const outcome = z.enum(["SK", "SKB", "TANGGUH", "TOLAK"]);
-export const determination = z.strictObject({
-  ...scope,
-  outcome,
-  reason: notes,
-  conditionUntil: z.iso.date().optional(),
-});
-export const completionCommand = z.discriminatedUnion("action", [
-  z.strictObject({ action: z.literal("REFER") }),
-  z.strictObject({
-    action: z.literal("REREFER"),
-    departments: z.array(z.enum(departments)).min(1).max(2),
-  }),
-  z.strictObject({
-    action: z.literal("COMMENT"),
-    general: notes,
-    details: z.array(z.strictObject({ ...scope, comment: notes })).max(300),
-  }),
-  z.strictObject({ action: z.literal("SUBMIT_PAPER"), summary: notes }),
-  z.strictObject({
-    action: z.literal("DECIDE"),
-    decisions: z.array(determination).min(1).max(300),
-  }),
-  z.strictObject({ action: z.literal("SIGN") }),
-  z.strictObject({ action: z.literal("RESPOND"), note: notes }),
-  z.strictObject({ action: z.literal("CHECK_RESPONSE") }),
-  z.strictObject({ action: z.literal("ALLOW_RECONSIDERATION") }),
-  z.strictObject({ action: z.literal("ISSUE_SECOND") }),
-  z.strictObject({ action: z.literal("SETTLE_SECOND") }),
-  z.strictObject({ action: z.literal("CLOSE") }),
-]);
-export type CompletionCommand = z.infer<typeof completionCommand>;
 type Determination = z.infer<typeof determination>;
 type Scope = Pick<Determination, "unitId" | "floorId">;
 type Comment = Extract<CompletionCommand, { action: "COMMENT" }>;
@@ -100,6 +69,7 @@ export function completionState() {
     response: null as null | {
       note: string;
       checkedBy: string | null;
+      lateScopes: Scope[];
       allowed: boolean;
       referred: boolean;
     },
@@ -108,28 +78,6 @@ export function completionState() {
   };
 }
 export type CompletionState = ReturnType<typeof completionState>;
-
-const commandRoles: Record<CompletionCommand["action"], CompletionRole[]> = {
-  REFER: ["PIC_KAWASAN"],
-  REREFER: ["PIC_KAWASAN"],
-  COMMENT: [...departments],
-  SUBMIT_PAPER: ["PIC_KAWASAN"],
-  DECIDE: ["URUS_SETIA_JK"],
-  SIGN: ["PEGAWAI_PENANDATANGAN"],
-  RESPOND: ["PEMOHON", "WAKIL_SYARIKAT"],
-  CHECK_RESPONSE: ["PIC_KAWASAN"],
-  ALLOW_RECONSIDERATION: ["PPSK"],
-  ISSUE_SECOND: ["PPSK"],
-  SETTLE_SECOND: ["PPSK"],
-  CLOSE: ["PPSK"],
-};
-
-export function canActOnCompletion(
-  role: CompletionRole,
-  action: CompletionCommand["action"],
-) {
-  return commandRoles[action].includes(role);
-}
 
 export function applyCompletion(
   state: CompletionState,
@@ -247,11 +195,17 @@ export function applyCompletion(
       const previous = new Map(next.decisions.map((item) => [key(item), item]));
       const changed = command.decisions.map((item) => {
         const firstConditionAt = previous.get(key(item))?.firstConditionAt;
+        const today = new Date(now + 8 * 3_600_000).toISOString().slice(0, 10);
+        if (
+          item.followUpBy &&
+          (item.outcome !== "TANGGUH" || item.followUpBy < today)
+        )
+          throw Error(
+            "Tarikh susulan mesti untuk keputusan TANGGUH dan belum berlalu.",
+          );
+
         if (item.outcome === "SKB") {
           const start = firstConditionAt ?? now;
-          const today = new Date(now + 8 * 3_600_000)
-            .toISOString()
-            .slice(0, 10);
           if (
             !item.conditionUntil ||
             item.conditionUntil < today ||
@@ -300,6 +254,14 @@ export function applyCompletion(
         throw Error("Tiada tindakan susulan tersedia.");
       next.response = {
         note: command.note,
+        lateScopes: pending
+          .filter(
+            ({ followUpBy }) =>
+              followUpBy &&
+              followUpBy <
+                new Date(now + 8 * 3_600_000).toISOString().slice(0, 10),
+          )
+          .map(({ unitId, floorId }) => ({ unitId, floorId })),
         checkedBy: null,
         allowed: false,
         referred: false,

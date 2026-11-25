@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { fail } from "./auth.js";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 
-export const completionEvent = "SYNTHETIC_PORTAL_COMPLETION";
+import { completionEvent } from "../../../packages/shared/src/synthetic-completion-contract.js";
 
 export function completionSandbox(env = process.env) {
   return (

@@ -1,7 +1,10 @@
 import {
-  completionSandbox,
   completionEvent as eventName,
-} from "./synthetic-completion-gate.js";
+  completionEventRole,
+  completionProvider as provider,
+  completionStoredMetadata,
+} from "../../../packages/shared/src/synthetic-completion-contract.js";
+import { completionSandbox } from "./synthetic-completion-gate.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Prisma } from "@prisma/client";
@@ -31,7 +34,6 @@ import {
 import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
 import { verifyMockCallback } from "./synthetic-billing.js";
 
-const provider = "SYNTHETIC_PROVIDER";
 const uuid = z.uuid();
 const identityMap = z.strictObject({
   PERANCANG_BANDAR: uuid,
@@ -39,21 +41,6 @@ const identityMap = z.strictObject({
   URUS_SETIA_JK: uuid,
   PEGAWAI_PENANDATANGAN: uuid,
 });
-const stored = z.strictObject({
-  version: z.number().int().positive(),
-  timestamp: z.number().int().nonnegative(),
-  firstPaid: z.boolean(),
-  feeSen: z.number().int().nonnegative().nullable(),
-  invoiceId: uuid.optional(),
-  command: completionCommand,
-});
-const roles = z.enum([
-  ...completionRoles,
-  "PIC_KAWASAN",
-  "PPSK",
-  "PEMOHON",
-  "WAKIL_SYARIKAT",
-]);
 const edit = z.strictObject({
   version: z.number().int().nonnegative(),
   command: completionCommand,
@@ -93,18 +80,15 @@ async function stateFor(tx: Tx, id: string, scopes: Scope[]) {
     fail(409, "Sejarah latihan melebihi had persediaan.");
   const values = events
     .map(({ actorId, activeRole, metadata }) => {
-      const parsed = stored.safeParse(metadata);
-      const role = roles.safeParse(
-        activeRole === null &&
-          actorId === provider &&
-          parsed.success &&
-          parsed.data.command.action === "SETTLE_SECOND"
-          ? "PPSK"
-          : activeRole,
+      const parsed = completionStoredMetadata.safeParse(metadata);
+      if (!parsed.success || !actorId) fail(409, "Sejarah latihan tidak sah.");
+      const role = completionEventRole(
+        actorId,
+        activeRole,
+        parsed.data.command.action,
       );
-      if (!parsed.success || !role.success || !actorId)
-        fail(409, "Sejarah latihan tidak sah.");
-      return { actorId, role: role.data, ...parsed.data };
+      if (!role) fail(409, "Pelaku sejarah latihan tidak sah.");
+      return { actorId, role, ...parsed.data };
     })
     .sort((a, b) => a.version - b.version);
   let state = completionState();
@@ -569,7 +553,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
             : "Surat susulan kepada surat induk versi 1",
           "Versi " + number + " · " + new Date(letter.signedAt).toISOString(),
           "Tandatangan disimulasikan.",
-          "Unit | Tingkat | Keputusan | Sebab | Tarikh syarat",
+          "Unit | Tingkat | Keputusan | Sebab | Tarikh syarat | Tarikh susulan",
           ...letter.decisions.map((d) =>
             [
               record.unitLabel.get(d.unitId),
@@ -577,6 +561,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
               d.outcome,
               d.reason,
               d.conditionUntil,
+              d.followUpBy,
             ]
               .map(clean)
               .join(" | "),

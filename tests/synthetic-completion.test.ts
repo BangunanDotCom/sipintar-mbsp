@@ -123,3 +123,63 @@ it("keeps completion unavailable in production and rejects missing distinct role
     }),
   ).toThrow("pelantikan");
 });
+
+it("records the JK follow-up date and flags a late response without changing the decision", () => {
+  const flow = engine();
+  flow.apply({ action: "REFER" }, "PIC_KAWASAN");
+  const meeting = now + 7 * day;
+  flow.apply(
+    { action: "SUBMIT_PAPER", summary: "KP latihan" },
+    "PIC_KAWASAN",
+    meeting,
+  );
+  const decision = {
+    unitId,
+    floorId,
+    reason: "Perlu maklumat susulan",
+    outcome: "TANGGUH" as const,
+  };
+  expect(() =>
+    flow.apply(
+      {
+        action: "DECIDE",
+        decisions: [
+          {
+            ...decision,
+            followUpBy: "2026-09-06",
+          },
+        ],
+      },
+      "URUS_SETIA_JK",
+      meeting,
+    ),
+  ).toThrow("Tarikh susulan");
+  flow.apply(
+    {
+      action: "DECIDE",
+      decisions: [
+        {
+          ...decision,
+          followUpBy: "2026-09-08",
+        },
+      ],
+    },
+    "URUS_SETIA_JK",
+    meeting,
+  );
+  const signed = flow.apply(
+    { action: "SIGN" },
+    "PEGAWAI_PENANDATANGAN",
+    meeting,
+  );
+  expect(signed.letters[0].decisions[0].followUpBy).toBe("2026-09-08");
+  const late = flow.apply(
+    { action: "RESPOND", note: "Jawapan lewat untuk semakan" },
+    "PEMOHON",
+    meeting + 2 * day,
+  );
+  expect(late.response?.lateScopes).toEqual(scopes);
+  expect(late.response?.allowed).toBe(false);
+  expect(late.decisions[0].outcome).toBe("TANGGUH");
+  expect(late.closed).toBe(false);
+});

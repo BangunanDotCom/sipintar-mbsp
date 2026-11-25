@@ -75,11 +75,12 @@ export function SyntheticOfficerPanel({
       />
     );
   if (!query.data)
-    return cursor || filter !== "all" ? (
-      <p className="synthetic-note" role="status">
-        Memuatkan tugasan latihan…
-      </p>
-    ) : null;
+    return (
+      <section className="panel synthetic-panel" aria-labelledby="synthetic-officer-title" aria-busy="true">
+        <h3 id="synthetic-officer-title">Tugasan semakan sintetik</h3>
+        <p className="synthetic-note" role="status">Memuatkan tugasan latihan…</p>
+      </section>
+    );
   const { reviews, role, district, nextCursor } = query.data;
   return (
     <section
