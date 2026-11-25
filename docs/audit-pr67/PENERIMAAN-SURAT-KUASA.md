@@ -1,5 +1,7 @@
 # Gerbang P0 surat kuasa · K03, K04, K07 dan K10
 
+[Audit calon pembetulan PostgreSQL](AUDIT-CALON-P0.md) mencatat hasil bagi setiap ujian A/B. Kedua-dua P0 kekal terbuka.
+
 **Status pada PR #69 `7970f1f857d245937fd0baaaf848e78e6f0ad1e7`: terbuka.** Gerbang A melindungi bait fail dan keputusan pengimbasan. Gerbang B memastikan keputusan pegawai berasaskan bukti bagi wakil, skop dan versi yang tepat. Kedua-duanya mesti lulus pada SHA calon yang sama. Semakan ini hanya menggunakan data dan verdict fixture sintetik. [PR #69](https://github.com/BangunanDotCom/sipintar-mbsp/pull/69)
 
 ## A · Muat turun PDF mensyaratkan keputusan imbasan yang sah

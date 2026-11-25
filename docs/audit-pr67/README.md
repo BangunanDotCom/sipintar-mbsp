@@ -1,5 +1,7 @@
 # Audit bebas STAYLink MBSP · Personal Demo PR #67
 
+**Audit kumulatif:** [Matriks 28 fungsi, risiko dan checklist pelepasan](AUDIT-KUMULATIF.md) · [Kesetaraan setiap API](ORACLE-API-PARITY.md) · [Bukti ujian dan UX bebas](BUKTI-SUSULAN.md) · [Semakan calon P0](AUDIT-CALON-P0.md).
+
 **Susulan Team 3:** [Status semasa PR #69 dan Complete Release](SEMAKAN-PR69.md) · [Gerbang P0 surat kuasa dan ujian negatif](PENERIMAAN-SURAT-KUASA.md)
 
 **Tarikh audit:** 25 November 2026, waktu Malaysia. **Keputusan Complete Release / Go Live: NO-GO.** Baseline ialah `8ecd1e5e6d823af900937b619674f28f665080df`. Rujukan reka bentuk ialah PR #16 pada `06b02f9`, yang masih berada pada cabang spesifikasi. Keputusan operasi dan Issue #68 digunakan untuk skop selepas bayaran pertama. Semakan Oracle dibuat berasingan pada `4b55f385455216bf3c73a06dacad1bd2e333224e` untuk PR #64. Penilaian ini untuk SHA tersebut. Perubahan selari selepas SHA berkenaan memerlukan pengujian semula. [PR #67](https://github.com/BangunanDotCom/sipintar-mbsp/pull/67) · [Spesifikasi K01–K11](https://github.com/BangunanDotCom/sipintar-mbsp/blob/06b02f9/docs/PHASE1-MBSP-SPECIFICATION.md) · [Keputusan operasi](../DECISIONS-OPERATIONS-2026-11.md) · [Issue #14](https://github.com/BangunanDotCom/sipintar-mbsp/issues/14) · [Issue #68](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68) · [PR #64](https://github.com/BangunanDotCom/sipintar-mbsp/pull/64)

@@ -1,5 +1,7 @@
 # Audit bebas calon Fasa 1 · PR #69
 
+[Audit kumulatif](AUDIT-KUMULATIF.md) memperluas semakan dengan [kesetaraan setiap API](ORACLE-API-PARITY.md) dan [bukti Oracle Free/UX](BUKTI-SUSULAN.md) pada cabang bebas.
+
 **Keputusan 25 November 2026 (MYT): NO-GO untuk Complete Release dan penggunaan rasmi.** Head semakan ialah `7970f1f857d245937fd0baaaf848e78e6f0ad1e7`. Satu-satunya perubahan daripada SHA larian `91a0e40685d9eb0c28fa0469b4d5eb1c613de9a2` ialah enam baris dokumentasi bukti. Aliran latihan PostgreSQL kini berjalan selepas bayaran pertama hingga penutupan. Dua gerbang P0 surat kuasa kekal terbuka. Status di bawah menilai PR #69 dan menyimpan laporan PR #67 sebagai rekod sejarah. [PR #69](https://github.com/BangunanDotCom/sipintar-mbsp/pull/69) · [Baseline PR #67](README.md) · [Keputusan operasi](../DECISIONS-OPERATIONS-2026-11.md)
 
 **Status matriks.** **Lengkap sintetik** bermaksud fungsi asas yang disenaraikan lulus dalam skop fixture. **Separa** bermaksud sebahagian fungsi beroperasi atau sebahagian bukti masih tiada. **Simulasi** menandakan pengganti proses atau integrasi rasmi. **Belum siap** menandakan tiada pelaksanaan berkenaan pada SHA ini. **Rasmi belum disahkan** memerlukan pemilik, integrasi atau persekitaran yang diluluskan.
