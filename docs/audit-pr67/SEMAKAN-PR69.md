@@ -49,14 +49,14 @@ Sumber. [Kod Completion](https://github.com/BangunanDotCom/sipintar-mbsp/blob/91
 
 | Sumber | Hasil |
 |---|---|
-| CI GitHub, run 45526316808 | Tujuh job lulus. Ini termasuk Personal dan Completion, API, browser, kit, demo dan validate. Job Personal pada run 45524207627 gagal pada commit terdahulu `3b0dfac`. Ujian HEAD memasukkan keadaan loading barisan pegawai |
+| CI GitHub, run 45527582124 dan 45526316808 | Tujuh job lulus pada kedua-dua SHA. Ini termasuk Personal dan Completion, API, browser, kit, demo dan validate. Job Personal pada run 45524207627 gagal pada commit terdahulu `3b0dfac`. Ujian HEAD memasukkan keadaan loading barisan pegawai |
 | Audit tempatan · alat dan suite umum | `npm ci`, Prisma generate, lint, typecheck/build lulus. Kedua-dua audit npm melaporkan 0 penemuan. Vitest 340 lulus, satu ujian Completion bersyarat dijalankan berasingan |
 | Audit tempatan · PostgreSQL/Mailpit | 79 API lulus dan satu compatibility lulus dalam fixture khusus. Ujian integrasi Completion dengan kit 11 akaun lulus. Liputan termasuk pendaftaran, bayaran pertama, rujukan, versi lapuk, mixed decision, surat susulan, callback, penutupan dan penolakan mutasi draf teras selepas tutup |
 | Audit tempatan · HTTPS | Playwright Completion lulus untuk status tertutup dan muat turun dua surat latihan. Playwright Personal Demo tujuh akaun lulus, termasuk loading barisan PIC, MFA dan pengasingan daerah. Ujian browser umum 27 kes menggunakan bukti CI pada SHA ini |
 | Audit tempatan · restore Completion | Restore ke DB kosong lulus. Skrip membandingkan cap jari rekod termasuk peristiwa audit Completion dan trigger snapshot. Kiraan acara Completion 17 di kedua-dua DB. DB objek/kunci servis dan Oracle 19c tiada dalam larian |
 | Dua gerbang surat kuasa | Belum ditutup. Semakan sumber pada SHA ini mengesahkan pengendali A/B belum berubah. Ujian regresi selepas patch memerlukan SHA Team 1 |
 
-[CI HEAD](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45526316808) · [CI commit terdahulu](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45524207627) · [Ujian API Completion](https://github.com/BangunanDotCom/sipintar-mbsp/blob/91a0e40685d9eb0c28fa0469b4d5eb1c613de9a2/tests/synthetic-completion-api.test.ts)
+[CI head dokumentasi](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45527582124) · [CI SHA larian audit](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45526316808) · [CI commit terdahulu](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45524207627) · [Ujian API Completion](https://github.com/BangunanDotCom/sipintar-mbsp/blob/91a0e40685d9eb0c28fa0469b4d5eb1c613de9a2/tests/synthetic-completion-api.test.ts)
 
 ## Checklist Complete Release
 
