@@ -1,3 +1,8 @@
+import {
+  completionEvent as eventKind,
+  completionEventRole,
+  completionStoredMetadata as metadataSchema,
+} from "../../../../packages/shared/src/synthetic-completion-contract.js";
 import { z } from "zod";
 import type { Connection } from "oracledb";
 import { createOracleAuditRepository } from "./audit.js";
@@ -8,15 +13,6 @@ const caseScope = z.strictObject({
   id: z.uuid(),
   district: z.enum(["SPU", "SPT", "SPS"]),
   excludedActorId: z.uuid(),
-});
-const eventKind = "SYNTHETIC_PORTAL_COMPLETION";
-const metadataSchema = z.strictObject({
-  version: z.number().int().positive(),
-  timestamp: z.number().int().nonnegative(),
-  firstPaid: z.boolean(),
-  feeSen: z.number().int().nonnegative().nullable(),
-  invoiceId: z.uuid().optional(),
-  command: z.object({ action: z.string().min(1) }).passthrough(),
 });
 type Scope = z.infer<typeof caseScope>;
 type Metadata = z.infer<typeof metadataSchema>;
@@ -59,11 +55,14 @@ export function createOracleCompletionRepository(pool: OraclePool) {
     );
     if (rows.length > 500) throw Error("Had sejarah Oracle makmal dicapai.");
     const events = rows
-      .map(({ ACTOR_ID, ACTIVE_ROLE, METADATA }): History => ({
-        actorId: z.string().min(1).parse(ACTOR_ID),
-        activeRole: ACTIVE_ROLE,
-        metadata: metadataSchema.parse(JSON.parse(METADATA)),
-      }))
+      .map(({ ACTOR_ID, ACTIVE_ROLE, METADATA }): History => {
+        const metadata = metadataSchema.parse(JSON.parse(METADATA));
+        if (
+          !completionEventRole(ACTOR_ID, ACTIVE_ROLE, metadata.command.action)
+        )
+          throw Error("Pelaku sejarah Oracle tidak sah.");
+        return { actorId: ACTOR_ID, activeRole: ACTIVE_ROLE, metadata };
+      })
       .sort((a, b) => a.metadata.version - b.metadata.version);
     if (events.some(({ metadata }, index) => metadata.version !== index + 1))
       throw Error("Versi sejarah Oracle tidak konsisten.");
@@ -89,6 +88,8 @@ export function createOracleCompletionRepository(pool: OraclePool) {
         ...input,
         version: expectedVersion + 1,
       });
+      if (!completionEventRole(actor.id, actor.role, metadata.command.action))
+        throw Error("Pelaku sejarah Oracle tidak sah.");
       await audit.append(connection, {
         actorId: z.string().min(1).parse(actor.id),
         activeRole: actor.role,

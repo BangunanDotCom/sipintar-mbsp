@@ -163,7 +163,7 @@ describe.skipIf(!ownerFile || !runtimeFile)(
             timestamp: Date.now(),
             firstPaid: true,
             feeSen: null,
-            command: { action: "REFER" },
+            command: { action: "REFER" as const },
           };
           expect(
             await repo.lockedHistory(connection, { ...scope, district: "SPT" }),
@@ -174,6 +174,15 @@ describe.skipIf(!ownerFile || !runtimeFile)(
               excludedActorId: labActorId,
             }),
           ).toBeNull();
+          await expect(
+            repo.append(
+              connection,
+              scope,
+              { ...actor, role: "PPSK" },
+              0,
+              input,
+            ),
+          ).rejects.toThrow("Pelaku sejarah Oracle tidak sah.");
           expect(await repo.append(connection, scope, actor, 0, input)).toBe(1);
           await expect(
             repo.append(connection, scope, actor, 0, input),

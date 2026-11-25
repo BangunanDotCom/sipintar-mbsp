@@ -145,3 +145,5 @@ Pengesahan Oracle 19.30 SE2 sebenar memerlukan akses PDB terasing yang diluluska
 ## Kontrak skop dan sejarah Issue #68
 
 Repository makmal `apps/api/src/oracle/synthetic-completion.ts` menggunakan objek STL sedia ada. Ia mengunci serahan terkini mengikut daerah dan pelaku yang dikecualikan, memeriksa versi peristiwa dan menulis audit CLOB dinamakan dalam transaksi pemanggil. Ujian makmal meliputi perbezaan daerah, konflik versi, pembacaan CLOB dan rollback. Laluan HTTP Oracle untuk rujukan, keputusan, surat dan penutupan masih memerlukan transaksi sesi, peranan, wakil, pembayaran dan notifikasi yang setara serta gerbang runtime penuh. Ujian Oracle Free tidak mengesahkan Oracle 19.30 SE2.
+
+Kontrak `packages/shared/src/synthetic-completion-contract.ts` dikongsi dengan PR #69. Pelaku dan tindakan disahkan sebelum append dan selepas baca balik. Provider sintetik hanya boleh merekod rekonsiliasi kedua, tanpa peranan pegawai. Keputusan TANGGUH menyokong tarikh susulan opsyenal. Validasi peralihan domain, sesi MFA, kuasa wakil dan pergantungan bayaran masih tanggungjawab lapisan perkhidmatan Oracle yang belum digunakan oleh runtime.
