@@ -15,6 +15,7 @@ on:
       - 'feature/cloudflare-demo-readiness'
       - 'feature/personal-demo'
       - 'issue-68-phase1-completion'
+      - 'security/p0-delegation-evidence'
 
 permissions:
   contents: read

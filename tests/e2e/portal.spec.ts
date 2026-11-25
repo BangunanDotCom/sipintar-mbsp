@@ -342,22 +342,46 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
     await page.getByRole("button", { name: "Syarikat & wakil" }).click();
     const companyName = `DATA UJIAN Syarikat A ${randomBytes(3).toString("hex")}`;
     await addCompany(page, companyName);
-    await addCompany(
-      page,
-      `DATA UJIAN Syarikat B ${randomBytes(3).toString("hex")}`,
-    );
+    const unrelatedCompany = `DATA UJIAN Syarikat B ${randomBytes(3).toString("hex")}`;
+    await addCompany(page, unrelatedCompany);
     const card = page.locator("article.company-record").filter({
       has: page.getByRole("heading", { name: companyName, exact: true }),
     });
     await card.getByText("Surat kuasa & dokumen", { exact: true }).click();
+    const uploadResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" && /\/api\/companies\/[^/]+\/documents$/.test(response.url()));
     await card.getByLabel("Muat naik surat kuasa").setInputFiles({
       name: "surat-kuasa-ujian.pdf",
       mimeType: "application/pdf",
       buffer: delegationPdf(),
     });
     await expect(
-      card.getByRole("link", { name: "surat-kuasa-ujian.pdf" }),
+      card.getByText("Menunggu imbasan keselamatan", { exact: true }),
     ).toBeVisible();
+    const upload = await uploadResponse;
+    expect(upload.ok()).toBe(true);
+    const { id: documentId } = await upload.json();
+    const downloadUrl = `/api/documents/${documentId}`;
+    const quarantined = await page.request.get(downloadUrl);
+    expect(quarantined.status()).toBe(404);
+    expect(quarantined.headers()["cache-control"]).toContain("no-store");
+
+    const { syntheticPortalDatabase } = await import("../../apps/api/src/synthetic-portal-gate.js");
+    if (!syntheticPortalDatabase() || process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL)
+      throw new Error("Ujian surat kuasa memerlukan pangkalan data sintetik PostgreSQL loopback.");
+    const { db } = await import("../../apps/api/src/core.js");
+    const { scanDelegationDocument } = await import("../../apps/api/src/delegation-scan-worker.js");
+    try {
+      expect(await scanDelegationDocument(db, {
+        scan: async () => ({ status: "CLEAN", engine: "synthetic-browser" }),
+      }, documentId)).toBe(true);
+    } finally {
+      await db.$disconnect();
+    }
+    const released = await page.request.get(downloadUrl);
+    expect(released.status()).toBe(200);
+    expect(released.headers()["cache-control"]).toBe("private, no-store");
+    expect(await released.body()).toEqual(delegationPdf());
     await card.getByText("Jemput wakil syarikat", { exact: true }).click();
     const invite = card
       .locator("details")
@@ -381,6 +405,13 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       "Perwakilan diterima",
     );
     await recipientPage.getByRole("button", { name: "Ke dashboard" }).click();
+    await expect(recipientPage.getByText(unrelatedCompany, {exact:true})).toHaveCount(0);
+    await expect(recipientPage.getByText("surat-kuasa-ujian.pdf", {exact:true})).toHaveCount(0);
+    const dashboard = await recipientPage.request.get("/api/dashboard");
+    expect(dashboard.status()).toBe(200);
+    expect(dashboard.headers()["cache-control"]).toContain("no-store");
+    expect(await dashboard.text()).not.toContain(documentId);
+
     await recipientPage
       .getByRole("button", { name: "Syarikat & wakil" })
       .click();
@@ -401,11 +432,13 @@ test("Phase 2A: one applicant manages two companies, a private PDF and an invite
       received.getByText("DATA UJIAN Wakil B", { exact: true }),
     ).toBeVisible();
     await received.getByText("Surat kuasa & dokumen", { exact: true }).click();
-    const [download] = await Promise.all([
-      recipientPage.waitForEvent("download"),
-      received.getByRole("link", { name: "surat-kuasa-ujian.pdf" }).click(),
-    ]);
-    expect(download.suggestedFilename()).toBe("surat-kuasa-ujian.pdf");
+    await expect(received.getByText("surat-kuasa-ujian.pdf", { exact: true })).toHaveCount(0);
+    const companyDetails = await recipientPage.request.get("/api/companies");
+    expect(companyDetails.status()).toBe(200);
+    expect(await companyDetails.text()).not.toContain(documentId);
+    const crossRepresentative = await recipientPage.request.get(downloadUrl);
+    expect(crossRepresentative.status()).toBe(404);
+    expect(crossRepresentative.headers()["cache-control"]).toContain("no-store");
     await page.getByRole("button", { name: "Ringkasan", exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.emulateMedia({ reducedMotion: "reduce" });
