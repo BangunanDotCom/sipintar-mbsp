@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CompletionCommand,
   CompletionState,
@@ -89,7 +89,15 @@ export function SyntheticCompletionQueue({
   identity: string;
   role: string;
 }) {
-  const query = useQuery<{ cases: (View & { id: string })[] }>({
+  const query = useQuery<{
+    cases: (View & { id: string })[];
+    summary: {
+      sampled: number;
+      overdue: number;
+      closed: number;
+      paymentPending: number;
+    };
+  }>({
     queryKey: ["synthetic-completion-queue", identity, role],
     queryFn: () => api(base + "/queue"),
     retry: false,
@@ -108,7 +116,17 @@ export function SyntheticCompletionQueue({
   return (
     <section className="panel synthetic-panel">
       <h3>Tugasan keputusan latihan</h3>
-      <p>{query.data.cases.length} kes dalam skop</p>
+      <p>Sehingga 50 kes terbaru dalam skop daerah.</p>
+      <ul className="synthetic-meta">
+        <li>{query.data.summary.sampled} kes dalam ringkasan</li>
+        <li>{query.data.summary.overdue} melepasi SLA ulasan</li>
+        <li>{query.data.summary.closed} ditutup</li>
+        {["PIC_KAWASAN", "PPSK"].includes(role) && (
+          <li>
+            {query.data.summary.paymentPending} menunggu rekonsiliasi kedua
+          </li>
+        )}
+      </ul>
       {query.data.cases.map((view) => (
         <CompletionForm
           key={view.id}
@@ -135,6 +153,7 @@ function CompletionForm({
   role: string;
   reload: () => Promise<void>;
 }) {
+  const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const [comment, setComment] = useState("");
@@ -172,6 +191,9 @@ function CompletionForm({
     try {
       await api(path, "POST", { version: view.version, command });
       setFeedback({ text: "Tindakan latihan direkodkan." });
+      void queryClient.invalidateQueries({
+        queryKey: ["synthetic-completion-queue"],
+      });
       setComment("");
       setChoice({});
       setDetails({});

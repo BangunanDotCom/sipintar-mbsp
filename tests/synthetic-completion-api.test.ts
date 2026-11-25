@@ -389,6 +389,19 @@ it.runIf(Boolean(kitFile))(
           await app.inject({ url: appUrl + "/completion", headers: owner })
         ).json().closed,
       ).toBe(true);
+      const aggregate = await app.inject({
+        url: root + "/completion/queue",
+        headers: ppsk,
+      });
+      expect(aggregate.statusCode).toBe(200);
+      expect(aggregate.json()).toEqual({
+        cases: [],
+        summary: { sampled: 1, overdue: 0, closed: 1, paymentPending: 0 },
+      });
+      expect(
+        (await app.inject({ url: root + "/completion/queue", headers: spt }))
+          .statusCode,
+      ).toBe(404);
       const existing = await app.inject({
         url: "/api/application-drafts/" + draft,
         headers: owner,

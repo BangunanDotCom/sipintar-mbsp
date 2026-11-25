@@ -529,7 +529,7 @@ export default function Dashboard() {
                 {["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
                   <SyntheticOfficerPanel key={me.user.id + me.activeRole} userId={me.user.id} activeRole={me.activeRole} />
                 )}
-                {["PERANCANG_BANDAR", "KEJURUTERAAN", "URUS_SETIA_JK", "PEGAWAI_PENANDATANGAN"].includes(me.activeRole) && (
+                {["PIC_KAWASAN", "PPSK", "PERANCANG_BANDAR", "KEJURUTERAAN", "URUS_SETIA_JK", "PEGAWAI_PENANDATANGAN"].includes(me.activeRole) && (
                   <SyntheticCompletionQueue key={me.user.id + me.activeRole} identity={me.user.id} role={me.activeRole} />
                 )}
                 {me.activeRole === "PIC_KAWASAN" && (

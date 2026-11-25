@@ -15,7 +15,7 @@ import {
   type CompletionRole,
 } from "../../../packages/shared/src/synthetic-completion.js";
 import { applicant } from "./application-drafts.js";
-import { authorize, fail } from "./auth.js";
+import { authorize, fail, session } from "./auth.js";
 import { db } from "./core.js";
 import { authorizedDraft } from "./premise-floors.js";
 import { firstPaymentSettled } from "./synthetic-portal-billing.js";
@@ -193,11 +193,11 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     return { officer, role: role.data };
   }
 
-  async function lockedRow(tx: Tx, id: string, area?: string) {
-    if (area) {
+  async function lockedRow(tx: Tx, id: string, area?: string, forWrite = true) {
+    if (forWrite && area) {
       await tx.$queryRaw`SELECT id FROM synthetic_submissions
         WHERE id = ${id} AND snapshot->>'districtId' = ${area} FOR UPDATE`;
-    } else {
+    } else if (forWrite) {
       await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id} FOR UPDATE`;
     }
     const row = await tx.syntheticSubmission.findFirst({
@@ -333,38 +333,73 @@ function registerCompletion(api: FastifyInstance, config: Config) {
   }
 
   api.get("/completion/queue", async (req) => {
-    const { officer, role } = await assigned(req);
-    return db.$transaction(async (tx) => {
-      await lockSyntheticPortalSession(tx, officer, role, district);
-      const rows = await tx.$queryRaw<
-        { id: string }[]
-      >`SELECT s.id FROM synthetic_submissions s
+    const initial = await session(req);
+    const manager = ["PIC_KAWASAN", "PPSK"].includes(initial.activeRole ?? "")
+      ? await syntheticReviewOfficer(req)
+      : null;
+    if (manager && manager.district !== district)
+      fail(404, "Tiada pelantikan latihan dalam skop ini.");
+    const { officer, role } = manager
+      ? { officer: manager.operator, role: manager.role }
+      : await assigned(req);
+    return db.$transaction(
+      async (tx) => {
+        await lockSyntheticPortalSession(tx, officer, role, district);
+        const rows = await tx.$queryRaw<
+          { id: string }[]
+        >`SELECT s.id FROM synthetic_submissions s
         WHERE s.snapshot->>'districtId' = ${district} AND s."actorId" <> ${officer.userId}
           AND NOT EXISTS (SELECT 1 FROM synthetic_submissions child WHERE child."previousId" = s.id)
           AND EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${eventName})
         ORDER BY s."createdAt" DESC, s.id LIMIT 50`;
-      const cases = [];
-      for (const { id } of rows) {
-        try {
-          const record = await lockedRow(tx, id, district);
-          const state = await stateFor(tx, id, record.scopes);
-          if (
-            (role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN") &&
-            !state.referral?.departments.includes(role)
-          )
-            continue;
-          cases.push({ id, ...scopedView(state, record, role) });
-        } catch (error) {
-          if (
-            !(error instanceof Error) ||
-            !("statusCode" in error) ||
-            ![404, 409].includes(Number(error.statusCode))
-          )
-            throw error;
+        const cases = [];
+        const summary = {
+          sampled: 0,
+          overdue: 0,
+          closed: 0,
+          paymentPending: 0,
+        };
+        for (const { id } of rows) {
+          try {
+            const record = await lockedRow(tx, id, district, false);
+            const state = await stateFor(tx, id, record.scopes);
+            if (
+              (role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN") &&
+              !state.referral?.departments.includes(role)
+            )
+              continue;
+            const responsible =
+              role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN"
+                ? [role]
+                : (state.referral?.departments ?? []);
+            summary.sampled++;
+            if (state.closed) summary.closed++;
+            if (
+              !state.closed &&
+              state.referral &&
+              Date.now() >= state.referral.deadline &&
+              responsible.some(
+                (department) => !state.referral?.comments[department],
+              )
+            )
+              summary.overdue++;
+            if (manager && state.invoice && !state.invoice.settled)
+              summary.paymentPending++;
+            if (!manager)
+              cases.push({ id, ...scopedView(state, record, role) });
+          } catch (error) {
+            if (
+              !(error instanceof Error) ||
+              !("statusCode" in error) ||
+              ![404, 409].includes(Number(error.statusCode))
+            )
+              throw error;
+          }
         }
-      }
-      return { cases };
-    });
+        return { cases, summary };
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
   });
 
   api.get("/completion/:id", async (req) => {
