@@ -1,5 +1,7 @@
 # Matriks kebolehkesanan Fasa 1
 
+Matriks ini merakam baseline PR #67. [Matriks K01–K11 pada PR #69](SEMAKAN-PR69.md#matriks-k01k11-dan-proses-lanjutan).
+
 **Status.** **Diuji** = fungsi asas pada baseline disokong oleh ujian yang lulus untuk subskop disebut. **Separa** = sebahagian tingkah laku wujud atau bukti belum meliputi keseluruhan keperluan. **Simulasi** = hasil latihan dengan fixture atau mock. **Belum** = pelaksanaan pada baseline tiada. **Tersekat** = aktivasi atau pengesahan rasmi bergantung pada kelulusan, integrasi atau persekitaran. Lajur jurang merujuk ID penemuan dan ID ujian cadangan. Rujukan hasil sebenar berada dalam [Bukti ujian](BUKTI-UJIAN.md).
 
 ## Keputusan reka bentuk dan fungsi berkaitan

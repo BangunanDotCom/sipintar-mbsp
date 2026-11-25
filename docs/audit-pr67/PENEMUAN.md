@@ -1,5 +1,7 @@
 # Penemuan dan tindakan penyelarasan
 
+[Daftar gerbang PR #69](SEMAKAN-PR69.md#daftar-gerbang-pelepasan-aktif) mengemas kini status baseline. P0 A/B kekal terbuka. [Kriteria surat kuasa](PENERIMAAN-SURAT-KUASA.md).
+
 **P0** menyekat kelulusan Go Live. **P1** perlu diselesaikan atau dibuktikan mengikut gerbang Complete Release. **P2** memperkemas kontrak dan bukti. Tahap risiko menilai kesan kepada proses rasmi jika laluan terlibat tersedia. Penemuan bertanda statik berpunca daripada semakan kod. Pengesahan regresi hendaklah dibuat secara defensif pada fixture terasing.
 
 | ID | Prioriti / risiko | Penemuan dan bukti | Tindakan dan bukti penutupan yang diperlukan | Pemilik cadangan |

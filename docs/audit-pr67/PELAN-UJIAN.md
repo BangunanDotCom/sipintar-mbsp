@@ -1,5 +1,7 @@
 # Pelan pengujian dan penerimaan Complete Release
 
+[Checklist Complete Release selepas PR #69](SEMAKAN-PR69.md#checklist-complete-release) dan [ujian negatif untuk surat kuasa](PENERIMAAN-SURAT-KUASA.md) melengkapkan pelan ini.
+
 Gunakan SHA calon yang tetap, polisi berversi, jam Asia/Kuala_Lumpur, laluan hos UAT yang diluluskan dan fixture bebas bagi setiap senario. Sediakan tiga daerah SPU/SPT/SPS, dua syarikat, wakil aktif/luput/dibatalkan, satu individu dan akaun pegawai berasingan. Set asas mempunyai Unit A merentasi dua tingkat, Unit B berkongsi satu tingkat, dan Unit C bebas. Gunakan fail rekaan, Mailpit, penyedia sandbox yang diluluskan dan DB terasing. Bukti setiap kes ialah status, peranan, daerah, versi, cap masa, ID ujian, asersi DB/audit, keputusan sebenar, keputusan jangkaan dan bukti UI yang sudah diringkaskan. Pelan ini menambah senario QA. Hasil larian ujian yang sudah ada direkodkan dalam [Bukti ujian](BUKTI-UJIAN.md).
 
 ## Perjalanan ujian dan kes regresi

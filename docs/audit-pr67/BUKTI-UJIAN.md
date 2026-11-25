@@ -1,5 +1,7 @@
 # Bukti larian, liputan, prestasi dan pemulihan
 
+[Laporan larian PR #69](SEMAKAN-PR69.md#bukti-ujian-untuk-sha-ini) merekod CI dan larian bebas pada SHA yang lebih baharu.
+
 Baseline `8ecd1e5e6d823af900937b619674f28f665080df`. Larian 25 November 2026, waktu Malaysia. Toolchain audit Node 24.22.3, npm 11.19.1, Vitest 4.1.12, Vite 7.3.7, Chromium 156.0.8078.79, PostgreSQL 16.16, Mailpit v1.27 dan Nginx 1.28 Alpine untuk HTTPS setempat. Workflow asal menggunakan Node 22. DB per suite dibina melalui migrasi baseline dan menggunakan dataset rekaan. Mailpit dan semua app test hosts terikat pada loopback.
 
 ## Hasil larian semula
