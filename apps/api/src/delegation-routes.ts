@@ -145,8 +145,15 @@ export async function delegationRoutes(app: FastifyInstance) {
           .string()
           .min(1)
           .max(120)
-          .regex(/^[^/\\\x00-\x1f\x7f]+\.pdf$/i)
-          .refine((value) => Buffer.from(value).toString() === value),
+          .regex(/^[^/\\]+\.pdf$/i)
+          .refine(
+            (value) =>
+              Buffer.from(value).toString() === value &&
+              Array.from(value).every(
+                (char) =>
+                  char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127,
+              ),
+          ),
         content: z
           .string()
           .max(27962028)
@@ -377,7 +384,11 @@ export async function delegationRoutes(app: FastifyInstance) {
         company: {
           ...rep.company,
           documents: docs
-            .filter((doc) => doc.representativeId === rep.id && doc.authorityType === rep.authorityType)
+            .filter(
+              (doc) =>
+                doc.representativeId === rep.id &&
+                doc.authorityType === rep.authorityType,
+            )
             .map((doc) => delegationSummary(doc)),
         },
       }));
