@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -66,6 +67,7 @@ export async function premiseFloorRoutes(app: FastifyInstance) {
     const totals = summarizePremiseFloors(input.floors);
     return db.$transaction(async (tx) => {
       await authorizedDraft(tx, s.userId, id);
+      await requireUnclosedTrainingDraft(tx, id);
       const claim = await tx.applicationDraft.updateMany({
         where: { id, initiatedByUserId: s.userId, status: "DRAFT", version: input.version },
         data: { version: { increment: 1 } },

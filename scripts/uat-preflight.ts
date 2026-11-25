@@ -143,7 +143,9 @@ export async function runPreflight(args: string[]) {
                           ? "applications.draft"
                           : role === "PENTADBIR_ICT"
                             ? "users.manage"
-                            : "areas.read"),
+                            : role === "PIC_KAWASAN" || role === "PPSK"
+                              ? "areas.read"
+                              : "profile"),
                     ),
                 ),
               ) ||

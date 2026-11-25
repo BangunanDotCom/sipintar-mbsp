@@ -1,3 +1,6 @@
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
+import { loadSyntheticOwnerPolicy } from "./synthetic-owner-policy.js";
+import { completionSandbox } from "./synthetic-completion-gate.js";
 import { premisesRoutes } from "./premises.js";
 import { premiseFloorRoutes } from "./premise-floors.js";
 import { premiseUnitRoutes } from "./premise-units.js";
@@ -84,7 +87,16 @@ export async function routes(app: FastifyInstance) {
   app.get("/api/public/districts", () =>
     db.district.findMany({ orderBy: { id: "asc" } }),
   );
-  app.get("/api/dashboard", async (req) => dashboard(await session(req)));
+  app.get("/api/dashboard", async (req, reply) => {
+    const data = await dashboard(await session(req));
+    const policy = syntheticPortalDatabase() ? loadSyntheticOwnerPolicy() : null;
+    reply.header("Cache-Control", "private, no-store");
+    return { ...data, training: {
+      review: policy?.config.review.enabled === true,
+      completion: policy?.config.review.enabled === true &&
+        policy.config.billing.mode === "MOCK" && completionSandbox(),
+    } };
+  });
   app.patch("/api/profile", async (req) => {
     const s = await session(req);
     const b = z

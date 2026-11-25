@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -231,6 +232,7 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
       )) fail(409, "Maklumat pemohon draf tidak konsisten.");
       // Changing capacity must not bypass revoked authority on the original company draft.
       if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
+      await requireUnclosedTrainingDraft(tx, id);
       const data = await snapshots(tx, s, input);
       const updated = await tx.applicationDraft.updateMany({
         where: {

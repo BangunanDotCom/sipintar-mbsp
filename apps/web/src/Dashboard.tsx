@@ -1,3 +1,4 @@
+import { SyntheticCompletionQueue } from "./SyntheticCompletion";
 import { SyntheticOfficerPanel } from "./SyntheticOfficerPanel";
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -525,8 +526,11 @@ export default function Dashboard() {
                     </section>
                   </div>
                 )}
-                {["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
+                {dash.data?.training?.review === true && ["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
                   <SyntheticOfficerPanel key={me.user.id + me.activeRole} userId={me.user.id} activeRole={me.activeRole} />
+                )}
+                {dash.data?.training?.completion === true && ["PIC_KAWASAN", "PPSK", "PERANCANG_BANDAR", "KEJURUTERAAN", "URUS_SETIA_JK", "PEGAWAI_PENANDATANGAN"].includes(me.activeRole) && (
+                  <SyntheticCompletionQueue key={me.user.id + me.activeRole} identity={me.user.id} role={me.activeRole} />
                 )}
                 {me.activeRole === "PIC_KAWASAN" && (
                   <section className="panel">

@@ -7,6 +7,7 @@ import {
   summarizeDocumentRequirements,
 } from "../../../packages/shared/src/document-policy.js";
 import { lockSyntheticApplicantSession } from "./synthetic-portal-session.js";
+import { syntheticCompletionRoutes } from "./synthetic-portal-completion.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
@@ -392,11 +393,13 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
         );
       });
       if (review.enabled) await syntheticReviewRoutes(portal);
-      if (billing.mode === "MOCK")
+      if (billing.mode === "MOCK") {
         await syntheticBillingRoutes(portal, {
           ttlMinutes: billing.ttlMinutes,
           policyVersion: ownerVersion,
         });
+        if (review.enabled) await syntheticCompletionRoutes(portal);
+      }
     },
     { prefix: "/api/synthetic-portal" },
   );

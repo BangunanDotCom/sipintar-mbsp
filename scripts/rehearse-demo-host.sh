@@ -2,12 +2,14 @@
 # Local synthetic rehearsal only. A short-lived Nginx container binds loopback.
 set -euo pipefail
 umask 077
-if [[ $# != 1 || ! "${APP_ORIGIN:-}" =~ ^https://localhost:(5443|5444)$ ||
+if [[ $# -lt 1 || $# -gt 2 || ( $# == 2 && "$2" != --completion ) || ! "${APP_ORIGIN:-}" =~ ^https://localhost:(5443|5444)$ ||
       "${STAYLINK_DEMO_HOST:-}" != true ]]; then
   echo "Gunakan konfigurasi latihan tempatan dan portal.env kit." >&2
   exit 2
 fi
 host_port=${BASH_REMATCH[1]}
+mode=${2:-}
+if [[ "$mode" == --completion && "$host_port" != 5444 ]]; then exit 2; fi
 # Refuse to reuse an existing API or HTTPS listener.
 node --input-type=module - "$host_port" <<'JS'
 import { createServer } from "node:net";
@@ -26,7 +28,11 @@ kit_env=$1
 kit_dir=$(dirname "$kit_env")
 node --env-file="$kit_env" scripts/demo-host-readiness.mjs
 node --env-file="$kit_env" scripts/uat-preflight.mjs kit --kit "$kit_dir"
-if [[ "$host_port" == 5444 ]]; then
+if [[ "$mode" == --completion ]]; then
+  export STAYLINK_COMPLETION_KIT_FILE="$kit_dir/accounts.json"
+  export STAYLINK_SYNTHETIC_SECOND_UNIT_FEE_SEN=1234
+  node --env-file="$kit_env" node_modules/vitest/vitest.mjs run tests/synthetic-completion-api.test.ts
+elif [[ "$host_port" == 5444 ]]; then
   node --env-file="$kit_env" --import=tsx scripts/personal-demo-stage.ts "$kit_dir"
 fi
 
@@ -81,7 +87,9 @@ curl -fsS --cacert "$work/cert.pem" --max-time 3 "$APP_ORIGIN/api/health" >/dev/
 export STAYLINK_HTTPS_REHEARSAL=true
 export STAYLINK_UAT_KIT_FILE="$kit_dir/accounts.json"
 suite=(tests/e2e/synthetic-portal.spec.ts tests/e2e/demo-host.spec.ts)
-if [[ "$host_port" == 5444 ]]; then
+if [[ "$mode" == --completion ]]; then
+  suite=(tests/e2e/synthetic-completion.spec.ts)
+elif [[ "$host_port" == 5444 ]]; then
   suite=(tests/e2e/personal-demo.spec.ts)
 fi
 node --env-file="$kit_env" node_modules/@playwright/test/cli.js test "${suite[@]}"
