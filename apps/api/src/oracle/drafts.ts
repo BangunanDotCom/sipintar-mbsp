@@ -1,3 +1,4 @@
+import { requireOracleUnclosedDraft } from "./completion-gate.js";
 import { randomUUID } from "node:crypto";
 import {
   Prisma,
@@ -376,14 +377,18 @@ export function createOracleDraftRepository(
         await insert(connection, drafts, { ...data, id }, ",UPDATED_AT");
         return requireRecord(await findDraft(data.initiatedByUserId, id));
       },
-      saveDraft: async (userId, id, version, data) =>
-        (await update(
-          drafts,
-          "ID=:id AND INITIATED_BY_USER_ID=:userId AND STATUS='DRAFT' AND VERSION=:version",
-          data ?? {},
-          { id, userId, version },
-          ["VERSION=VERSION+1"],
-        )) === 1,
+      saveDraft: async (userId, id, version, data) => {
+        await requireOracleUnclosedDraft(pool, connection, id);
+        return (
+          (await update(
+            drafts,
+            "ID=:id AND INITIATED_BY_USER_ID=:userId AND STATUS='DRAFT' AND VERSION=:version",
+            data ?? {},
+            { id, userId, version },
+            ["VERSION=VERSION+1"],
+          )) === 1
+        );
+      },
       savePremises: async (draftId, data) => {
         if (!(await update(premises, "DRAFT_ID=:draftId", data, { draftId })))
           await insert(

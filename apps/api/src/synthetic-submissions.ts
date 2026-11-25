@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import { syntheticDocumentFacts } from "./synthetic-owner-policy.js";
 import {
   lockSyntheticApplicantSession,
@@ -74,6 +75,7 @@ export type SyntheticSubmissionTransaction = {
   latestSubmission(draftId: string): Promise<SyntheticSubmission | null>;
   correctionRequested(submissionId: string): Promise<boolean>;
   lockEvidence(draftId: string): Promise<void>;
+  requireUnclosed(draftId: string): Promise<void>;
   inventory(draftId: string): Promise<SyntheticInventory>;
   evidence(draftId: string): Promise<SyntheticEvidence>;
   createSubmission(
@@ -134,6 +136,7 @@ export async function captureSyntheticSubmission(
           select: { id: true },
         }));
       },
+      requireUnclosed: (draftId) => requireUnclosedTrainingDraft(tx, draftId),
       async lockEvidence(draftId) {
         await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
         await tx.$queryRaw`SELECT "documentId" FROM draft_document_scopes WHERE "draftId" = ${draftId} FOR SHARE`;
@@ -232,6 +235,7 @@ export async function captureInTransaction(
       );
   }
 
+  await tx.requireUnclosed(draft.id);
   await tx.lockEvidence(draft.id);
   const { premises, floors, eligible, evidence, readiness } =
     evaluateSyntheticReadiness(

@@ -41,10 +41,11 @@ export async function registerRepositoryRoutes(
     management,
     dashboard,
   }: DatabaseRepositories,
+  training?: () => { review: boolean; completion: boolean },
 ) {
   await authRoutes(app, auth);
   await adminRoutes(app, admin, auth);
-  dashboardRoutes(app, dashboard, applicants, auth);
+  dashboardRoutes(app, dashboard, applicants, auth, training);
   await applicantRoutes(app, applicants, auth, companyInvitations);
   await companyInvitationRoutes(app, companyInvitations, auth);
   await applicationDraftRoutes(app, drafts, auth);

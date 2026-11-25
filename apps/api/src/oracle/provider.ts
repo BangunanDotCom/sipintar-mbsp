@@ -1,3 +1,9 @@
+import { completionConfig } from "../synthetic-portal-completion.js";
+import {
+  assertOracleCompletionMigration,
+  oracleCompletionEnabled,
+} from "./completion-gate.js";
+import { createOracleCompletionRuntime } from "./completion-runtime.js";
 import { createOracleAdmin } from "./admin.js";
 import { createOracleDashboard } from "./dashboard.js";
 import { createOracleApplicantRepository } from "./applicants.js";
@@ -15,6 +21,7 @@ import type { OraclePool } from "./pool.js";
 export type OracleLabRepositories = DatabaseRepositories & {
   registerSyntheticLab(app: FastifyInstance): Promise<void>;
   checkConnection(): Promise<void>;
+  training(): { review: boolean; completion: boolean };
 };
 
 export function createOracleRepositories(
@@ -36,6 +43,20 @@ export function createOracleRepositories(
     companyInvitations: createOracleCompanyInvitationRepository(pool),
     drafts: createOracleDraftRepository(pool),
     management: createOracleManagementRepository(pool),
+    training() {
+      const policy =
+        process.env.STAYLINK_ORACLE_LAB_SYNTHETIC === "true"
+          ? loadSyntheticOwnerPolicy()
+          : null;
+      const review = policy?.config.review.enabled === true;
+      return {
+        review,
+        completion:
+          review &&
+          policy?.config.billing.mode === "MOCK" &&
+          oracleCompletionEnabled(),
+      };
+    },
     async registerSyntheticLab(app) {
       if (
         process.env.NODE_ENV !== "test" ||
@@ -45,7 +66,24 @@ export function createOracleRepositories(
       const owner = loadSyntheticOwnerPolicy();
       if (!owner) throw Error("Polisi Oracle sintetik tidak sah.");
       const { portal, reviews, capture } = createOracleSyntheticPortal(pool);
-      await registerSyntheticPortal(app, owner, auth, portal, reviews, capture);
+      const config =
+        owner.config.review.enabled &&
+        owner.config.billing.mode === "MOCK" &&
+        oracleCompletionEnabled()
+          ? completionConfig()
+          : null;
+      if (config) await assertOracleCompletionMigration(pool);
+      await registerSyntheticPortal(
+        app,
+        owner,
+        auth,
+        portal,
+        reviews,
+        capture,
+        config
+          ? { config, repository: createOracleCompletionRuntime(pool) }
+          : undefined,
+      );
     },
   };
 }

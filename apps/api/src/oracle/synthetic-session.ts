@@ -1,3 +1,4 @@
+import type { CompletionRole } from "../../../../packages/shared/src/synthetic-completion-contract.js";
 import type { Connection } from "oracledb";
 import { fail } from "../auth.js";
 import type { ObservedPortalSession } from "../synthetic-portal-session.js";
@@ -12,14 +13,18 @@ export function oracleSyntheticSession(pool: OraclePool) {
   return async (
     connection: Connection,
     operator: ObservedPortalSession,
-    activeRole: "PEMOHON" | "WAKIL_SYARIKAT" | "PIC_KAWASAN" | "PPSK",
+    activeRole: CompletionRole,
     district?: string,
   ) => {
     const { id, csrfHash, userId } = operator;
     const applicant =
       activeRole === "PEMOHON" || activeRole === "WAKIL_SYARIKAT";
     const kind = applicant ? "APPLICANT" : "OFFICER";
-    const permission = applicant ? "applications.draft" : "areas.read";
+    const permission = applicant
+      ? "applications.draft"
+      : activeRole === "PIC_KAWASAN" || activeRole === "PPSK"
+        ? "areas.read"
+        : "profile";
     await connection.execute(
       `SELECT ID FROM ${users} WHERE ID=:userId FOR UPDATE`,
       { userId },

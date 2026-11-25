@@ -1,3 +1,6 @@
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
+import { completionSandbox } from "./synthetic-completion-gate.js";
+import { loadSyntheticOwnerPolicy } from "./synthetic-owner-policy.js";
 import type { FastifyInstance } from "fastify";
 import { isCurrent } from "../../../packages/shared/src/index.js";
 import { postgresApplicantRepository } from "./applicant-repository.js";
@@ -6,13 +9,24 @@ import { fail, session } from "./auth.js";
 import { safeUser } from "./core.js";
 import { postgresDashboard } from "./dashboard-repository.js";
 
+function postgresTraining() {
+  const policy = syntheticPortalDatabase() ? loadSyntheticOwnerPolicy() : null;
+  const review = policy?.config.review.enabled === true;
+  return {
+    review,
+    completion:
+      review && policy?.config.billing.mode === "MOCK" && completionSandbox(),
+  };
+}
+
 export function dashboardRoutes(
   app: FastifyInstance,
   repository = postgresDashboard,
   applicants = postgresApplicantRepository,
   auth = postgresAuth,
+  training = postgresTraining,
 ) {
-  app.get("/api/dashboard", async (req) => {
+  app.get("/api/dashboard", async (req, reply) => {
     const s = await session(req, true, auth);
     const role = s.activeRole;
     const current = s.user.roles.filter(
@@ -34,7 +48,9 @@ export function dashboardRoutes(
             ),
           )
         : [];
+    reply.header("Cache-Control", "private, no-store");
     return {
+      training: training(),
       user: safeUser(s.user),
       role,
       companies,

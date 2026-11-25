@@ -156,6 +156,10 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
             `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
           );
       }
+      if (env.ORACLE_LAB_ENABLE_COMPLETION === "true")
+        await connection.execute(
+          `GRANT SELECT ON STL_SCHEMA_MIGRATIONS TO ${runtime.user}`,
+        );
       if (env.ORACLE_LAB_ENABLE_SUBMISSIONS === "true") {
         const grants = [
           ["STL_SYNTHETIC_SUBMISSIONS", "SELECT, INSERT"],

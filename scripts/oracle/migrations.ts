@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import oracledb, { type Connection } from "oracledb";
 
 const directory = new URL("../../database/oracle/", import.meta.url);
-const version = "001-baseline";
+const baselineVersion = "001-baseline";
+const completionVersion = "002-completion-audit";
 type InventoryRow = { type: string; name: string };
 const canonical = (entry: InventoryRow) => `${entry.type}:${entry.name}`;
 
@@ -46,90 +47,28 @@ async function preflight(connection: Connection) {
     throw Error("Kuota tablespace lalai diperlukan.");
 }
 
-export async function migrateOracle(connection: Connection, apply: boolean) {
-  await preflight(connection);
+type Migration = {
+  version: string;
+  checksum: string;
+  expected: Set<string>;
+  statements: string[];
+};
+
+async function loadMigration(
+  version: string,
+  historyDdl = "",
+): Promise<Migration> {
   const ddl = await readFile(new URL(`${version}.sql`, directory), "utf8");
   const inventorySource = await readFile(
-    new URL("001-inventory.json", directory),
+    new URL(`${version.slice(0, 3)}-inventory.json`, directory),
     "utf8",
   );
   const inventory: InventoryRow[] = JSON.parse(inventorySource);
-  const historyDdl = await readFile(
-    new URL("000-history.sql", directory),
-    "utf8",
-  );
   const checksum = createHash("sha256")
     .update(ddl)
     .update(inventorySource)
     .update(historyDdl)
     .digest("hex");
-  const expected = new Set(inventory.map(canonical));
-  for (const name of [
-    "TABLE:STL_SCHEMA_MIGRATIONS",
-    "INDEX:STL_HIST_PK",
-    ...[
-      "VERSION_NN",
-      "CHECKSUM_NN",
-      "STATE_NN",
-      "START_NN",
-      "PK",
-      "STATE_CK",
-    ].map((suffix) => `CONSTRAINT:STL_HIST_${suffix}`),
-  ])
-    expected.add(name);
-  const validate = async () => {
-    const objects = await namespace(connection);
-    const missing = [...expected].filter((key) => !objects.has(key));
-    const unexpected = [...objects].filter((key) => !expected.has(key));
-    if (missing.length || unexpected.length)
-      throw Error(
-        `Inventori Oracle tidak sepadan. Hilang: ${missing.length}; luar manifest: ${unexpected.length}.`,
-      );
-    const states = await connection.execute<{ N: number }>(
-      `SELECT COUNT(*) AS N FROM USER_OBJECTS WHERE SUBSTR(OBJECT_NAME,1,4) = 'STL_' AND STATUS <> 'VALID'`,
-      {},
-      { outFormat: oracledb.OUT_FORMAT_OBJECT },
-    );
-    const disabled = await connection.execute<{ N: number }>(
-      `SELECT COUNT(*) AS N FROM USER_TRIGGERS WHERE SUBSTR(TRIGGER_NAME,1,4) = 'STL_' AND STATUS <> 'ENABLED'`,
-      {},
-      { outFormat: oracledb.OUT_FORMAT_OBJECT },
-    );
-    if (states.rows?.[0]?.N || disabled.rows?.[0]?.N)
-      throw Error("Objek Oracle tidak sah atau pencetus STL dinyahaktifkan.");
-  };
-  const existing = await namespace(connection);
-  if (existing.size) {
-    if (!existing.has("TABLE:STL_SCHEMA_MIGRATIONS"))
-      throw Error("Pertindihan objek STL dikesan sebelum DDL.");
-    let rows:
-      { VERSION: string; CHECKSUM: string; STATE: string }[] | undefined;
-    try {
-      ({ rows } = await connection.execute<{
-        VERSION: string;
-        CHECKSUM: string;
-        STATE: string;
-      }>(
-        "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS FETCH FIRST 2 ROWS ONLY",
-        {},
-        { outFormat: oracledb.OUT_FORMAT_OBJECT },
-      ));
-    } catch {
-      throw Error("Jadual sejarah bertindih atau tidak sepadan.");
-    }
-    if (
-      rows?.length !== 1 ||
-      rows[0].VERSION !== version ||
-      rows[0].STATE !== "APPLIED" ||
-      rows[0].CHECKSUM !== checksum
-    )
-      throw Error(
-        "Sejarah tidak sepadan atau DDL separa. Hentikan pemasangan untuk semakan pemulihan.",
-      );
-    await validate();
-    return "APPLIED";
-  }
-  if (!apply) return "EMPTY";
   const statements = ddl
     .split(/^-- @statement\s*$/m)
     .map((step) => step.replace(/^--[^\n]*\n/, "").trim());
@@ -142,13 +81,62 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
     )
   )
     throw Error("DDL di luar skop STL.");
-  await connection.execute(historyDdl.trim());
+  return {
+    version,
+    checksum,
+    statements,
+    expected: new Set(inventory.map(canonical)),
+  };
+}
+
+async function validate(connection: Connection, expected: Set<string>) {
+  const objects = await namespace(connection);
+  const missing = [...expected].filter((key) => !objects.has(key));
+  const unexpected = [...objects].filter((key) => !expected.has(key));
+  if (missing.length || unexpected.length)
+    throw Error(
+      `Inventori Oracle tidak sepadan. Hilang: ${missing.length}; luar manifest: ${unexpected.length}.`,
+    );
+  const options = { outFormat: oracledb.OUT_FORMAT_OBJECT };
+  const states = await connection.execute<{ N: number }>(
+    `SELECT COUNT(*) AS N FROM USER_OBJECTS WHERE SUBSTR(OBJECT_NAME,1,4) = 'STL_' AND STATUS <> 'VALID'`,
+    {},
+    options,
+  );
+  const disabled = await connection.execute<{ N: number }>(
+    `SELECT COUNT(*) AS N FROM USER_TRIGGERS WHERE SUBSTR(TRIGGER_NAME,1,4) = 'STL_' AND STATUS <> 'ENABLED'`,
+    {},
+    options,
+  );
+  if (states.rows?.[0]?.N || disabled.rows?.[0]?.N)
+    throw Error("Objek Oracle tidak sah atau pencetus STL dinyahaktifkan.");
+  if (expected.has("INDEX:STL_IX_COMPLETION_AUDIT")) {
+    const result = await connection.execute<{ COLUMN_NAME: string }>(
+      `SELECT COLUMN_NAME FROM USER_IND_COLUMNS WHERE INDEX_NAME='STL_IX_COMPLETION_AUDIT'
+        AND TABLE_NAME='STL_AUDIT_LOGS' ORDER BY COLUMN_POSITION`,
+      {},
+      options,
+    );
+    if (
+      result.rows?.map(({ COLUMN_NAME }) => COLUMN_NAME).join(",") !==
+      "ACTION,TARGET,OUTCOME"
+    )
+      throw Error("Definisi indeks audit penyelesaian Oracle tidak sepadan.");
+  }
+}
+
+async function applyMigration(
+  connection: Connection,
+  migration: Migration,
+  expected: Set<string>,
+) {
+  const { version, checksum } = migration;
   await connection.execute(
     "INSERT INTO STL_SCHEMA_MIGRATIONS (VERSION,CHECKSUM,STATE) VALUES (:version,:checksum,'APPLYING')",
     { version, checksum },
   );
-  await connection.commit(); // Oracle DDL implicitly commits. This durable marker is never cleared on error.
-  for (const [index, statement] of statements.entries()) {
+  await connection.commit(); // DDL implicitly commits. Preserve the marker on any failure.
+  for (const [index, statement] of migration.statements.entries()) {
     try {
       await connection.execute(statement);
     } catch (error) {
@@ -157,15 +145,84 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
           ? String(error.code)
           : "UNKNOWN";
       throw Error(
-        `DDL langkah ${index + 1} gagal (${/^ORA-\d+$/.test(code) ? code : "UNKNOWN"}). Sejarah kekal APPLYING.`,
+        `DDL ${version} langkah ${index + 1} gagal (${/^ORA-\d+$/.test(code) ? code : "UNKNOWN"}). Sejarah kekal APPLYING.`,
       );
     }
   }
-  await validate();
+  await validate(connection, expected);
   await connection.execute(
     "UPDATE STL_SCHEMA_MIGRATIONS SET STATE='APPLIED', APPLIED_AT=SYSTIMESTAMP WHERE VERSION=:version AND STATE='APPLYING'",
     { version },
   );
   await connection.commit();
+}
+
+export async function migrateOracle(connection: Connection, apply: boolean) {
+  await preflight(connection);
+  const historyDdl = await readFile(
+    new URL("000-history.sql", directory),
+    "utf8",
+  );
+  const baseline = await loadMigration(baselineVersion, historyDdl);
+  const completion = await loadMigration(completionVersion);
+  for (const name of [
+    "TABLE:STL_SCHEMA_MIGRATIONS",
+    "INDEX:STL_HIST_PK",
+    ...[
+      "VERSION_NN",
+      "CHECKSUM_NN",
+      "STATE_NN",
+      "START_NN",
+      "PK",
+      "STATE_CK",
+    ].map((suffix) => `CONSTRAINT:STL_HIST_${suffix}`),
+  ])
+    baseline.expected.add(name);
+  const expected = new Set([...baseline.expected, ...completion.expected]);
+  const existing = await namespace(connection);
+  if (!existing.size) {
+    if (!apply) return "EMPTY";
+    await connection.execute(historyDdl.trim());
+    await applyMigration(connection, baseline, baseline.expected);
+    await applyMigration(connection, completion, expected);
+    return "APPLIED";
+  }
+  if (!existing.has("TABLE:STL_SCHEMA_MIGRATIONS"))
+    throw Error("Pertindihan objek STL dikesan sebelum DDL.");
+  let history:
+    { VERSION: string; CHECKSUM: string; STATE: string }[] | undefined =
+    undefined;
+  try {
+    ({ rows: history } = await connection.execute<{
+      VERSION: string;
+      CHECKSUM: string;
+      STATE: string;
+    }>(
+      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 3 ROWS ONLY",
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
+    ));
+  } catch {
+    throw Error("Jadual sejarah bertindih atau tidak sepadan.");
+  }
+  if (
+    !history?.length ||
+    history.length > 2 ||
+    history.some((row, index) => {
+      const migration = index === 0 ? baseline : completion;
+      return (
+        row.VERSION !== migration.version ||
+        row.CHECKSUM !== migration.checksum ||
+        row.STATE !== "APPLIED"
+      );
+    })
+  )
+    throw Error(
+      "Sejarah tidak sepadan atau DDL separa. Hentikan pemasangan untuk semakan pemulihan.",
+    );
+  const upgraded = history.length === 2;
+  await validate(connection, upgraded ? expected : baseline.expected);
+  if (apply && !upgraded)
+    await applyMigration(connection, completion, expected);
   return "APPLIED";
 }

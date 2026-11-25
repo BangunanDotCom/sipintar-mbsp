@@ -1,3 +1,4 @@
+import { requireOracleUnclosedDraft } from "./completion-gate.js";
 import { randomUUID } from "node:crypto";
 import type { SyntheticSubmission } from "@prisma/client";
 import type { Connection } from "oracledb";
@@ -95,6 +96,8 @@ export function createOracleSyntheticSubmissions(pool: OraclePool) {
         );
         return !!row;
       },
+      requireUnclosed: (draftId) =>
+        requireOracleUnclosedDraft(pool, connection, draftId),
       async lockEvidence(draftId) {
         await connection.execute(
           `SELECT ID FROM ${documents} WHERE DRAFT_ID=:draftId FOR UPDATE`,

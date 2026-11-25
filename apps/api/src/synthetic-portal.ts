@@ -1,3 +1,12 @@
+import { completionSandbox } from "./synthetic-completion-gate.js";
+import {
+  completionConfig,
+  syntheticCompletionRoutes,
+} from "./synthetic-portal-completion.js";
+import {
+  postgresCompletion,
+  type CompletionRepository,
+} from "./completion-repository.js";
 import { registerSyntheticSubmitRoute } from "./synthetic-submit-route.js";
 import { postgresAuth, type AuthRepository } from "./auth-repository.js";
 import {
@@ -195,6 +204,12 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
   if (active?.name !== database)
     throw Error("Pangkalan data portal sintetik tidak sepadan.");
 
+  const config =
+    owner.config.review.enabled &&
+    owner.config.billing.mode === "MOCK" &&
+    completionSandbox()
+      ? completionConfig()
+      : null;
   return registerSyntheticPortal(
     app,
     owner,
@@ -203,6 +218,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
     postgresSyntheticReviewRepository,
     (operator, input, policy) =>
       captureSyntheticSubmission(operator.userId, input, policy, operator),
+    config ? { config, repository: postgresCompletion } : undefined,
   );
 }
 
@@ -217,6 +233,10 @@ export async function registerSyntheticPortal(
     input: unknown,
     policy: SyntheticPolicy,
   ) => Promise<{ id: string; version: number }>,
+  completion?: {
+    config: NonNullable<ReturnType<typeof completionConfig>>;
+    repository: CompletionRepository;
+  },
 ) {
   const {
     declaration,
@@ -459,6 +479,13 @@ export async function registerSyntheticPortal(
           },
           reviewRepository,
           auth,
+        );
+      if (review.enabled && billing.mode === "MOCK" && completion)
+        await syntheticCompletionRoutes(
+          portal,
+          completion.config,
+          auth,
+          completion.repository,
         );
     },
     { prefix: "/api/synthetic-portal" },

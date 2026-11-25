@@ -1,3 +1,8 @@
+import {
+  isPersonalDemoDatabase,
+  personalDistrictAssignments,
+} from "./demo-host-config.mjs";
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { floorFacilitySchema } from "../../../packages/shared/src/floor-summary.js";
 import { Prisma, type SyntheticSubmission } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -72,11 +77,24 @@ export async function syntheticReviewOfficer(
 ) {
   const operator = await authorize(req, "areas.read", auth);
   const assignedRole = role.safeParse(operator.activeRole);
-  const pic = uuid.safeParse(process.env.STAYLINK_SYNTHETIC_PIC_ID);
+  const personal =
+    process.env.STAYLINK_DEMO_HOST === "true" &&
+    isPersonalDemoDatabase(syntheticPortalDatabase());
+  const allocation =
+    personal && assignedRole.data === "PIC_KAWASAN"
+      ? personalDistrictAssignments(process.env).find(
+          ({ id }) => id === operator.userId,
+        )
+      : null;
+  const pic = uuid.safeParse(
+    allocation?.id ?? process.env.STAYLINK_SYNTHETIC_PIC_ID,
+  );
   const supervisor = uuid.safeParse(
     process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID,
   );
-  const area = district.safeParse(process.env.STAYLINK_SYNTHETIC_DISTRICT);
+  const area = district.safeParse(
+    allocation?.district ?? process.env.STAYLINK_SYNTHETIC_DISTRICT,
+  );
   if (
     !assignedRole.success ||
     !pic.success ||

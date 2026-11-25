@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import {
   Prisma,
   type ApplicationDraft,
@@ -104,6 +105,7 @@ function postgresDraftTransaction(tx: Prisma.TransactionClient) {
       version: number,
       data?: DraftValues,
     ) {
+      await requireUnclosedTrainingDraft(tx, id);
       const result = await tx.applicationDraft.updateMany({
         where: { id, initiatedByUserId: userId, status: "DRAFT", version },
         data: { ...(data && draftData(data)), version: { increment: 1 } },

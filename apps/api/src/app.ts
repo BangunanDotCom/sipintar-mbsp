@@ -36,6 +36,7 @@ export async function buildOracleLabApp(repositories: OracleLabRepositories) {
   const app = await buildWithRepositories(
     repositories,
     repositories.checkConnection,
+    repositories.training,
   );
   await repositories.registerSyntheticLab(app);
   return app;
@@ -44,6 +45,7 @@ export async function buildOracleLabApp(repositories: OracleLabRepositories) {
 async function buildWithRepositories(
   repositories: DatabaseRepositories,
   oracleLabHealth?: () => Promise<void>,
+  training?: () => { review: boolean; completion: boolean },
 ) {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.
@@ -131,7 +133,7 @@ async function buildWithRepositories(
   app.addHook("onClose", async () => {
     closeMailer();
   });
-  await registerRepositoryRoutes(app, repositories);
+  await registerRepositoryRoutes(app, repositories, training);
   if (!oracleLabHealth) {
     await syntheticPortalRoutes(app);
   }
