@@ -9,6 +9,9 @@ import { db, encrypt, hash } from "../apps/api/src/core.js";
 import { protectIdentification } from "../apps/api/src/identity.js";
 import { fixtureEnvironment, PreflightError } from "./uat-preflight-config.js";
 import {
+  completionBindings,
+  isCompletionFixture,
+  kitBindingLine,
   isTrainingApplicant,
   trainingPersonas,
   trainingTempRoot,
@@ -364,6 +367,11 @@ async function prepareDemo() {
             `export STAYLINK_PERSONAL_PIC_SPT_ID=${result.accounts.find(({ label }) => label === "pic-spt")!.id}`,
             `export STAYLINK_PERSONAL_PIC_SPS_ID=${result.accounts.find(({ label }) => label === "pic-sps")!.id}`,
           ]
+        : []),
+      ...(isCompletionFixture(expected)
+        ? Object.entries(completionBindings(result.accounts)).map(
+            ([key, value]) => kitBindingLine(key, value).trimEnd(),
+          )
         : []),
       "",
     ].join("\n"),

@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import type { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -93,6 +94,7 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
     const input = premiseUnitsSaveSchema.parse(req.body);
     return db.$transaction(async (tx) => {
       await authorizedDraft(tx, s.userId, id);
+      await requireUnclosedTrainingDraft(tx, id);
       const claim = await tx.applicationDraft.updateMany({
         where: {
           id,

@@ -1,3 +1,4 @@
+import { completionDatabaseName } from "../packages/shared/src/synthetic-completion.js";
 import { execFileSync } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
@@ -18,6 +19,36 @@ export const personas = [
   { role: "PIC_KAWASAN", district: "SPT", label: "pic-spt" },
 ] as const;
 
+export const isCompletionFixture = (database: string) =>
+  completionDatabaseName.test(database);
+export const completionPersonas = [
+  { role: "PERANCANG_BANDAR", district: "SPU", label: "perancang" },
+  { role: "KEJURUTERAAN", district: "SPU", label: "kejuruteraan" },
+  { role: "URUS_SETIA_JK", district: "SPU", label: "urus-setia" },
+  { role: "PEGAWAI_PENANDATANGAN", district: "SPU", label: "penandatangan" },
+] as const;
+
+export function completionBindings(
+  accounts: readonly { label: string; id: string }[],
+) {
+  return {
+    STAYLINK_SYNTHETIC_COMPLETION: "true",
+    STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS: JSON.stringify(
+      Object.fromEntries(
+        completionPersonas.map(({ role, label }) => [
+          role,
+          accounts.find((item) => item.label === label)!.id,
+        ]),
+      ),
+    ),
+  };
+}
+
+export function kitBindingLine(key: string, value: string | undefined) {
+  return `export ${key}=${key === "STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS" ? "'" + value + "'" : value}
+`;
+}
+
 export const isTrainingApplicant = (role: string) =>
   role === "PEMOHON" || role === "WAKIL_SYARIKAT";
 
@@ -32,6 +63,7 @@ export const trainingPersonas = (database: string) =>
               { role: "PIC_KAWASAN", district: "SPS", label: "pic-sps" },
             ] as const)
           : []),
+        ...(isCompletionFixture(database) ? completionPersonas : []),
       ] as const)
     : personas;
 
@@ -98,6 +130,7 @@ const account = z.object({
     "ppsk",
     "pic-spt",
     "pic-sps",
+    ...completionPersonas.map(({ label }) => label),
     "wakil",
     "pentadbir",
   ]),
@@ -107,12 +140,13 @@ const account = z.object({
     "PPSK",
     "WAKIL_SYARIKAT",
     "PENTADBIR_ICT",
+    ...completionPersonas.map(({ role }) => role),
   ]),
   id: z.uuid(),
   email: z
     .string()
     .regex(
-      /^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt|pic-sps|wakil|pentadbir)@example\.test$/,
+      /^uat-[a-f0-9]{12}-(?:pemohon|pic-spu|ppsk|pic-spt|pic-sps|wakil|pentadbir|perancang|kejuruteraan|urus-setia|penandatangan)@example\.test$/,
     ),
   password: z.string().regex(/^Aa1![a-f0-9]{36}$/),
   mfaSecretBase32: z
@@ -127,7 +161,7 @@ const manifestSchema = z.strictObject({
 });
 const kitSchema = z.object({
   loginUrl: z.url().optional(),
-  accounts: z.array(account).max(7),
+  accounts: z.array(account).max(11),
   scenarios: z
     .array(
       z.object({
@@ -252,12 +286,17 @@ export async function readTrainingKit(
         )!.id,
       }),
     };
-    const entries = Object.entries(bindings);
+    const entries = Object.entries({
+      ...bindings,
+      ...(isCompletionFixture(expected.database)
+        ? completionBindings(kit.accounts)
+        : {}),
+    });
     if (
       !/^[a-f0-9]{64}$/.test(bindings.STAYLINK_SYNTHETIC_CALLBACK_KEY ?? "") ||
       entries.some(([key, value]) => env[key] !== value) ||
       (await readPrivate("portal.env")) !==
-        entries.map(([key, value]) => `export ${key}=${value}\n`).join("")
+        entries.map(([key, value]) => kitBindingLine(key, value)).join("")
     )
       throw new PreflightError(
         "Padankan konfigurasi portal latihan dengan portal.env kit dan kunci callback tiruan.",

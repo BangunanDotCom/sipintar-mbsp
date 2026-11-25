@@ -73,6 +73,13 @@ async function ledgerFor(
   };
 }
 
+export async function firstPaymentSettled(
+  tx: Prisma.TransactionClient,
+  id: string,
+) {
+  return (await ledgerFor(tx, id)).settlements.length === 1;
+}
+
 function invoiceView(ledger: MockLedger) {
   const invoice = ledger.invoices[0];
   if (!invoice) return { invoice: null };

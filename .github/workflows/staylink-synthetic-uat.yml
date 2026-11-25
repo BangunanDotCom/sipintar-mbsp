@@ -14,6 +14,7 @@ on:
       - 'issue-62-demo-release-readiness'
       - 'feature/cloudflare-demo-readiness'
       - 'feature/personal-demo'
+      - 'issue-68-phase1-completion'
 
 permissions:
   contents: read
@@ -48,14 +49,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [api, browser, kit, demo, personal]
+        suite: [api, browser, kit, demo, personal, completion]
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
-      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
-      APP_ORIGIN: ${{ matrix.suite == 'personal' && 'https://localhost:5444' || matrix.suite == 'demo' && 'https://localhost:5443' || 'http://localhost:5173' }}
+      DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'completion' && 'staylink_issue62_personal_completionci_test' || matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
+      TEST_DATABASE_URL: postgresql://staylink_fixture:staylink_fixture@127.0.0.1:5432/${{ matrix.suite == 'completion' && 'staylink_issue62_personal_completionci_test' || matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
+      APP_ORIGIN: ${{ (matrix.suite == 'personal' || matrix.suite == 'completion') && 'https://localhost:5444' || matrix.suite == 'demo' && 'https://localhost:5443' || 'http://localhost:5173' }}
       API_PORT: '3001'
-      STAYLINK_DEMO_HOST: ${{ (matrix.suite == 'demo' || matrix.suite == 'personal') && 'true' || 'false' }}
+      STAYLINK_DEMO_HOST: ${{ (matrix.suite == 'demo' || matrix.suite == 'personal' || matrix.suite == 'completion') && 'true' || 'false' }}
       SMTP_HOST: 127.0.0.1
       SMTP_PORT: '1025'
       SMTP_SECURE: 'false'
@@ -72,7 +73,7 @@ jobs:
         env:
           POSTGRES_USER: staylink_fixture
           POSTGRES_PASSWORD: staylink_fixture
-          POSTGRES_DB: ${{ matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
+          POSTGRES_DB: ${{ matrix.suite == 'completion' && 'staylink_issue62_personal_completionci_test' || matrix.suite == 'personal' && 'staylink_issue62_personal_ci_test' || matrix.suite == 'demo' && 'staylink_issue62_hosted_test' || format('staylink_issue58_{0}_test', matrix.suite) }}
         ports:
           - 5432:5432
         options: >-
@@ -112,7 +113,7 @@ jobs:
           done
           exit 1
       - name: Verify empty guided UAT database and loopback services
-        if: matrix.suite == 'kit' || matrix.suite == 'demo' || matrix.suite == 'personal'
+        if: matrix.suite == 'kit' || matrix.suite == 'demo' || matrix.suite == 'personal' || matrix.suite == 'completion'
         env:
           NODE_ENV: development
         run: npm run uat:preflight -- empty
@@ -132,7 +133,7 @@ jobs:
         if: matrix.suite != 'api'
         run: npx playwright install --with-deps chromium
       - name: Run packaged demo over Nginx and TLS
-        if: matrix.suite == 'demo' || matrix.suite == 'personal'
+        if: matrix.suite == 'demo' || matrix.suite == 'personal' || matrix.suite == 'completion'
         env:
           NODE_ENV: development
         run: |
@@ -142,7 +143,11 @@ jobs:
           node scripts/demo-host-readiness.mjs --prepare
           kit="$(npm run --silent db:uat-demo | sed -n 's/^Kit latihan ditulis ke //p')"
           test -f "$kit/portal.env"
-          bash scripts/rehearse-demo-host.sh "$kit/portal.env"
+          if [[ "${{ matrix.suite }}" == completion ]]; then
+            bash scripts/rehearse-demo-host.sh "$kit/portal.env" --completion
+          else
+            bash scripts/rehearse-demo-host.sh "$kit/portal.env"
+          fi
       - name: Verify hosted demo backup and restore
         if: matrix.suite == 'demo'
         env:

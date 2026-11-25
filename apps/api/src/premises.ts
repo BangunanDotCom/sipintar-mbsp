@@ -1,3 +1,4 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ApplicationPremises, Prisma } from "@prisma/client";
@@ -105,6 +106,7 @@ export async function premisesRoutes(app: FastifyInstance) {
     if (b.action === "CONTINUE") completePremisesSchema.parse(b.premises);
     return db.$transaction(async (tx) => {
       const d = await own(tx, s, id);
+      await requireUnclosedTrainingDraft(tx, id);
       const claim = await tx.applicationDraft.updateMany({
         where: {
           id,
