@@ -1,3 +1,4 @@
+import { verifiedDelegation } from "./delegation-evidence.js";
 import {
   loadSyntheticOwnerPolicy,
   syntheticDocumentFacts,
@@ -205,8 +206,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               userId,
               draft.companyId,
             );
-            if (authority.status !== "VERIFIED")
-              fail(409, "Kuasa wakil sintetik belum disahkan.");
+            await verifiedDelegation(tx, authority);
           }
           const claim = await tx.applicationDraft.updateMany({
             where: { id, version: input.version },

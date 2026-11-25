@@ -135,14 +135,15 @@ export async function routes(app: FastifyInstance) {
       },
       select: delegationMetadata,
     });
-    return memberships.map((rep) => ({
-      ...rep,
-      company: {
-        ...rep.company,
-        documents: documents.filter((doc) => doc.representativeId === rep.id && doc.authorityType === rep.authorityType)
-          .map((doc) => delegationSummary(doc, now)),
-      },
-    }));
+    return memberships.map((rep) => {
+      const visible = documents.filter((doc) =>
+        doc.representativeId === rep.id && doc.authorityType === rep.authorityType,
+      ).map((doc) => delegationSummary(doc, now));
+      const status = rep.status === "VERIFIED" &&
+        !visible.some((doc) => doc.id === rep.verifiedDocumentId && doc.downloadable)
+        ? "DOCUMENT_UPDATE_REQUIRED" : rep.status;
+      return { ...rep, status, company: { ...rep.company, documents: visible } };
+    });
   });
   app.post("/api/companies", async (req, reply) => {
     const s = await authorize(req, "companies");

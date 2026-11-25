@@ -958,6 +958,14 @@ describe("P0 surat kuasa Team 3", () => {
     expect((await review(f, f.id, 3)).statusCode).toBe(409);
     expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:f.own.id}})).verifiedDocumentId).toBeNull();
     expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:rep.id}})).verifiedDocumentId).toBe(otherId);
+    const candidate = await actor("PEMOHON");
+    const { email } = await db.user.findUniqueOrThrow({where:{id:candidate.id},select:{email:true}});
+    const invitePath = `/api/companies/${f.companyId}/invitations`;
+    expect((await request(other, invitePath, "POST", {email,authorityType:"PEKERJA"})).statusCode).toBe(200);
+    await db.delegationDocument.update({where:{id:otherId},data:{scanValidUntil:new Date(0)}});
+    expect((await request(other, invitePath, "POST", {email,authorityType:"PEKERJA"})).statusCode).toBe(403);
+    expect((await request(other, "/api/companies")).json()[0].status).toBe("DOCUMENT_UPDATE_REQUIRED");
+
   });
 });
 
