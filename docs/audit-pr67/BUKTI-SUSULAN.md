@@ -16,7 +16,7 @@ Larian pada 25 November 2026 dengan Node 24.22.3, Chromium 156.0.8078.79, Postgr
 
 Percubaan awal dengan penapis Vitest memilih ujian PDF tanpa ujian penyediaan data yang lebih awal dan menghasilkan satu kegagalan HTTP 400. Suite fail lengkap pada DB sintetik baharu lulus. Percubaan pemeriksaan UX awal menunggu elemen `main` yang tidak digunakan pada semua paparan. Selepas keadaan menunggu dibetulkan, polisi CSP lab menyekat kaedah suntikan pemeriksa inline. Larian penggunaan alat pemeriksaan pada permulaan konteks pelayar berjaya dengan CSP hos dikekalkan.
 
-Kedua-dua P0 surat kuasa masih terbuka pada PostgreSQL dan Oracle makmal berdasarkan semakan kod handler dan repository. Suite yang lulus mengesahkan kontrak yang sedang beroperasi. Ujian pada calon PostgreSQL `f0fdb02` menambah bukti. Kelayakan jemputan dan padanan Oracle masih belum memenuhi gerbang. [Semakan calon](AUDIT-CALON-P0.md). [Gerbang A/B](PENERIMAAN-SURAT-KUASA.md) · [Liputan SHA #69 terdahulu](SEMAKAN-PR69.md#bukti-ujian-untuk-sha-ini)
+[Audit semula P0](AUDIT-CALON-P0.md) merekod larian bebas calon terkini #73 `0fe8c7a` dan #74 `3d1477c`. Kedua-dua P0 kekal terbuka. Jadual di atas menyenaraikan larian baseline dan kesetaraan API sebelum calon P0.
 
 ## Pengalaman pengguna dan prestasi setempat
 

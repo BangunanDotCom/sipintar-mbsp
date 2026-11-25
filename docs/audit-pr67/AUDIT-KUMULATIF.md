@@ -41,8 +41,8 @@
 
 | ID | Prioriti / status | Alasan, tindakan dan prasyarat |
 |---|---|---|
-| A / F-01 | **P0 terbuka** | Gerbang bait versi/hash/saiz ada pada calon PostgreSQL. Oracle belum dipinda dan metadata dashboard serta proksi masih perlu bukti. Baki A1–A4, A-N01–05 dan A-P01 pada SHA sama. Team 1/Team 2/JTIK |
-| B / F-02 | **P0 terbuka** | Calon PostgreSQL mengikat keputusan kepada versi tertentu. Semakan jemputan berasaskan status dan integrasi Oracle masih terbuka. Keputusan perlu ikatan wakil+versi, semak semula revokasi, transaksi dengan audit dan negatif B1–B4, B-N01–05/B-P01. Team 1/Team 2/Jabatan Bangunan |
+| A / F-01 | **P0 terbuka** | Gerbang bait versi/hash/saiz dan skop metadata lulus pada #73. #74 lulus regresi bait di Oracle Free. Kesetaraan skop metadata terkini, proksi, ClamAV terurus dan 19.30 SE2 masih perlu bukti. Baki A1–A4, A-N01–05 dan A-P01 pada SHA sama. Team 1/Team 2/JTIK |
+| B / F-02 | **P0 terbuka** | Calon #73 mengikat keputusan dan jemputan pada versi bukti. #74 lulus verifikasi versi makmal. Adapter Oracle belum mengikat jemputan kepada bukti ketika dikeluarkan. Keputusan perlu ikatan wakil+versi, semak semula revokasi, transaksi dengan audit dan negatif B1–B4, B-N01–05/B-P01. Team 1/Team 2/Jabatan Bangunan |
 | P1-01 | **P1 terbuka**, semakan sumber | Had tulis sejarah pada laluan HTTP Completion perlu dikuatkuasakan sebelum commit. Kedua-dua adapter terkini berkongsi risiko kes panjang gagal dibaca. Selaraskan had dan pelan pemulihan. Team 1/Team 2. [Perbandingan](ORACLE-API-PARITY.md#semakan-transaksi-migrasi-dan-pemulihan) |
 | P1-02 | **P1 terbuka** | Tujuh operasi Completion kini tersedia pada Oracle Free. Peraturan rasmi, MBSPPay, tandatangan, kuasa BKT/JK dan 19.30 SE2 masih gerbang pelepasan. JTIK/Kewangan/Jabatan Bangunan |
 | P1-03 | **P1 terbuka** | Restore DB logik dengan cap jari lulus. Pemulihan kunci, fail, konfigurasi, lejar, pelantikan dan RPO/RTO merentas sistem belum dibuktikan. JTIK/DBA/Unit Rekod |
@@ -72,13 +72,13 @@
 | **Personal Demo pengguna** | Ditangguhkan. Rekod kelulusan pemilik, skop sintetik, bukti A/B jika aliran surat kuasa termasuk, akses peranan dan daerah, daftar kit privat, UX/A11y, prosedur reset dan penutupan sesi perlu disemak. Sebarang hos atau akses pengguna memerlukan kelulusan |
 | **Go Live** | Belum lulus. Pengguna melaksanakan UAT, kecacatan diperbaiki, 19.30 SE2/MBSPPay/tandatangan/e-mel/stor disahkan pada sasaran yang diluluskan, bukti rollback/DR dan pemantauan tersedia, dan pemilik serta pihak berkuasa meluluskan secara rasmi |
 
-Gerbang A/B mempunyai bukti regresi awal pada `f0fdb02`. Semakan kod dan ujian menunjukkan kemajuan PostgreSQL serta baki kelayakan jemputan, skop metadata, proksi, scanner dan Oracle. [Semakan setiap kriteria calon](AUDIT-CALON-P0.md). [Kriteria A/B](PENERIMAAN-SURAT-KUASA.md) · [Checklist lengkap](PELAN-UJIAN.md#checklist-individu-sebelum-go-live)
+Audit semula pada #73 `0fe8c7a` dan #74 `3d1477c` merekod keputusan bagi 12 kriteria. Kedua-dua gerbang kekal terbuka sehingga kontrak jemputan terkini dibuktikan pada calon gabungan dan persekitaran operasi yang diluluskan. [Semakan setiap kriteria calon](AUDIT-CALON-P0.md). [Kriteria A/B](PENERIMAAN-SURAT-KUASA.md) · [Checklist lengkap](PELAN-UJIAN.md#checklist-individu-sebelum-go-live)
 
 ## Status penemuan baseline F-03–F-13
 
 | Penemuan asal | Status audit susulan |
 |---|---|
-| F-03 | Baseline kekal terbuka. Calon PostgreSQL mendahulukan autorisasi pada kedua-dua laluan bait. Skop metadata dan padanan Oracle masih terbuka |
+| F-03 | Baseline kekal terbuka. Calon PostgreSQL mendahulukan autorisasi pada kedua-dua laluan bait. Skop metadata lulus pada #73. Padanan metadata pada kontrak gabungan Oracle masih terbuka |
 | F-04 | Terbuka. Had/kuota stor sebenar dan prestasi muat naik belum dibuktikan |
 | F-05 | Separa. Ujian lock/rollback dan revokasi terpilih pada kedua-dua enjin lulus. Bukti transaksi audit atomik bagi surat kuasa dan pengurusan pengunduran masih terbuka |
 | F-06 | Terbuka. Redaksi setempat lulus. Vault, rotation, grant dan log sasaran belum disahkan |
