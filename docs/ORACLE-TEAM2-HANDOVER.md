@@ -51,12 +51,20 @@ Skema makmal baharu boleh memulakan seorang pentadbir ICT dengan `scripts/oracle
 3. Transaksi DML gagal dibatalkan sebelum sambungan dikembalikan. Buang sambungan yang gagal dibatalkan. Perlanggaran versi, ulang callback dan semakan serentak mempunyai ujian bebas. Semak rekod lejar dan audit sebelum cuba semula operasi dengan hasil commit yang belum diketahui.
 4. DDL Oracle melakukan implicit commit. Pada status `APPLYING`, hentikan pemasangan dan jalankan `scripts/oracle/recovery.ts`. Pilihan undur makmal ialah kembali kepada aplikasi PostgreSQL dan pulihkan snapshot yang disahkan ke skema Oracle makmal kosong yang lain. Pembaikan produksi atau DDL songsang memerlukan keputusan DBA dan bukti berasingan. Storan fail luar DB, kunci, konfigurasi dan grant memerlukan pemulihan operasi sendiri.
 
+## Bukti larian Team 2
+
+- 433 ujian Vitest lulus dan tiga dilangkau dalam larian gabungan. Ujian keserasian PostgreSQL Issue #24 lulus pada DB khusus berasingan. Enam ujian Oracle sahaja turut lulus dengan URL PostgreSQL dikosongkan.
+- Pada Oracle Free 23.26.4, HTTP loopback mengembalikan 503 ketika kontena makmal dihentikan. Proses API yang sama memberikan respons rujukan yang sepadan selepas kontena dimulakan semula.
+- Import, eksport dan pemulihan 31 jadual lulus dengan SHA-256 yang sepadan. Laporan pemulihan menunjukkan 14 indeks LOB dalaman dan sifar ralat kompilasi. Bootstrap pertama menghasilkan satu jemputan. Bootstrap kedua ditolak.
+- Lima senario Playwright lulus pada backend Oracle. Senario meliputi pendaftaran dan emel, syarikat dan jemputan wakil dengan PDF, pemulihan kata laluan, identiti tingkat selepas nama ditukar dan pautan unit merentas tingkat.
+- Untuk Playwright menggunakan frontend baseline, jalankan API makmal dengan `ORACLE_LAB_API_PORT=3001` supaya proksi Vite sedia ada dapat digunakan. Jalankan Vite pada loopback port 5173 dan Playwright dengan `STAYLINK_ORACLE_LAB_HTTP=true`. Senario tingkat dan unit menyediakan akaun melalui pendaftaran makmal apabila flag ini aktif.
+
 ## Semakan Oracle 19.30 SE2 dan INDECS
 
 - Runtime Thin mengasingkan owner dan runtime, mengesahkan PDB, pengguna, schema dan versi pada setiap pinjaman sambungan. Maksimum tiga sesi runtime, satu sesi pemasangan dan masa tunggu maksimum lima saat ialah tetapan makmal. JTIK tentukan had sesi dan pelan beban bersama berdasarkan staging. Semak `V$VERSION` untuk edition dan RU dalam PDB 19.30 SE2 sebenar yang diluluskan.
 - Semua objek aplikasi baseline menggunakan `STL_`. Nama dalaman `SYS_IL` untuk LOB yang dipadankan dengan jadual serta segmen `STL_` dicadangkan sebagai pengecualian teknikal tertakluk kepada persetujuan JTIK. ID aplikasi menggunakan UUID. Tiada sequence atau perubahan DDL baharu dalam PR Team 2.
 - Kunci utama transaksi ialah baris draf, serahan, kawasan atau templat, bersama semakan sesi dan skop yang berkaitan. Ordinal tingkat dan label unik dipelihara semasa pertukaran. Giliran semakan menapis daerah dan kuasa sebelum had halaman dan menggunakan cap masa UTC enam perpuluhan serta UUID sebagai pemutus seri.
 - Uji pelan akses 19c untuk giliran dokumen/semakan, predikat `JSON_VALUE`, audit mengikut sasaran dan indeks FK di bawah beban serentak. Sebarang indeks tambahan memerlukan migrasi additive dengan nama `STL_`, pelan sebelum dan selepas dan persetujuan pemilik INDECS.
-- Bukti Oracle Free 23.26.4 terhad kepada makmal. Ruang tablespace, 19.30 SE2, kesetaraan beban, browser Oracle hujung ke hujung, pemulihan fizikal dan cutover JTIK masih memerlukan latihan terasing serta pengesahan. Infra dan laluan Cloudflare Demo tidak terlibat.
+- Bukti Oracle Free 23.26.4 terhad kepada makmal. Ruang tablespace, 19.30 SE2, kesetaraan beban, regresi browser Oracle penuh, pemulihan fizikal dan cutover JTIK masih memerlukan latihan terasing serta pengesahan. Infra dan laluan Cloudflare Demo tidak terlibat.
 
 [PR #64 dan bukti baseline](https://github.com/BangunanDotCom/sipintar-mbsp/pull/64) · [Skop Team 1](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68) · [Pemasangan, inventori dan pemulihan baseline](ORACLE-19C-MIGRATION.md)
