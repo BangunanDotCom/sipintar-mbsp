@@ -2,6 +2,8 @@
 
 **Keputusan Complete Release dan Go Live: NO-GO. Personal Demo pengguna kekal ditangguhkan.** Sasaran perbandingan ialah PR #69 `7970f1f857d245937fd0baaaf848e78e6f0ad1e7`, PR #70 `bfc468351091318d6a0f451c54709b8ca1e60110` dan PR #71 `035fb7ebf14441d1dbadaeb5849dc6a55215bf86`. PR #69 mempunyai 7/7 job CI lulus. Audit susulan dibuat pada klon terasing dengan PostgreSQL, Oracle Free 23.26.4, Mailpit, Nginx dan Chromium setempat. Data ujian, fail dan akaun adalah sintetik. [Issue #68](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68) · [CI #69](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45527582124) · [Keputusan reka bentuk K01–K11](https://github.com/BangunanDotCom/sipintar-mbsp/blob/06b02f9/docs/PHASE1-MBSP-SPECIFICATION.md)
 
+[Baki pembangunan dan checklist per gerbang](BAKI-PEMBANGUNAN-PELEPASAN.md) · [Bukti makmal pada calon dipin](AUDIT-CALON-P0.md) · [Prosedur operasi JTIK](PENERIMAAN-OPERASI-P0.md)
+
 ## Matriks fungsi dan subfungsi
 
 **Diuji** untuk fungsi asas sebenar pada fixture. **Simulasi** untuk proses yang menggunakan pengganti integrasi rasmi. **Separa** untuk fungsi dengan baki pelaksanaan atau verifikasi. **Belum siap** untuk fungsi tanpa pelaksanaan pada SHA semakan. **Integrasi belum disahkan** memerlukan bukti penyedia atau kelulusan. [Matriks K01–K11](SEMAKAN-PR69.md#matriks-k01k11-dan-proses-lanjutan) · [Inventori API setiap enjin](ORACLE-API-PARITY.md)
@@ -41,14 +43,15 @@
 
 | ID | Prioriti / status | Alasan, tindakan dan prasyarat |
 |---|---|---|
-| A / F-01 | **P0 terbuka** | Gerbang bait versi/hash/saiz dan skop metadata lulus pada #73. #74 lulus regresi bait di Oracle Free. Kesetaraan skop metadata terkini, proksi, ClamAV terurus dan 19.30 SE2 masih perlu bukti. Baki A1–A4, A-N01–05 dan A-P01 pada SHA sama. Team 1/Team 2/JTIK |
-| B / F-02 | **P0 terbuka** | Calon #73 mengikat keputusan dan jemputan pada versi bukti. #74 lulus verifikasi versi makmal. Adapter Oracle belum mengikat jemputan kepada bukti ketika dikeluarkan. Keputusan perlu ikatan wakil+versi, semak semula revokasi, transaksi dengan audit dan negatif B1–B4, B-N01–05/B-P01. Team 1/Team 2/Jabatan Bangunan |
+| A / F-01 | **P0 terbuka** | Gerbang bait versi/hash/saiz dan skop metadata lulus pada #73. #74 lulus regresi bait di Oracle Free. Fail-closed ketika DB terputus, pengasingan konteks cache setempat dan revokasi ketika kerja imbas tertahan diuji pada kedua-dua enjin #74. Kesetaraan skop metadata terkini, grant minimum PostgreSQL, proksi/log rasmi, ClamAV terurus dan 19.30 SE2 masih perlu bukti. Baki A1–A4, A-N01–05 dan A-P01 pada SHA sama. Team 1/Team 2/JTIK |
+| B / F-02 | **P0 terbuka** | Calon #73 mengikat keputusan dan jemputan pada versi bukti. #74 lulus verifikasi versi makmal. Pelaksanaan PostgreSQL dan Oracle pada #74 masih menyemak kelayakan semasa tanpa ikatan kepada bukti ketika jemputan dikeluarkan. Keputusan perlu ikatan wakil+versi, semak semula revokasi, transaksi dengan audit dan negatif B1–B4, B-N01–05/B-P01. Team 1/Team 2/Jabatan Bangunan |
 | P1-01 | **P1 terbuka**, semakan sumber | Had tulis sejarah pada laluan HTTP Completion perlu dikuatkuasakan sebelum commit. Kedua-dua adapter terkini berkongsi risiko kes panjang gagal dibaca. Selaraskan had dan pelan pemulihan. Team 1/Team 2. [Perbandingan](ORACLE-API-PARITY.md#semakan-transaksi-migrasi-dan-pemulihan) |
 | P1-02 | **P1 terbuka** | Tujuh operasi Completion kini tersedia pada Oracle Free. Peraturan rasmi, MBSPPay, tandatangan, kuasa BKT/JK dan 19.30 SE2 masih gerbang pelepasan. JTIK/Kewangan/Jabatan Bangunan |
 | P1-03 | **P1 terbuka** | Restore DB logik dengan cap jari lulus. Pemulihan kunci, fail, konfigurasi, lejar, pelantikan dan RPO/RTO merentas sistem belum dibuktikan. JTIK/DBA/Unit Rekod |
 | P2-01 | **P2 terbuka** | Rate limit diuji dalam proses setempat. Perilaku merentas replika, pemetaan IP, tempoh penahanan login dan privasi log production perlu ujian sasaran. JTIK |
 | P2-02 | **P2 terbuka** | Lokasi, aliran ketidakaktifan 60 hari, data legacy, surat sebenar dan pengurusan paparan SLA masih memerlukan pengguna dan keputusan pemilik. Jabatan Bangunan/JTIK |
 | P2-03 | **P2 terbuka** | Axe mengesan kontras dan ketidakpadanan nama boleh akses pada paparan sampel. Pengesahan manual dan prestasi beban sasaran masih diperlukan. Team 1/JTIK |
+| P2-04 | **P2 terbuka** | Gangguan DB #74 menolak kedua-dua laluan surat kuasa tanpa lampiran. PostgreSQL mengembalikan HTTP 500/503 dan Oracle 503/503. Selaraskan jenis respons dan korelasi log untuk diagnosis pengguna. Team 1/Team 2 |
 | P3-01 | **P3 terbuka** | Kewujudan endpoint dan liputan assertion perlu dilabel secara konsisten dalam inventori. Semak drift dokumentasi OpenAPI bersama perubahan kontrak pada SHA calon. Team 1/Team 2 |
 
 ## Semakan kawalan keselamatan

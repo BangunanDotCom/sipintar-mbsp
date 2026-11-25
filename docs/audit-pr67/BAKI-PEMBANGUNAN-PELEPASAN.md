@@ -1,0 +1,38 @@
+# Baki pembangunan dan kesiapsiagaan pelepasan
+
+**Personal Demo pengguna kekal ditangguhkan. Complete Release dan Go Live kekal NO-GO.** Audit menyemak baseline #69 `7970f1f`, Completion Oracle #71 `035fb7e` dan calon P0 #73 `0fe8c7a` serta #74 `3d1477c`. Gunakan daftar 28 fungsi untuk status kumulatif terperinci dan matriks K01–K11 untuk kedudukan setiap keputusan. [Inventori kumulatif](AUDIT-KUMULATIF.md) · [K01–K11](SEMAKAN-PR69.md#matriks-k01k11-dan-proses-lanjutan) · [Issue #68](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68)
+
+Pada salinan tepat #69 `7970f1f857d245937fd0baaaf848e78e6f0ad1e7`, Team 3 menjalankan ujian domain Completion, adapter stor kuarantin setempat dan konfigurasi stor. **22 ujian lulus dalam tiga fail**. Skop meliputi SLA, had agregat enam bulan, susulan keputusan, isolasi setempat dan penolakan keadaan stor yang tidak sah. Bukti penerimaan aliran peranan dan integrasi kekal dinilai berasingan. [Ujian Completion](https://github.com/BangunanDotCom/sipintar-mbsp/blob/7970f1f857d245937fd0baaaf848e78e6f0ad1e7/tests/synthetic-completion.test.ts) · [Ujian stor kuarantin](https://github.com/BangunanDotCom/sipintar-mbsp/blob/7970f1f857d245937fd0baaaf848e78e6f0ad1e7/tests/local-quarantine-document-store.test.ts)
+
+## Kerja yang boleh berjalan secara selari
+
+| Modul | Bukti pada calon | Kerja yang masih diperlukan dan kriteria siap | Pemilik |
+|---|---|---|---|
+| Akaun, wakil, profil, dokumen, premis/unit/aras dan kapasiti (K01–K04, K07, K11) | Aktivasi, identiti, versi, pemilikan, inventori dan validasi sintetik tersedia. Jumlah pekerja tersedia tanpa memerlukan data majikan | Lengkapkan kontrak jemputan gabungan, P0 dokumen, pemeriksaan lokasi, aturan rekod warisan/pendua dan polisi bukti. Terima medan majikan hanya jika dipilih dan diberi kuasa. Sahkan penarikan kuasa dan pemilikan merentas peranan dalam UAT | Team 1/Team 2 dan Jabatan Bangunan. JTIK untuk data, stor, AV dan peranan |
+| AI Pre-Check (K08) | Bantuan fixture dan pengesahan manusia dalam aliran PIC tersedia | Tetapkan penyedia/tujuan, data minimum, privasi, semakan manusia, fallback manual dan audit keputusan, termasuk tiada kelulusan automatik ketika penyedia gagal | Team 1 boleh membina aliran manual secara selari. Jabatan Bangunan/JTIK untuk aturan dan penyedia |
+| Akuan digital, permohonan dan pembetulan (K05–K06) | Snapshot/akuan versi dan idempotensi serahan sintetik | Sahkan teks dan kuasa pemohon. Bina semakan ketidakaktifan 60 hari, hak membaiki per skop dan penomboran rasmi idempotent. Perbaiki aliran import dan status kes lama | Team 1 dan Jabatan Bangunan |
+| PIC dan PPSK (K08/K10) | Role/MFA, daerah, skop terpilih, semakan, lengkap dan daftar latihan | Masukkan delegasi sementara, beberapa daerah, pemangku dan penarikan kuasa menurut keputusan JB/JTIK. Buktikan data kes tidak dapat dibaca atau diproses oleh pegawai luar skop | Team 1/Jabatan Bangunan/JTIK |
+| Rujukan teknikal, SLA dan KP (Issue #68) | Rujukan selari, tarikh tujuh hari kalendar, ulasan berskop dan snapshot KP tersedia dalam Completion sintetik | Bangunkan serahan/penerimaan BKT, pemulangan KP, kalendar rasmi, peringatan, eskalasi dan lampiran susulan. Uji lewat sebelum/selepas serahan dan pemeliharaan versi | Team 1/Jabatan Bangunan |
+| SK/SKB/Tangguh/Tolak, kelulusan sebahagian dan surat (Issue #68) | Keputusan bercampur per unit/aras, had SKB, Tangguh, pengeluaran induk/susulan latihan | Sahkan peraturan JK per pasangan, pertindihan keputusan, tindakan lewat, rayuan. Bina PDF berkuasa dengan versi templat dan kesahan surat apabila keputusan susulan berlaku. Sahkan penyedia tandatangan, timestamp dan revokasi sijil | Team 1/Jabatan Bangunan/JTIK |
+| Bayaran pertama/kedua (K09) | Invois mock, kiraan unit fizikal unik, settlement dan idempotensi callback diliputi | Kewangan luluskan kadar, pengecualian, kedua-dua peringkat, invois/resit, rekonsiliasi, refund/dispute dan nombor rujukan. JTIK sahkan kontrak sandbox, callback, lejar serta pemulihan nilai | Team 1/Kewangan/JTIK |
+| Penutupan dan rekod | Penutupan fixture selepas prasyarat, sekatan pengubahan draf selepas tutup | Bina arkib/legal hold/retensi, pembukaan semula dan jejak sokongan. Selaras had tulis/baca sejarah Completion sebelum commit dan regresi 499/500/501. Pulih sejarah dengan fail serta kunci tanpa menghidupkan kuasa yang sudah luput | Team 1/Team 2/Jabatan Bangunan/Unit Rekod dan JTIK |
+| Dashboard dan Template Manager | Ringkasan SLA/kes fixture sehingga 50 dalam skop dan CRUD templat berversi | Agregat, penapis, eksport berkuasa, jejak perubahan metrik dan ikatan versi templat pada versi surat keputusan. Uji peranan/daerah, metadata dan aksesibiliti WCAG secara manual | Team 1/Jabatan Bangunan/JTIK |
+| Notifikasi dan pentadbiran | Portal/Mailpit, pelantikan, revokasi, konfigurasi dan kawalan admin pada fixture | SMTP, outbox/retry/deduplikasi, eskalasi berjadual, audit perubahan pentadbir, operasi berbilang daerah dan bukti penyampaian/redaksi | Team 1/JTIK/Jabatan Bangunan |
+| Keselamatan, audit trail dan integrasi rasmi | Audit transaksi terpilih, lock/rollback makmal, migrasi dan sambungan makmal telah dibuktikan | Tutup A/B pada SHA yang sama, sahkan hak minima DB, log, rekod audit tahan ubah, konfigurasi proksi, OAuth/identiti jika berkenaan, Oracle 19.30 SE2, failover, backup lengkap dan cutover. Kekalkan integrasi sebenar tertutup sehingga kelulusan | Team 1/Team 2/JTIK, Unit Rekod dan pemilik proses |
+
+Sumber bukti baseline. [Kontrak Completion dan batas pemilik](https://github.com/BangunanDotCom/sipintar-mbsp/blob/7970f1f857d245937fd0baaaf848e78e6f0ad1e7/docs/ict-handover/PHASE1-COMPLETION-EVIDENCE.md) · [Matriks Oracle Completion](https://github.com/BangunanDotCom/sipintar-mbsp/blob/035fb7ebf14441d1dbadaeb5849dc6a55215bf86/docs/ORACLE-ISSUE68-PARITY.md) · [Risiko P0–P3](AUDIT-KUMULATIF.md#daftar-risiko-dan-pemilik)
+
+## Keputusan dan kebergantungan sebelum pelepasan
+
+- **JTIK/JTIK DBA** menyediakan PDB 19.30 SE2 ujian, ClamAV terurus, stor, saluran SMTP, vault/kunci, proksi/cache/log, matriks grant, pemantauan, DR serta rollback. Sediakan bukti O-A01–05 dan O-R01 mengikut prosedur penerimaan.
+- **Kewangan** mengesahkan kedua-dua peringkat fi, pengecualian/kadar, settlement, rekonsiliasi, refund/dispute, bukti sandbox dan lejar. Bukti provider diperlukan sebelum mengaktifkan transaksi sebenar.
+- **Jabatan Bangunan dan Unit Rekod** meluluskan kuasa wakil langsung, tempoh, BKT/JK, format KP, keputusan mengikat, SKB/Tangguh, kapasiti, templat surat, peranan, retention/hold dan UAT rasmi.
+- **Team 1 dan Team 2** pin calon gabungan terkini. Team 2 menyelaraskan ikatan jemputan ketika dikeluarkan, dan Team 3 menjalankan A/B pada calon sama. Kebergantungan ini tidak menghalang kerja Team 1 pada AI/manual fallback, BKT/KP, peranan, penjadualan, templat dan dashboard dalam fixture.
+
+### Checklist keputusan
+
+- [ ] **Complete Release.** Kontrak K01–K11 dan Issue #68 lengkap pada calon dipin, matriks P0 ditutup dengan bukti bebas pada kedua-dua enjin, integrasi yang termasuk skop dibuktikan, risiko P1 ditangani, dan keputusan pemilik/agensi direkod.
+- [ ] **Personal Demo pengguna.** Pemilik menarik balik penangguhan secara bertulis, JTIK meluluskan skop dan hos, data kekal sintetik, peranan/daerah diuji dan prosedur reset serta tamat kit tersedia. Bukti makmal tidak mengaktifkan demo.
+- [ ] **Go Live.** UAT pengguna, pembetulan, pengesahan JTIK, operasi kewangan/rekod, pemulihan serta undur memenuhi kriteria yang diluluskan. Pemilik dan pihak berkuasa memberi kelulusan bertulis.
+
+[Prosedur penerimaan P0 pada persekitaran diluluskan](PENERIMAAN-OPERASI-P0.md) · [Checklist audit kumulatif](AUDIT-KUMULATIF.md#checklist-keputusan)

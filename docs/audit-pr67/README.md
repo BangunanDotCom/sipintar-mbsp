@@ -1,6 +1,6 @@
 # Audit bebas STAYLink MBSP · Personal Demo PR #67
 
-**Audit kumulatif:** [Matriks 28 fungsi, risiko dan checklist pelepasan](AUDIT-KUMULATIF.md) · [Kesetaraan setiap API](ORACLE-API-PARITY.md) · [Bukti ujian dan UX bebas](BUKTI-SUSULAN.md) · [Semakan calon P0](AUDIT-CALON-P0.md).
+**Audit kumulatif:** [Matriks 28 fungsi, risiko dan checklist pelepasan](AUDIT-KUMULATIF.md) · [Kesetaraan setiap API](ORACLE-API-PARITY.md) · [Bukti ujian dan UX bebas](BUKTI-SUSULAN.md) · [Semakan calon P0](AUDIT-CALON-P0.md) · [Baki pembangunan dan penerimaan pelepasan](BAKI-PEMBANGUNAN-PELEPASAN.md) · [Prosedur penerimaan operasi P0](PENERIMAAN-OPERASI-P0.md).
 
 **Susulan Team 3:** [Status semasa PR #69 dan Complete Release](SEMAKAN-PR69.md) · [Gerbang P0 surat kuasa dan ujian negatif](PENERIMAAN-SURAT-KUASA.md)
 
