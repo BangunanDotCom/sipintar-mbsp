@@ -1,5 +1,6 @@
 import { db, audit, notify, issueIdentity, origin, safeUser } from "./core.js";
-import { fail } from "./auth.js";
+import { companyDelegationViews, principalAtUse } from "./delegation-evidence.js";
+import { fail, type session } from "./auth.js";
 import { isCurrent } from "../../../packages/shared/src/index.js";
 export async function inviteOfficer(actor: string, role: string, b: any) {
   const u = await db.$transaction(async (tx) => {
@@ -92,7 +93,7 @@ export async function assignArea(s: any, b: any) {
   );
   return record;
 }
-export async function dashboard(s: any) {
+export async function dashboard(s: Awaited<ReturnType<typeof session>>) {
   const role = s.activeRole;
   const current = s.user.roles.filter(
     (a: any) => a.roleId === role && isCurrent(a),
@@ -100,28 +101,10 @@ export async function dashboard(s: any) {
   if (!current.length) fail(403, "Pilih peranan aktif.");
   const companies =
     role === "PEMOHON" || role === "WAKIL_SYARIKAT"
-      ? await db.companyRepresentative.findMany({
-          where: {
-            userId: s.userId,
-            status: { not: "REVOKED" },
-            startsAt: { lte: new Date() },
-            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
-          },
-          include: {
-            company: {
-              include: {
-                documents: {
-                  select: {
-                    id: true,
-                    fileName: true,
-                    status: true,
-                    validUntil: true,
-                  },
-                },
-              },
-            },
-          },
-        })
+      ? await db.$transaction(async (tx) => {
+          await principalAtUse(tx, s, "COMPANY");
+          return companyDelegationViews(tx, s.userId, false);
+        }, { isolationLevel: "RepeatableRead" })
       : [];
   const notifications = await db.notification.findMany({
     where: { userId: s.userId },

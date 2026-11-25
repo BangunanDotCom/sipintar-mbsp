@@ -31,7 +31,6 @@ import {
   dashboard,
   resolvePic,
 } from "./services.js";
-import { delegationMetadata, delegationSummary } from "./delegation-evidence.js";
 const id = (r: any) => z.object({ id: z.string().uuid() }).parse(r.params).id;
 const roleSchema = z.enum(
   Object.keys(roles) as [keyof typeof roles, ...(keyof typeof roles)[]],
@@ -88,6 +87,7 @@ export async function routes(app: FastifyInstance) {
     db.district.findMany({ orderBy: { id: "asc" } }),
   );
   app.get("/api/dashboard", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
     const data = await dashboard(await session(req));
     const policy = syntheticPortalDatabase() ? loadSyntheticOwnerPolicy() : null;
     reply.header("Cache-Control", "private, no-store");
@@ -114,35 +114,6 @@ export async function routes(app: FastifyInstance) {
     return db.notification.updateMany({
       where: { id: id(req), userId: s.userId },
       data: { readAt: new Date() },
-    });
-  });
-  app.get("/api/companies", async (req, reply) => {
-    reply.header("Cache-Control", "private, no-store");
-    const s = await authorize(req, "companies");
-    const now = new Date();
-    const memberships = await db.companyRepresentative.findMany({
-      where: {
-        userId: s.userId, company: { status: "ACTIVE" },
-        status: { not: "REVOKED" }, startsAt: { lte: now },
-        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-      },
-      include: { company: true },
-    });
-    const documents = await db.delegationDocument.findMany({
-      where: {
-        representativeId: { in: memberships.map(({ id }) => id) },
-        supersededAt: null, revokedAt: null,
-      },
-      select: delegationMetadata,
-    });
-    return memberships.map((rep) => {
-      const visible = documents.filter((doc) =>
-        doc.representativeId === rep.id && doc.authorityType === rep.authorityType,
-      ).map((doc) => delegationSummary(doc, now));
-      const status = rep.status === "VERIFIED" &&
-        !visible.some((doc) => doc.id === rep.verifiedDocumentId && doc.downloadable)
-        ? "DOCUMENT_UPDATE_REQUIRED" : rep.status;
-      return { ...rep, status, company: { ...rep.company, documents: visible } };
     });
   });
   app.post("/api/companies", async (req, reply) => {

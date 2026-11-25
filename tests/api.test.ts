@@ -767,6 +767,150 @@ describe("P0 surat kuasa Team 3", () => {
     });
   }
 
+  async function delegatedInvitation() {
+    const f = await fixture();
+    await db.companyRepresentative.update({
+      where: { id: f.own.id }, data: { canManageRepresentatives: false },
+    });
+    expect(await scanDelegationDocument(db, clean, f.id)).toBe(true);
+    expect((await review(f)).statusCode).toBe(200);
+    const recipient = await actor("PEMOHON");
+    const { email } = await db.user.findUniqueOrThrow({ where: { id: recipient.id }, select: { email: true } });
+    const issued = await request(f.owner, `/api/companies/${f.companyId}/invitations`, "POST", { email, authorityType: "PEKERJA" });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const raw = await emailToken(email, "COMPANY_INVITATION");
+    return { ...f, recipient, raw, invitationId: issued.json().id as string };
+  }
+  function accept(recipient: Actor, token: string, payload = {}) {
+    return request(recipient, "/api/company-invitations/accept", "POST", { token, ...payload });
+  }
+  async function expectUnclaimed(f: Awaited<ReturnType<typeof delegatedInvitation>>) {
+    const invitation = await db.companyRepresentationInvitation.findUniqueOrThrow({ where: { id: f.invitationId } });
+    expect(invitation.acceptedAt).toBeNull();
+    expect(await db.companyRepresentative.count({ where: { companyId: f.companyId, userId: f.recipient.id } })).toBe(0);
+  }
+
+  it("A-N03 metadata isolates company, representative, current version and session on every view", async () => {
+    const f = await fixture();
+    const unrelated = await fixture();
+    const colleague = await actor("PEMOHON");
+    const membership = await db.companyRepresentative.create({
+      data: { companyId: f.companyId, userId: colleague.id, authorityType: "PEKERJA" },
+    });
+    const theirDoc = await f.upload(colleague, { fileName: "private-colleague.pdf" });
+    expect(theirDoc.statusCode).toBe(200);
+    const latest = await f.upload(f.owner, { expectedDocumentId: f.id, fileName: "private-current.pdf" });
+    expect(latest.statusCode).toBe(200);
+    const latestId = latest.json().id;
+    for (const endpoint of ["/api/dashboard", "/api/companies"]) {
+      const owner = await request(f.owner, endpoint);
+      expect(owner.statusCode).toBe(200);
+      expect(owner.headers["cache-control"]).toContain("no-store");
+      for (const hidden of [unrelated.companyId, theirDoc.json().id, "private-colleague.pdf", f.id, "verifiedDocumentId"])
+        expect(owner.body).not.toContain(hidden);
+      if (endpoint === "/api/dashboard") expect(owner.body).not.toContain(latestId);
+      else expect(owner.json()[0].company.documents).toMatchObject([{id:latestId, version:2, representativeId:f.own.id}]);
+      const other = await request(colleague, endpoint);
+      expect(other.statusCode).toBe(200);
+      expect(other.body).not.toContain(latestId);
+      expect(other.body).not.toContain("private-current.pdf");
+      expect(other.body).not.toContain(unrelated.companyId);
+    }
+    const reviewList = await request(f.reviewer, "/api/representations");
+    expect(reviewList.statusCode).toBe(200);
+    const visible = reviewList.json();
+    expect(visible.find((r: {id:string}) => r.id === f.own.id).company.documents).toMatchObject([{id:latestId}]);
+    expect(visible.find((r: {id:string}) => r.id === membership.id).company.documents).toMatchObject([{id:theirDoc.json().id}]);
+    expect(reviewList.body).not.toContain(f.id);
+    expect((await request(pic, "/api/representations")).statusCode).toBe(403);
+    await db.companyRepresentative.update({where:{id:membership.id},data:{status:"REVOKED"}});
+    expect((await request(colleague, "/api/companies")).json()).toEqual([]);
+    expect((await request(colleague, "/api/dashboard")).json().companies).toEqual([]);
+    await db.session.updateMany({where:{userId:f.owner.id},data:{expiresAt:new Date(0)}});
+    for (const endpoint of ["/api/dashboard", "/api/companies", `/api/documents/${latestId}`])
+      expect((await request(f.owner, endpoint)).statusCode).toBe(401);
+  });
+
+  it.each(["expired verdict", "replaced proof", "revoked letter", "revoked authority"])(
+    "B-N02/B-N05 refuses invitation acceptance after %s without changing membership",
+    async (change) => {
+      const f = await delegatedInvitation();
+      switch (change) {
+        case "expired verdict":
+          await db.delegationDocument.update({where:{id:f.id},data:{scanValidUntil:new Date(0)}});
+          break;
+        case "replaced proof": {
+          const replacement = await f.upload(f.owner, {expectedDocumentId:f.id});
+          expect(replacement.statusCode).toBe(200);
+          const replacementId = replacement.json().id;
+          expect(await scanDelegationDocument(db, clean, replacementId)).toBe(true);
+          expect((await review(f, replacementId, 3)).statusCode).toBe(200);
+          break;
+        }
+        case "revoked letter":
+          expect((await request(f.owner, `${f.path}/${f.id}/revoke`, "POST")).statusCode).toBe(200);
+          break;
+        case "revoked authority":
+          await db.companyRepresentative.update({where:{id:f.own.id},data:{status:"REVOKED"}});
+          break;
+      }
+      expect((await accept(f.recipient, f.raw)).statusCode).toBe(403);
+      await expectUnclaimed(f);
+    },
+  );
+
+  it("B-N01/B-N03 rejects other recipients, company overrides, CSRF and expired sessions for acceptance", async () => {
+    const f = await delegatedInvitation();
+    const other = await fixture();
+    expect((await accept(other.owner, f.raw)).statusCode).toBe(400);
+    expect((await accept(f.recipient, f.raw, { companyId: other.companyId })).statusCode).toBe(400);
+    expect((await accept({...f.recipient, csrf:token()}, f.raw)).statusCode).toBe(403);
+    await db.session.updateMany({where:{userId:f.recipient.id},data:{expiresAt:new Date(0)}});
+    expect((await accept(f.recipient, f.raw)).statusCode).toBe(401);
+    await expectUnclaimed(f);
+  });
+
+  it("B-N04 serializes acceptance behind a revocation and leaves the invitation unclaimed", async () => {
+    const f = await delegatedInvitation();
+    let accepting!: Promise<Awaited<ReturnType<typeof accept>>>;
+    await db.$transaction(async (tx) => {
+      const [{pid}] = await tx.$queryRaw<{pid:number}[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM company_representatives WHERE id = ${f.own.id} FOR UPDATE`;
+      accepting = accept(f.recipient, f.raw);
+      let blocked = false;
+      for (let attempt = 0; attempt < 75 && !blocked; attempt++) {
+        const [row] = await tx.$queryRaw<{blocked:boolean}[]>`
+          SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pg_stat_activity.pid))) AS blocked`;
+        blocked = row.blocked;
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(blocked).toBe(true);
+      await tx.delegationDocument.update({where:{id:f.id},data:{revokedAt:new Date()}});
+    });
+    expect((await accepting).statusCode).toBe(403);
+    await expectUnclaimed(f);
+  });
+
+  it("B-P01 accepts once with a current exact proof", async () => {
+    const f = await delegatedInvitation();
+    expect((await accept(f.recipient, f.raw)).statusCode).toBe(200);
+    expect((await accept(f.recipient, f.raw)).statusCode).toBe(400);
+    expect(await db.companyRepresentative.count({where:{companyId:f.companyId,userId:f.recipient.id}})).toBe(1);
+  });
+
+  it("B-N03 rejects self-verification even for a global PIC with MFA", async () => {
+    const f = await fixture();
+    const self = await db.companyRepresentative.create({
+      data: {companyId:f.companyId, userId:f.reviewer.id, authorityType:"PEKERJA"},
+    });
+    const upload = await f.upload(f.owner, { representativeId:self.id });
+    expect(upload.statusCode).toBe(200);
+    const id = upload.json().id;
+    expect(await scanDelegationDocument(db, clean, id)).toBe(true);
+    expect((await review({...f, own:self}, id)).statusCode).toBe(403);
+    expect((await db.companyRepresentative.findUniqueOrThrow({where:{id:self.id}})).verifiedDocumentId).toBeNull();
+  });
+
   it("A-N01/A-P01/A-N05 gates both routes and audits only successful bytes", async () => {
     const f = await fixture();
     const ownerPath = `/api/documents/${f.id}`;
