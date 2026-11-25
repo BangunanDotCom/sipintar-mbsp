@@ -15,12 +15,23 @@ export async function createOraclePool(config: OracleConfig) {
     poolTimeout: 60,
     stmtCacheSize: 25,
     expireTime: 1,
+    sessionCallback(connection, _requestedTag, done) {
+      connection
+        .execute(
+          "ALTER SESSION SET NLS_CALENDAR='GREGORIAN' NLS_NUMERIC_CHARACTERS='.,' TIME_ZONE='+00:00'",
+        )
+        .then(() => done(), done);
+    },
   });
-  async function use<T>(callback: (connection: Connection) => Promise<T>) {
+  async function withConnection<T>(
+    callback: (connection: Connection, discard: () => void) => Promise<T>,
+  ) {
     const connection = await pool.getConnection();
     connection.callTimeout = 20_000;
+    let result: T;
+    let drop = false;
     try {
-      const result = await connection.execute<{
+      const identity = await connection.execute<{
         DB_NAME: string;
         CON_NAME: string;
         SESSION_USER: string;
@@ -34,7 +45,7 @@ export async function createOraclePool(config: OracleConfig) {
         {},
         { outFormat: oracledb.OUT_FORMAT_OBJECT },
       );
-      const actual = result.rows?.[0];
+      const actual = identity.rows?.[0];
       if (
         actual?.DB_NAME !== config.database ||
         actual.CON_NAME !== config.service ||
@@ -42,25 +53,46 @@ export async function createOraclePool(config: OracleConfig) {
         actual.CURRENT_SCHEMA !== config.user ||
         ![19, 23].includes(
           Number(connection.oracleServerVersionString.split(".")[0]),
-        )
-      )
-        throw Error("Identiti Oracle/PDB/sesi makmal tidak sepadan.");
-      return await callback(connection);
-    } finally {
-      await connection.close();
+        ) ||
+        (config.expectedVersion !== undefined &&
+          connection.oracleServerVersionString !== config.expectedVersion)
+      ) {
+        drop = true;
+        throw Object.assign(
+          Error("Identiti atau versi Oracle/PDB/sesi makmal tidak sepadan."),
+          {
+            code: "ORACLE_LAB_IDENTITY_MISMATCH",
+          },
+        );
+      }
+      result = await callback(connection, () => {
+        drop = true;
+      });
+    } catch (error) {
+      await connection.close({ drop }).catch(() => {});
+      throw error;
     }
+    await connection.close({ drop });
+    return result;
   }
+
   return {
     owner: config.owner,
-    use,
+    purpose: config.purpose,
+    use: <T>(callback: (connection: Connection) => Promise<T>) =>
+      withConnection(callback),
     transaction: <T>(callback: (connection: Connection) => Promise<T>) =>
-      use(async (connection) => {
+      withConnection(async (connection, discard) => {
         try {
           const result = await callback(connection);
           await connection.commit();
           return result;
         } catch (error) {
-          await connection.rollback();
+          try {
+            await connection.rollback();
+          } catch {
+            discard();
+          }
           throw error;
         }
       }),

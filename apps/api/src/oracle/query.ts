@@ -42,3 +42,18 @@ export const timestamp = (val: Date | null) => ({
   val,
   type: oracledb.DB_TYPE_TIMESTAMP_TZ,
 });
+
+export function oracleInList(
+  column: string,
+  ids: readonly string[],
+  operation: "IN" | "NOT IN",
+  prefix = "id_",
+) {
+  if (ids.length === 0)
+    return { sql: operation === "IN" ? "1=0" : "1=1", binds: {} };
+  const names = ids.map((_, index) => `${prefix}${index}`);
+  return {
+    sql: `${column} ${operation} (${names.map((name) => `:${name}`).join(",")})`,
+    binds: Object.fromEntries(names.map((name, index) => [name, ids[index]])),
+  };
+}

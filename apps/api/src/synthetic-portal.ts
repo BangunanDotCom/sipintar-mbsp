@@ -1,16 +1,35 @@
+import { completionSandbox } from "./synthetic-completion-gate.js";
+import {
+  completionConfig,
+  syntheticCompletionRoutes,
+} from "./synthetic-portal-completion.js";
+import {
+  postgresCompletion,
+  type CompletionRepository,
+} from "./completion-repository.js";
+import { registerSyntheticSubmitRoute } from "./synthetic-submit-route.js";
+import { postgresAuth, type AuthRepository } from "./auth-repository.js";
 import {
   loadSyntheticOwnerPolicy,
+  type SyntheticOwnerPolicy,
   syntheticDocumentFacts,
 } from "./synthetic-owner-policy.js";
 import {
   documentRuleApplicability,
   summarizeDocumentRequirements,
 } from "../../../packages/shared/src/document-policy.js";
-import { lockSyntheticApplicantSession } from "./synthetic-portal-session.js";
+import {
+  lockSyntheticApplicantSession,
+  type ObservedPortalSession,
+} from "./synthetic-portal-session.js";
+import type { AuditEntry } from "./oracle/audit.js";
 import { syntheticBillingRoutes } from "./synthetic-portal-billing.js";
 import {
   correctionAction,
   loadSyntheticReview,
+  postgresSyntheticReviewTransaction,
+  postgresSyntheticReviewRepository,
+  type SyntheticReviewRepository,
   syntheticReviewRoutes,
 } from "./synthetic-portal-review.js";
 import { randomUUID } from "node:crypto";
@@ -24,7 +43,9 @@ import { authorizedDraft } from "./premise-floors.js";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import {
   captureSyntheticSubmission,
-  loadSyntheticReadiness,
+  evaluateSyntheticReadiness,
+  type SyntheticSubmissionTransaction,
+  type SyntheticPolicy,
   loadSyntheticInventory,
   loadSyntheticEvidence,
   documentContext,
@@ -35,33 +56,137 @@ const params = z.strictObject({ id: z.uuid() });
 const version = z.number().int().positive();
 const verdict = z.enum(["PENDING", "CLEAN", "FAILED", "INFECTED"]);
 const evidenceBody = z.strictObject({ version, verdict });
-const submitBody = z.strictObject({
-  version,
-  key: z.uuid(),
-  accepted: z.literal(true),
-  declarationVersion: z.string().max(80),
-  policyFingerprint: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .optional(),
-  previousId: z.uuid().nullable(),
-});
-
-async function correctionRequested(
-  tx: Prisma.TransactionClient,
-  id: string | null,
-) {
-  return (
-    id !== null &&
-    Boolean(
-      await tx.auditLog.findFirst({
-        where: { target: id, action: correctionAction, outcome: "SUCCESS" },
-        select: { id: true },
-      }),
-    )
-  );
-}
-
+type FixtureEvidence = {
+  document: Prisma.ApplicationDocumentCreateManyInput;
+  scope: Prisma.DraftDocumentScopeCreateManyInput;
+};
+export type SyntheticPortalDraftTransaction = Pick<
+  SyntheticSubmissionTransaction,
+  | "lockApplicant"
+  | "draft"
+  | "authority"
+  | "latestSubmission"
+  | "inventory"
+  | "evidence"
+  | "correctionRequested"
+> & {
+  requireSnapshotAuthority: typeof requireSyntheticSnapshotAuthority extends (
+    tx: Prisma.TransactionClient,
+    row: infer Row,
+  ) => infer Result
+    ? (row: Row) => Result
+    : never;
+  review(
+    row: NonNullable<
+      Awaited<ReturnType<SyntheticSubmissionTransaction["latestSubmission"]>>
+    >,
+  ): ReturnType<typeof loadSyntheticReview>;
+  claimVersion(
+    userId: string,
+    draftId: string,
+    version: number,
+  ): Promise<boolean>;
+  documentVersions(
+    draftId: string,
+    categories: string[],
+  ): Promise<Map<string, number>>;
+  replaceEvidence(draftId: string, fixtures: FixtureEvidence[]): Promise<void>;
+  audit(entry: AuditEntry): Promise<void>;
+};
+export type SyntheticPortalDraftRepository = {
+  transaction<T>(
+    callback: (tx: SyntheticPortalDraftTransaction) => Promise<T>,
+    consistentRead?: boolean,
+  ): Promise<T>;
+};
+const postgresPortalDrafts: SyntheticPortalDraftRepository = {
+  transaction(callback, consistentRead) {
+    return db.$transaction(
+      (tx) =>
+        callback({
+          async lockApplicant(userId, operator) {
+            if (!operator || operator.userId !== userId)
+              fail(403, "Sesi portal diperlukan.");
+            return lockSyntheticApplicantSession(tx, operator);
+          },
+          draft: (userId, id) => authorizedDraft(tx, userId, id),
+          authority: (userId, id) => companyAuthority(tx, userId, id),
+          async latestSubmission(draftId) {
+            return tx.syntheticSubmission.findFirst({
+              where: { draftId },
+              orderBy: { draftVersion: "desc" },
+            });
+          },
+          inventory: (id) => loadSyntheticInventory(tx, id),
+          evidence: (id) => loadSyntheticEvidence(tx, id),
+          async correctionRequested(id) {
+            return !!(await tx.auditLog.findFirst({
+              where: {
+                target: id,
+                action: correctionAction,
+                outcome: "SUCCESS",
+              },
+              select: { id: true },
+            }));
+          },
+          requireSnapshotAuthority: (row) =>
+            requireSyntheticSnapshotAuthority(tx, row),
+          review: (row) =>
+            loadSyntheticReview(postgresSyntheticReviewTransaction(tx), row),
+          async claimVersion(userId, id, version) {
+            return (
+              (
+                await tx.applicationDraft.updateMany({
+                  where: {
+                    id,
+                    initiatedByUserId: userId,
+                    status: "DRAFT",
+                    version,
+                  },
+                  data: { version: { increment: 1 } },
+                })
+              ).count === 1
+            );
+          },
+          async documentVersions(draftId, categories) {
+            const rows = await tx.applicationDocument.groupBy({
+              by: ["category"],
+              where: { draftId, category: { in: categories } },
+              _max: { version: true },
+            });
+            return new Map(
+              rows.map((row) => [row.category, row._max.version ?? 0]),
+            );
+          },
+          async replaceEvidence(draftId, fixtures) {
+            await tx.applicationDocument.updateMany({
+              where: {
+                draftId,
+                supersededAt: null,
+                storageKey: { startsWith: "issue31-fixture/" },
+              },
+              data: { supersededAt: new Date() },
+            });
+            await tx.applicationDocument.createMany({
+              data: fixtures.map(({ document }) => document),
+            });
+            await tx.draftDocumentScope.createMany({
+              data: fixtures.map(({ scope }) => scope),
+            });
+          },
+          async audit(entry) {
+            await tx.auditLog.create({
+              data: {
+                ...entry,
+                metadata: entry.metadata as Prisma.InputJsonValue | undefined,
+              },
+            });
+          },
+        }),
+      consistentRead ? { isolationLevel: "RepeatableRead" } : undefined,
+    );
+  },
+};
 export async function syntheticPortalRoutes(app: FastifyInstance) {
   const database = syntheticPortalDatabase();
   if (!database) return;
@@ -73,6 +198,46 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
     );
     return;
   }
+  const [active] = await db.$queryRaw<
+    { name: string }[]
+  >`SELECT current_database()::text AS name`;
+  if (active?.name !== database)
+    throw Error("Pangkalan data portal sintetik tidak sepadan.");
+
+  const config =
+    owner.config.review.enabled &&
+    owner.config.billing.mode === "MOCK" &&
+    completionSandbox()
+      ? completionConfig()
+      : null;
+  return registerSyntheticPortal(
+    app,
+    owner,
+    postgresAuth,
+    postgresPortalDrafts,
+    postgresSyntheticReviewRepository,
+    (operator, input, policy) =>
+      captureSyntheticSubmission(operator.userId, input, policy, operator),
+    config ? { config, repository: postgresCompletion } : undefined,
+  );
+}
+
+export async function registerSyntheticPortal(
+  app: FastifyInstance,
+  owner: SyntheticOwnerPolicy,
+  auth: AuthRepository,
+  repository: SyntheticPortalDraftRepository,
+  reviewRepository: SyntheticReviewRepository,
+  capture: (
+    operator: ObservedPortalSession,
+    input: unknown,
+    policy: SyntheticPolicy,
+  ) => Promise<{ id: string; version: number }>,
+  completion?: {
+    config: NonNullable<ReturnType<typeof completionConfig>>;
+    repository: CompletionRepository;
+  },
+) {
   const {
     declaration,
     documents,
@@ -85,12 +250,6 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
     documents,
     owner: { version: ownerVersion, fingerprint: owner.fingerprint },
   };
-  const [active] = await db.$queryRaw<
-    { name: string }[]
-  >`SELECT current_database()::text AS name`;
-  if (active?.name !== database)
-    throw Error("Pangkalan data portal sintetik tidak sepadan.");
-
   await app.register(
     async (portal) => {
       portal.addHook("onRequest", async (_req, reply) => {
@@ -99,129 +258,104 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
       });
 
       portal.get("/drafts/:id", async (req) => {
-        const { userId } = await applicant(req);
+        const { userId } = await applicant(req, auth);
         const { id } = params.parse(req.params);
-        return db.$transaction(
-          async (tx) => {
-            const draft = await authorizedDraft(tx, userId, id);
-            const authority = draft.companyId
-              ? await companyAuthority(tx, userId, draft.companyId)
-              : null;
-            const latest = await tx.syntheticSubmission.findFirst({
-              where: { draftId: id },
-              orderBy: { draftVersion: "desc" },
-              select: {
-                id: true,
-                draftId: true,
-                actorId: true,
-                snapshot: true,
-                draftVersion: true,
-              },
-            });
-            const original = latest
-              ? await requireSyntheticSnapshotAuthority(tx, latest)
-              : null;
-            const review = latest
-              ? await loadSyntheticReview(tx, latest)
-              : null;
-            const correction = review?.state.status === "CORRECTION_REQUESTED";
-            const inventory = await loadSyntheticInventory(tx, id);
-            const evidence = await loadSyntheticEvidence(tx, id);
-            const context = documentContext(draft, inventory, evidence);
-            let blocker = "";
-            try {
-              await loadSyntheticReadiness(tx, draft, authority, policy, {
-                inventory,
-                documents: evidence,
-              });
-            } catch (error) {
-              if (
-                !(error instanceof Error) ||
-                !("statusCode" in error) ||
-                error.statusCode !== 409
-              )
-                throw error;
-              blocker = error.message;
-            }
-            if (latest && (!correction || draft.version <= latest.draftVersion))
-              blocker = correction
-                ? "Simpan pembetulan sebelum membuat serahan semula."
-                : "Serahan sudah diterima untuk semakan.";
+        return repository.transaction(async (tx) => {
+          const draft = await tx.draft(userId, id);
+          const authority = draft.companyId
+            ? await tx.authority(userId, draft.companyId)
+            : null;
+          const latest = await tx.latestSubmission(id);
+          const original = latest
+            ? await tx.requireSnapshotAuthority(latest)
+            : null;
+          const review = latest ? await tx.review(latest) : null;
+          const correction = review?.state.status === "CORRECTION_REQUESTED";
+          const inventory = await tx.inventory(id);
+          const evidence = await tx.evidence(id);
+          const context = documentContext(draft, inventory, evidence);
+          let blocker = "";
+          try {
+            evaluateSyntheticReadiness(
+              draft,
+              authority,
+              policy,
+              inventory,
+              evidence,
+              true,
+            );
+          } catch (error) {
             if (
-              original &&
-              (original.capacity !== draft.capacity ||
-                original.companyId !== draft.companyId)
+              !(error instanceof Error) ||
+              !("statusCode" in error) ||
+              error.statusCode !== 409
             )
-              blocker =
-                "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.";
-            return {
-              declaration,
-              policyVersion: policy.documents.version,
-              policyFingerprint: owner.fingerprint,
-              draftVersion: draft.version,
-              latest: latest
-                ? { id: latest.id, draftVersion: latest.draftVersion }
-                : null,
-              reviewStatus: review?.state.status ?? null,
-              reference: review?.state.officialReference ?? null,
-              correctionReason: review?.correctionReason ?? null,
-              correctionRequested: correction,
-              evidence: evidence.map(
-                ({ id, category, version, scanStatus, scope }) => ({
-                  id,
-                  category,
-                  version,
-                  scanStatus,
-                  scope,
-                }),
-              ),
-              requirements: summarizeDocumentRequirements(documents, context),
-              inventory: {
-                unitCount: context.targets.UNIT.length,
-                floorCount: context.targets.FLOOR.length,
-              },
-              blocker,
-              ready: !blocker,
-            };
-          },
-          { isolationLevel: "RepeatableRead" },
-        );
+              throw error;
+            blocker = error.message;
+          }
+          if (latest && (!correction || draft.version <= latest.draftVersion))
+            blocker = correction
+              ? "Simpan pembetulan sebelum membuat serahan semula."
+              : "Serahan sudah diterima untuk semakan.";
+          if (
+            original &&
+            (original.capacity !== draft.capacity ||
+              original.companyId !== draft.companyId)
+          )
+            blocker =
+              "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.";
+          return {
+            declaration,
+            policyVersion: policy.documents.version,
+            policyFingerprint: owner.fingerprint,
+            draftVersion: draft.version,
+            latest: latest
+              ? { id: latest.id, draftVersion: latest.draftVersion }
+              : null,
+            reviewStatus: review?.state.status ?? null,
+            reference: review?.state.officialReference ?? null,
+            correctionReason: review?.correctionReason ?? null,
+            correctionRequested: correction,
+            evidence: evidence.map(
+              ({ id, category, version, scanStatus, scope }) => ({
+                id,
+                category,
+                version,
+                scanStatus,
+                scope,
+              }),
+            ),
+            requirements: summarizeDocumentRequirements(documents, context),
+            inventory: {
+              unitCount: context.targets.UNIT.length,
+              floorCount: context.targets.FLOOR.length,
+            },
+            blocker,
+            ready: !blocker,
+          };
+        }, true);
       });
 
       portal.post("/drafts/:id/evidence", { bodyLimit: 1024 }, async (req) => {
-        const operator = await applicant(req);
+        const operator = await applicant(req, auth);
         const { userId } = operator;
         const { id } = params.parse(req.params);
         const input = evidenceBody.parse(req.body);
-        return db.$transaction(async (tx) => {
-          const activeRole = await lockSyntheticApplicantSession(tx, operator);
-          const draft = await authorizedDraft(tx, userId, id);
+        return repository.transaction(async (tx) => {
+          const activeRole = await tx.lockApplicant(userId, operator);
+          const draft = await tx.draft(userId, id);
           if (draft.version !== input.version)
             fail(409, "Versi draf telah berubah.");
           if (draft.companyId) {
-            const authority = await companyAuthority(
-              tx,
-              userId,
-              draft.companyId,
-            );
+            const authority = await tx.authority(userId, draft.companyId);
             if (authority.status !== "VERIFIED")
               fail(409, "Kuasa wakil sintetik belum disahkan.");
           }
-          const claim = await tx.applicationDraft.updateMany({
-            where: { id, version: input.version },
-            data: { version: { increment: 1 } },
-          });
-          if (claim.count !== 1) fail(409, "Versi draf telah berubah.");
-          const current = await tx.syntheticSubmission.findFirst({
-            where: { draftId: id },
-            orderBy: { draftVersion: "desc" },
-            select: { id: true, actorId: true, snapshot: true },
-          });
+          if (!(await tx.claimVersion(userId, id, input.version)))
+            fail(409, "Versi draf telah berubah.");
+          const current = await tx.latestSubmission(id);
           if (current) {
-            const original = await requireSyntheticSnapshotAuthority(
-              tx,
-              current,
-            );
+            const original = await tx.requireSnapshotAuthority(current);
             if (
               original.capacity !== draft.capacity ||
               original.companyId !== draft.companyId
@@ -230,21 +364,10 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
                 409,
                 "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
               );
-            if (!(await correctionRequested(tx, current.id)))
+            if (!(await tx.correctionRequested(current.id)))
               fail(409, "Tiada pembetulan dibuka.");
           }
-          const floors = await tx.premiseFloor.findMany({
-            where: { draftId: id },
-            select: { id: true },
-          });
-          const premises = await tx.applicationPremises.findUnique({
-            where: { draftId: id },
-            select: {
-              buildingType: true,
-              certificateType: true,
-              units: { select: { id: true } },
-            },
-          });
+          const { floors, premises } = await tx.inventory(id);
           if (!floors.length) fail(409, "Simpan inventori tingkat dahulu.");
           const units = premises?.units ?? [];
           const context = {
@@ -295,22 +418,7 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           const categories = [
             ...new Set([...selected.values()].map(({ category }) => category)),
           ];
-          const priorVersions = await tx.applicationDocument.groupBy({
-            by: ["category"],
-            where: { draftId: id, category: { in: categories } },
-            _max: { version: true },
-          });
-          const nextVersion = new Map(
-            priorVersions.map((row) => [row.category, row._max.version ?? 0]),
-          );
-          await tx.applicationDocument.updateMany({
-            where: {
-              draftId: id,
-              supersededAt: null,
-              storageKey: { startsWith: "issue31-fixture/" },
-            },
-            data: { supersededAt: new Date() },
-          });
+          const nextVersion = await tx.documentVersions(id, categories);
           const fixtures = [...selected.values()].map(
             ({ category, floorId, unitId }) => {
               const documentId = randomUUID();
@@ -343,60 +451,42 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
               };
             },
           );
-          await tx.applicationDocument.createMany({
-            data: fixtures.map(({ document }) => document),
-          });
-          await tx.draftDocumentScope.createMany({
-            data: fixtures.map(({ scope }) => scope),
-          });
-          await tx.auditLog.create({
-            data: {
-              actorId: userId,
-              activeRole,
-              action: "SYNTHETIC_PORTAL_EVIDENCE",
-              target: id,
-              metadata: {
-                verdict: input.verdict,
-                policyVersion: ownerVersion,
-                policyFingerprint: owner.fingerprint,
-              },
+          await tx.replaceEvidence(id, fixtures);
+          await tx.audit({
+            actorId: userId,
+            activeRole,
+            action: "SYNTHETIC_PORTAL_EVIDENCE",
+            target: id,
+            metadata: {
+              verdict: input.verdict,
+              policyVersion: ownerVersion,
+              policyFingerprint: owner.fingerprint,
             },
           });
           return { version: input.version + 1 };
         });
       });
 
-      portal.post("/drafts/:id/submit", { bodyLimit: 2048 }, async (req) => {
-        const operator = await applicant(req);
-        const { id } = params.parse(req.params);
-        const { policyFingerprint, ...input } = submitBody.parse(req.body);
-        if (
-          (owner.custom || policyFingerprint !== undefined) &&
-          policyFingerprint !== owner.fingerprint
-        )
-          fail(
-            409,
-            "Polisi latihan telah berubah. Muat semula dan sahkan akuan sekali lagi.",
-          );
-        const correction = await correctionRequested(db, input.previousId);
-        return captureSyntheticSubmission(
-          operator.userId,
-          { ...input, draftId: id },
-          {
-            ...policy,
-            correctionFor: correction
-              ? (input.previousId ?? undefined)
-              : undefined,
-          },
-          operator,
-        );
-      });
-      if (review.enabled) await syntheticReviewRoutes(portal);
+      registerSyntheticSubmitRoute(portal, owner, auth, capture);
+      if (review.enabled)
+        await syntheticReviewRoutes(portal, reviewRepository, auth);
       if (billing.mode === "MOCK")
-        await syntheticBillingRoutes(portal, {
-          ttlMinutes: billing.ttlMinutes,
-          policyVersion: ownerVersion,
-        });
+        await syntheticBillingRoutes(
+          portal,
+          {
+            ttlMinutes: billing.ttlMinutes,
+            policyVersion: ownerVersion,
+          },
+          reviewRepository,
+          auth,
+        );
+      if (review.enabled && billing.mode === "MOCK" && completion)
+        await syntheticCompletionRoutes(
+          portal,
+          completion.config,
+          auth,
+          completion.repository,
+        );
     },
     { prefix: "/api/synthetic-portal" },
   );

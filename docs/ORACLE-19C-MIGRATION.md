@@ -1,5 +1,7 @@
 # STAYLink MBSP · Asas migrasi Oracle 19c SE2
 
+
+Kemajuan terkini Team 2 dan arahan API makmal direkodkan dalam [serahan teknikal Team 2](ORACLE-TEAM2-HANDOVER.md).
 Baseline rujukan ialah `72b04f61b195d031a07f2079f0f8c14523ee1ef7`. Cabang ini menyediakan skema dan alat migrasi Oracle 19c, repository awal Oracle melalui Thin mode, seed makmal dan ujian berasingan. API aplikasi masih menggunakan PostgreSQL. Tetapan `STAYLINK_DB_PROVIDER=oracle` menghentikan permulaan sehingga port semua laluan API selesai.
 
 ## Sambungan daripada commit `298f6679`

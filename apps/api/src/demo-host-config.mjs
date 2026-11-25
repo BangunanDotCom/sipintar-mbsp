@@ -1,4 +1,19 @@
 import { URL } from "node:url";
+
+export function isPersonalDemoDatabase(value) {
+  return (
+    typeof value === "string" &&
+    /^staylink_issue62_personal_[a-z0-9]{1,24}_test$/.test(value)
+  );
+}
+
+export function personalDistrictAssignments(env) {
+  return [
+    { district: "SPU", id: env.STAYLINK_SYNTHETIC_PIC_ID },
+    { district: "SPT", id: env.STAYLINK_PERSONAL_PIC_SPT_ID },
+    { district: "SPS", id: env.STAYLINK_PERSONAL_PIC_SPS_ID },
+  ];
+}
 // Shared by the static preflight and the hosted-demo runtime. Never returns secrets.
 export function inspectDemoHost(env = process.env, { requireKit = true } = {}) {
   const failures = [];
@@ -67,6 +82,19 @@ export function inspectDemoHost(env = process.env, { requireKit = true } = {}) {
     const pic = env.STAYLINK_SYNTHETIC_PIC_ID;
     const ppsk = env.STAYLINK_SYNTHETIC_SUPERVISOR_ID;
     const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+    if (isPersonalDemoDatabase(database)) {
+      const ids = [
+        ...personalDistrictAssignments(env).map(({ id }) => id),
+        ppsk,
+      ];
+      if (
+        ids.some((id) => !uuid.test(id ?? "")) ||
+        new Set(ids).size !== ids.length
+      )
+        failures.push(
+          "Bekalkan tiga PIC berlainan daerah dan seorang PPSK berasingan daripada kit Personal Demo.",
+        );
+    }
     if (
       !uuid.test(pic ?? "") ||
       !uuid.test(ppsk ?? "") ||

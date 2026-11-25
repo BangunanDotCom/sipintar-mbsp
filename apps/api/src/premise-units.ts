@@ -9,41 +9,28 @@ import {
 } from "../../../packages/shared/src/premise-units.js";
 import { applicant } from "./application-drafts.js";
 import { fail } from "./auth.js";
-import { db } from "./core.js";
-import { authorizedDraft } from "./premise-floors.js";
+import { postgresAuth } from "./auth-repository.js";
+import {
+  postgresDraftRepository,
+  type DraftTransaction,
+} from "./draft-repository.js";
+import { ownedDraft } from "./premise-floors.js";
 
 const params = z.object({ id: z.uuid() });
 
 async function readUnits(
-  tx: Prisma.TransactionClient,
+  tx: DraftTransaction,
   draftId: string,
   version: number,
 ): Promise<PremiseUnitsRecord> {
-  const premise = await tx.applicationPremises.findUnique({
-    where: { draftId },
-    select: {
-      id: true,
-      accommodationUnits: true,
-      units: {
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: {
-          id: true,
-          unitLabel: true,
-          floorLinks: { select: { floorId: true } },
-        },
-      },
-    },
-  });
-  const floorRows = await tx.premiseFloor.findMany({
-    where: { draftId },
-    orderBy: { position: "asc" },
-    select: { id: true, floorLabel: true },
-  });
+  const premise = await tx.findPremises(draftId);
+  const floorRows = await tx.floors(draftId);
+  const storedUnits = premise ? await tx.units(premise.id) : [];
   const floors = floorRows.map(({ id, floorLabel }) => ({
     floorId: id,
     floorLabel,
   }));
-  const units = (premise?.units ?? []).map(({ id, unitLabel, floorLinks }) => {
+  const units = storedUnits.map(({ id, unitLabel, floorLinks }) => {
     const linked = new Set(floorLinks.map(({ floorId }) => floorId));
     return {
       unitId: id,
@@ -72,62 +59,35 @@ async function readUnits(
   };
 }
 
-export async function premiseUnitRoutes(app: FastifyInstance) {
+export async function premiseUnitRoutes(
+  app: FastifyInstance,
+  repository = postgresDraftRepository,
+  auth = postgresAuth,
+) {
   app.get("/api/application-drafts/:id/units", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store, max-age=0");
-    const { userId } = await applicant(req);
+    const { userId } = await applicant(req, auth);
     const { id } = params.parse(req.params);
-    return db.$transaction(
-      async (tx) => {
-        const { version } = await authorizedDraft(tx, userId, id);
-        return readUnits(tx, id, version);
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
-    );
+    return repository.transaction(async (tx) => {
+      const { version } = await ownedDraft(tx, userId, id);
+      return readUnits(tx, id, version);
+    }, true);
   });
 
   app.put("/api/application-drafts/:id/units", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store, max-age=0");
-    const s = await applicant(req);
+    const s = await applicant(req, auth);
     const { id } = params.parse(req.params);
     const input = premiseUnitsSaveSchema.parse(req.body);
-    return db.$transaction(async (tx) => {
-      await authorizedDraft(tx, s.userId, id);
-      const claim = await tx.applicationDraft.updateMany({
-        where: {
-          id,
-          initiatedByUserId: s.userId,
-          status: "DRAFT",
-          version: input.version,
-        },
-        data: { version: { increment: 1 } },
-      });
-      if (claim.count !== 1)
+    return repository.transaction(async (tx) => {
+      await ownedDraft(tx, s.userId, id);
+      if (!(await tx.saveDraft(s.userId, id, input.version)))
         fail(409, "Draf telah dikemas kini. Muat semula sebelum menyimpan.");
-
-      const premise = await tx.applicationPremises.findUnique({
-        where: { draftId: id },
-        select: {
-          id: true,
-          units: {
-            select: {
-              id: true,
-              normalizedLabel: true,
-              floorLinks: { select: { floorId: true } },
-            },
-          },
-        },
-      });
+      const premise = await tx.findPremises(id);
       if (!premise) fail(409, "Simpan maklumat premis dahulu.");
-      const existing = new Map(premise.units.map((unit) => [unit.id, unit]));
-      const floors = new Set(
-        (
-          await tx.premiseFloor.findMany({
-            where: { draftId: id },
-            select: { id: true },
-          })
-        ).map(({ id }) => id),
-      );
+      const storedUnits = await tx.units(premise.id);
+      const existing = new Map(storedUnits.map((unit) => [unit.id, unit]));
+      const floors = new Set((await tx.floors(id)).map(({ id }) => id));
       const retained = new Set<string>();
       for (const unit of input.units) {
         if (unit.unitId) {
@@ -138,26 +98,21 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
         if (unit.floorIds.some((floorId) => !floors.has(floorId)))
           fail(400, "ID tingkat tidak sah untuk premis ini.");
       }
-      const omitted = premise.units.filter((unit) => !retained.has(unit.id));
+      const omitted = storedUnits.filter((unit) => !retained.has(unit.id));
       if (omitted.some((unit) => unit.floorLinks.length > 0))
         fail(409, "Simpan unit tanpa pautan tingkat sebelum membuangnya.");
 
-      if (await tx.draftDocumentScope.findFirst({
-        where: { draftId: id, unitId: { in: omitted.map(({ id }) => id) } }, select: { documentId: true },
-      })) fail(409, "Alihkan pautan bukti dokumen sebelum membuang rekod ini.");
-      await tx.premiseUnit.deleteMany({
-        where: {
-          premiseId: premise.id,
-          id: { in: omitted.map(({ id }) => id) },
-        },
-      });
+      const removed = omitted.map(({ id }) => id);
+      if (await tx.hasRemovedUnitDocuments(id, removed))
+        fail(409, "Alihkan pautan bukti dokumen sebelum membuang rekod ini.");
+      await tx.deleteUnits(premise.id, removed);
       const desired = input.units.map((unit) => ({
         ...unit,
         id: unit.unitId ?? randomUUID(),
         normalizedLabel: normalizeUnitLabel(unit.unitLabel),
       }));
       const reserved = new Set([
-        ...premise.units.map(({ normalizedLabel }) => normalizedLabel),
+        ...storedUnits.map(({ normalizedLabel }) => normalizedLabel),
         ...desired.map(({ normalizedLabel }) => normalizedLabel),
       ]);
       // Keep the unique index valid through label swaps.
@@ -167,10 +122,7 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
         let temporaryLabel = `__pending_${unit.id}`;
         while (reserved.has(temporaryLabel)) temporaryLabel += "_";
         reserved.add(temporaryLabel);
-        await tx.premiseUnit.update({
-          where: { id: unit.id },
-          data: { normalizedLabel: temporaryLabel },
-        });
+        await tx.updateUnit(unit.id, { normalizedLabel: temporaryLabel });
       }
 
       const links: Prisma.PremiseUnitFloorCreateManyInput[] = [];
@@ -181,18 +133,10 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
         };
         const prior = existing.get(unit.id);
         if (prior) {
-          await tx.premiseUnit.update({ where: { id: unit.id }, data });
-          await tx.premiseUnitFloor.deleteMany({
-            where: {
-              draftId: id,
-              unitId: unit.id,
-              floorId: { notIn: unit.floorIds },
-            },
-          });
+          await tx.updateUnit(unit.id, data);
+          await tx.deleteFloorLinks(id, unit.id, unit.floorIds);
         } else {
-          await tx.premiseUnit.create({
-            data: { ...data, id: unit.id, premiseId: premise.id, draftId: id },
-          });
+          await tx.createUnit(unit.id, premise.id, id, data);
         }
         const linked = new Set(prior?.floorLinks.map(({ floorId }) => floorId));
         for (const floorId of unit.floorIds) {
@@ -200,22 +144,20 @@ export async function premiseUnitRoutes(app: FastifyInstance) {
             links.push({ unitId: unit.id, floorId, draftId: id });
         }
       }
-      if (links.length) await tx.premiseUnitFloor.createMany({ data: links });
+      if (links.length) await tx.createFloorLinks(links);
       const version = input.version + 1;
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_UNITS_SAVED",
-          target: id,
-          metadata: {
-            version,
-            unitCount: desired.length,
-            floorLinkCount: desired.reduce(
-              (count, unit) => count + unit.floorIds.length,
-              0,
-            ),
-          },
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_UNITS_SAVED",
+        target: id,
+        metadata: {
+          version,
+          unitCount: desired.length,
+          floorLinkCount: desired.reduce(
+            (count, unit) => count + unit.floorIds.length,
+            0,
+          ),
         },
       });
       return readUnits(tx, id, version);

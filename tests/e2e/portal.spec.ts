@@ -709,6 +709,11 @@ async function premisesSession(page: any) {
       sameSite: "Strict",
     },
   ]);
+  const { id } = await openPremisesDraft(page);
+  return { user, email, password, id };
+}
+
+async function openPremisesDraft(page: import("@playwright/test").Page) {
   await page.goto("/permohonan/baharu");
   await page
     .getByRole("radio", { name: "Individu atas kapasiti sendiri" })
@@ -720,8 +725,15 @@ async function premisesSession(page: any) {
       exact: true,
     }),
   ).toBeVisible();
-  return { user, email, password, id: page.url().split("/").at(-2)! };
+  return { id: page.url().split("/").at(-2)! };
 }
+async function inventorySession(page: import("@playwright/test").Page) {
+  if (process.env.STAYLINK_ORACLE_LAB_HTTP !== "true") return premisesSession(page);
+  const email = `inventory-${randomUUID()}@example.test`;
+  await registerApplicant(page, email, "DATA UJIAN Inventori", `Aa1!${randomBytes(24).toString("hex")}`);
+  return openPremisesDraft(page);
+}
+
 test("Phase 2B.2: partial/full premises save, actual map pin, review and responsive screenshots", async ({
   page,
 }) => {
@@ -929,8 +941,9 @@ test("Phase 2B.2: keyboard pin, previous autosave, resume and premises login ret
 });
 
 test("floor UUID survives an editor rename and reload", async ({ page }) => {
+  test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { id } = await premisesSession(page);
+  const { id } = await inventorySession(page);
   await page.goto(`/permohonan/draf/${id}/tingkat`);
   const label = page.getByLabel("Nama tingkat", { exact: true });
   const save = async () => {
@@ -958,7 +971,7 @@ test("floor UUID survives an editor rename and reload", async ({ page }) => {
 test("K02 records one physical unit across two floors and keeps its UUID", async ({ page }) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { id } = await premisesSession(page);
+  const { id } = await inventorySession(page);
   const root = `/api/application-drafts/${id}`;
   const session = await page.request.get("/api/auth/me");
   const headers = { Origin: "http://localhost:5173", "X-CSRF-Token": (await session.json()).csrf };

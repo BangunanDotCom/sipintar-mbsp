@@ -1,9 +1,14 @@
+import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import { syntheticDocumentFacts } from "./synthetic-owner-policy.js";
 import {
   lockSyntheticApplicantSession,
   type ObservedPortalSession,
 } from "./synthetic-portal-session.js";
-import type { ApplicationDraft, Prisma } from "@prisma/client";
+import type {
+  ApplicationDraft,
+  Prisma,
+  SyntheticSubmission,
+} from "@prisma/client";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { z } from "zod";
 import { db } from "./core.js";
@@ -12,6 +17,7 @@ import { authorizedDraft } from "./premise-floors.js";
 import { validDraftApplicantContext } from "./draft-applicant-context.js";
 import { premisesFields } from "./premises.js";
 import { evaluateDraftReadiness } from "../../../packages/shared/src/draft-readiness.js";
+import type { AuditEntry } from "./oracle/audit.js";
 import { companyAuthority } from "./application-drafts.js";
 import {
   evaluateDocumentPolicy,
@@ -54,7 +60,33 @@ function assertSandbox() {
   return local.pathname.slice(1);
 }
 
-// The caller supplies a server-owned policy; this service only writes to eligible synthetic databases.
+export type SyntheticSubmissionTransaction = {
+  lockApplicant(
+    userId: string,
+    operator?: ObservedPortalSession,
+  ): Promise<"PEMOHON" | "WAKIL_SYARIKAT">;
+  draft(userId: string, id: string): Promise<ApplicationDraft>;
+  authority(userId: string, companyId: string): Promise<NonNullable<Authority>>;
+  lockDraftVersion(draft: ApplicationDraft): Promise<number | undefined>;
+  submissionByKey(
+    draftId: string,
+    key: string,
+  ): Promise<SyntheticSubmission | null>;
+  latestSubmission(draftId: string): Promise<SyntheticSubmission | null>;
+  correctionRequested(submissionId: string): Promise<boolean>;
+  lockEvidence(draftId: string): Promise<void>;
+  requireUnclosed(draftId: string): Promise<void>;
+  inventory(draftId: string): Promise<SyntheticInventory>;
+  evidence(draftId: string): Promise<SyntheticEvidence>;
+  createSubmission(
+    data: Omit<SyntheticSubmission, "id" | "createdAt" | "snapshot"> & {
+      snapshot: Prisma.InputJsonObject;
+    },
+  ): Promise<SyntheticSubmission>;
+  audit(entry: AuditEntry): Promise<void>;
+};
+
+// The PostgreSQL caller still supplies its existing verified sandbox and policy.
 export async function captureSyntheticSubmission(
   userId: string,
   payload: unknown,
@@ -62,160 +94,217 @@ export async function captureSyntheticSubmission(
   operator?: ObservedPortalSession,
 ) {
   const expectedDatabase = assertSandbox();
-  if (!policy || !policy.declarationVersion.startsWith("SYNTHETIC-"))
-    fail(409, "Polisi akuan sintetik belum tersedia.");
-  const input = inputSchema.parse(payload);
+  const enforcePortal = Boolean(syntheticPortalDatabase());
   return db.$transaction(async (tx) => {
     const [active] = await tx.$queryRaw<
       { name: string }[]
     >`SELECT current_database()::text AS name`;
     if (active?.name !== expectedDatabase)
       fail(404, "Pangkalan data sintetik tidak tersedia.");
-    let activeRole: "PEMOHON" | "WAKIL_SYARIKAT" = "PEMOHON";
-    if (syntheticPortalDatabase()) {
-      if (!operator || operator.userId !== userId)
-        fail(403, "Sesi portal diperlukan.");
-      activeRole = await lockSyntheticApplicantSession(tx, operator);
-    }
-    const draft = await authorizedDraft(tx, userId, input.draftId);
-    const authority = draft.companyId
-      ? await companyAuthority(tx, userId, draft.companyId)
-      : null;
-    assertSyntheticCapacity(draft, authority);
-    // Serializes submission, correction and existing versioned draft edits.
-    const [current] = await tx.$queryRaw<{ version: number }[]>`
-      SELECT version FROM application_drafts WHERE id = ${draft.id} FOR UPDATE`;
-    const prior = await tx.syntheticSubmission.findUnique({
-      where: { draftId_key: { draftId: draft.id, key: input.key } },
-    });
-    if (prior) {
-      const savedPolicy = z
-        .object({ policyFingerprint: z.string().optional() })
-        .safeParse(prior.snapshot);
-      if (
-        policy.owner &&
-        savedPolicy.success &&
-        savedPolicy.data.policyFingerprint &&
-        savedPolicy.data.policyFingerprint !== policy.owner.fingerprint
-      )
-        fail(409, "Serahan latihan ini menggunakan polisi terdahulu.");
-      if (syntheticPortalDatabase())
-        await requireSyntheticSnapshotAuthority(tx, prior);
-      if (
-        prior.actorId !== userId ||
-        prior.draftVersion !== input.version ||
-        prior.previousId !== input.previousId ||
-        prior.declarationVersion !== input.declarationVersion
-      )
-        fail(409, "Kunci idempotensi telah digunakan untuk serahan lain.");
-      return { id: prior.id, version: prior.draftVersion };
-    }
-    if (
-      current?.version !== input.version ||
-      input.declarationVersion !== policy.declarationVersion
-    )
-      fail(409, "Versi draf atau akuan tidak sepadan.");
-    // The content read before acquiring the draft lock must match the claimed version.
-    if (draft.version !== current.version) fail(409, "Draf telah berubah.");
-    const latest = await tx.syntheticSubmission.findFirst({
-      where: { draftId: draft.id },
-      orderBy: { draftVersion: "desc" },
-    });
-    if (
-      (latest?.id ?? null) !== input.previousId ||
-      (latest &&
-        (latest.draftVersion >= input.version ||
-          policy.correctionFor !== latest.id))
-    )
-      fail(409, "Pembetulan sintetik belum dibenarkan.");
-    if (latest && syntheticPortalDatabase()) {
-      const original = await requireSyntheticSnapshotAuthority(tx, latest);
-      if (
-        original.capacity !== draft.capacity ||
-        original.companyId !== draft.companyId
-      )
-        fail(
-          409,
-          "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
-        );
-    }
-
-    // A scan-state change cannot invalidate these rows until the capture commits.
-    await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draft.id} FOR SHARE`;
-    const { premises, floors, eligible, evidence, readiness } =
-      await loadSyntheticReadiness(tx, draft, authority, policy);
-
-    const row = await tx.syntheticSubmission.create({
-      data: {
-        draftId: draft.id,
-        draftVersion: input.version,
-        key: input.key,
-        actorId: userId,
-        declarationVersion: input.declarationVersion,
-        previousId: input.previousId,
-        policyVersion: readiness.version,
-        snapshot: {
-          capacity: draft.capacity,
-          companyId: draft.companyId,
-          premisesId: premises.id,
-          buildingType: premises.buildingType,
-          ...(policy.owner && {
-            ownerPolicyVersion: policy.owner.version,
-            policyFingerprint: policy.owner.fingerprint,
-          }),
-          districtId: premises.districtId,
-          representativeId: authority?.id ?? null,
-          authorityType: authority?.authorityType ?? null,
-          floors: floors.map(
-            ({
-              id,
-              floorLabel,
-              rooms,
-              beds,
-              workers,
-              areaSqm,
-              facilities,
-            }) => ({
-              id,
-              floorLabel,
-              rooms,
-              beds,
-              workers,
-              areaSqm: areaSqm.toString(),
-              facilities,
-            }),
-          ),
-          units: premises.units.map(({ id, unitLabel, floorLinks }) => ({
-            id,
-            unitLabel,
-            floorIds: floorLinks.map(({ floorId }) => floorId),
-          })),
-          evidence: eligible.map(({ id, version }, index) => ({
-            id,
-            version,
-            ...evidence[index],
-          })),
-        },
+    const repository: SyntheticSubmissionTransaction = {
+      async lockApplicant(user, session) {
+        if (!enforcePortal) return "PEMOHON";
+        if (!session || session.userId !== user)
+          fail(403, "Sesi portal diperlukan.");
+        return lockSyntheticApplicantSession(tx, session);
       },
-    });
-    await tx.auditLog.create({
-      data: {
-        actorId: userId,
-        activeRole,
-        action: "SYNTHETIC_SUBMISSION_CAPTURED",
-        target: row.id,
-        metadata: {
-          draftVersion: row.draftVersion,
-          previousId: input.previousId,
-          ...(policy.owner && {
-            ownerPolicyVersion: policy.owner.version,
-            policyFingerprint: policy.owner.fingerprint,
-          }),
-        },
+      draft: (user, id) => authorizedDraft(tx, user, id),
+      authority: (user, company) => companyAuthority(tx, user, company),
+      async lockDraftVersion(draft) {
+        const [current] = await tx.$queryRaw<{ version: number }[]>`
+          SELECT version FROM application_drafts WHERE id = ${draft.id} FOR UPDATE`;
+        return current?.version;
       },
-    });
-    return { id: row.id, version: row.draftVersion };
+      async submissionByKey(draftId, key) {
+        return tx.syntheticSubmission.findUnique({
+          where: { draftId_key: { draftId, key } },
+        });
+      },
+      async latestSubmission(draftId) {
+        return tx.syntheticSubmission.findFirst({
+          where: { draftId },
+          orderBy: { draftVersion: "desc" },
+        });
+      },
+      async correctionRequested(id) {
+        return !!(await tx.auditLog.findFirst({
+          where: {
+            target: id,
+            outcome: "SUCCESS",
+            action: "SYNTHETIC_PORTAL_CORRECTION_REQUESTED",
+          },
+          select: { id: true },
+        }));
+      },
+      requireUnclosed: (draftId) => requireUnclosedTrainingDraft(tx, draftId),
+      async lockEvidence(draftId) {
+        await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
+        await tx.$queryRaw`SELECT "documentId" FROM draft_document_scopes WHERE "draftId" = ${draftId} FOR SHARE`;
+      },
+      inventory: (id) => loadSyntheticInventory(tx, id),
+      evidence: (id) => loadSyntheticEvidence(tx, id),
+      async createSubmission(data) {
+        return tx.syntheticSubmission.create({ data });
+      },
+      async audit(entry) {
+        await tx.auditLog.create({
+          data: {
+            ...entry,
+            metadata: entry.metadata as Prisma.InputJsonValue | undefined,
+          },
+        });
+      },
+    };
+    return captureInTransaction(
+      repository,
+      userId,
+      payload,
+      policy,
+      operator,
+      enforcePortal,
+    );
   });
+}
+
+export async function captureInTransaction(
+  tx: SyntheticSubmissionTransaction,
+  userId: string,
+  payload: unknown,
+  policy: SyntheticPolicy | undefined,
+  operator: ObservedPortalSession | undefined,
+  enforcePortal: boolean,
+) {
+  if (!policy || !policy.declarationVersion.startsWith("SYNTHETIC-"))
+    fail(409, "Polisi akuan sintetik belum tersedia.");
+  const input = inputSchema.parse(payload);
+  const activeRole = await tx.lockApplicant(userId, operator);
+  const draft = await tx.draft(userId, input.draftId);
+  const authority = draft.companyId
+    ? await tx.authority(userId, draft.companyId)
+    : null;
+  assertSyntheticCapacity(draft, authority);
+  const currentVersion = await tx.lockDraftVersion(draft);
+  const prior = await tx.submissionByKey(draft.id, input.key);
+  if (prior) {
+    const savedPolicy = z
+      .object({ policyFingerprint: z.string().optional() })
+      .safeParse(prior.snapshot);
+    if (
+      policy.owner &&
+      savedPolicy.success &&
+      savedPolicy.data.policyFingerprint &&
+      savedPolicy.data.policyFingerprint !== policy.owner.fingerprint
+    )
+      fail(409, "Serahan latihan ini menggunakan polisi terdahulu.");
+    if (enforcePortal) await assertSnapshotAuthority(prior, tx.authority);
+    if (
+      prior.actorId !== userId ||
+      prior.draftVersion !== input.version ||
+      prior.previousId !== input.previousId ||
+      prior.declarationVersion !== input.declarationVersion
+    )
+      fail(409, "Kunci idempotensi telah digunakan untuk serahan lain.");
+    return { id: prior.id, version: prior.draftVersion };
+  }
+  if (
+    currentVersion !== input.version ||
+    input.declarationVersion !== policy.declarationVersion
+  )
+    fail(409, "Versi draf atau akuan tidak sepadan.");
+  // The content read before acquiring the draft lock must match the claimed version.
+  if (draft.version !== currentVersion) fail(409, "Draf telah berubah.");
+  const latest = await tx.latestSubmission(draft.id);
+  if (
+    (latest?.id ?? null) !== input.previousId ||
+    (latest &&
+      (latest.draftVersion >= input.version ||
+        (enforcePortal
+          ? !(await tx.correctionRequested(latest.id))
+          : policy.correctionFor !== latest.id)))
+  )
+    fail(409, "Pembetulan sintetik belum dibenarkan.");
+  if (latest && enforcePortal) {
+    const original = await assertSnapshotAuthority(latest, tx.authority);
+    if (
+      original.capacity !== draft.capacity ||
+      original.companyId !== draft.companyId
+    )
+      fail(
+        409,
+        "Kapasiti dan syarikat asal mesti dikekalkan untuk pembetulan sintetik.",
+      );
+  }
+
+  await tx.requireUnclosed(draft.id);
+  await tx.lockEvidence(draft.id);
+  const { premises, floors, eligible, evidence, readiness } =
+    evaluateSyntheticReadiness(
+      draft,
+      authority,
+      policy,
+      await tx.inventory(draft.id),
+      await tx.evidence(draft.id),
+      enforcePortal,
+    );
+
+  const row = await tx.createSubmission({
+    draftId: draft.id,
+    draftVersion: input.version,
+    key: input.key,
+    actorId: userId,
+    declarationVersion: input.declarationVersion,
+    previousId: input.previousId,
+    policyVersion: readiness.version,
+    snapshot: {
+      capacity: draft.capacity,
+      companyId: draft.companyId,
+      premisesId: premises.id,
+      buildingType: premises.buildingType,
+      ...(policy.owner && {
+        ownerPolicyVersion: policy.owner.version,
+        policyFingerprint: policy.owner.fingerprint,
+      }),
+      districtId: premises.districtId,
+      representativeId: authority?.id ?? null,
+      authorityType: authority?.authorityType ?? null,
+      floors: floors.map(
+        ({ id, floorLabel, rooms, beds, workers, areaSqm, facilities }) => ({
+          id,
+          floorLabel,
+          rooms,
+          beds,
+          workers,
+          areaSqm: areaSqm.toString(),
+          facilities,
+        }),
+      ),
+      units: premises.units.map(({ id, unitLabel, floorLinks }) => ({
+        id,
+        unitLabel,
+        floorIds: floorLinks.map(({ floorId }) => floorId),
+      })),
+      evidence: eligible.map(({ id, version }, index) => ({
+        id,
+        version,
+        ...evidence[index],
+      })),
+    },
+  });
+  await tx.audit({
+    actorId: userId,
+    activeRole,
+    action: "SYNTHETIC_SUBMISSION_CAPTURED",
+    target: row.id,
+    metadata: {
+      draftVersion: row.draftVersion,
+      previousId: input.previousId,
+      ...(policy.owner && {
+        ownerPolicyVersion: policy.owner.version,
+        policyFingerprint: policy.owner.fingerprint,
+      }),
+    },
+  });
+  return { id: row.id, version: row.draftVersion };
 }
 
 type Authority = Awaited<ReturnType<typeof companyAuthority>> | null;
@@ -241,10 +330,23 @@ function assertSyntheticCapacity(
     fail(409, "Konteks pemohon sintetik tidak sah.");
 }
 
+export type SyntheticInventory = {
+  premises:
+    | (import("@prisma/client").ApplicationPremises & {
+        units: {
+          id: string;
+          unitLabel: string;
+          floorLinks: { floorId: string }[];
+        }[];
+      })
+    | null;
+  floors: import("@prisma/client").PremiseFloor[];
+};
+
 export async function loadSyntheticInventory(
   tx: Prisma.TransactionClient,
   draftId: string,
-) {
+): Promise<SyntheticInventory> {
   const premises = await tx.applicationPremises.findUnique({
     where: { draftId: draftId },
     include: {
@@ -284,6 +386,10 @@ export async function loadSyntheticEvidence(
     orderBy: { id: "asc" },
   });
 }
+
+export type SyntheticEvidence = Awaited<
+  ReturnType<typeof loadSyntheticEvidence>
+>;
 
 export function documentContext(
   draft: ApplicationDraft,
@@ -337,9 +443,25 @@ export async function loadSyntheticReadiness(
     documents: Awaited<ReturnType<typeof loadSyntheticEvidence>>;
   },
 ) {
+  return evaluateSyntheticReadiness(
+    draft,
+    authority,
+    policy,
+    loaded?.inventory ?? (await loadSyntheticInventory(tx, draft.id)),
+    loaded?.documents ?? (await loadSyntheticEvidence(tx, draft.id)),
+    Boolean(syntheticPortalDatabase()),
+  );
+}
+
+export function evaluateSyntheticReadiness(
+  draft: ApplicationDraft,
+  authority: Authority,
+  policy: SyntheticPolicy,
+  inventory: SyntheticInventory,
+  documents: SyntheticEvidence,
+  enforcePortal: boolean,
+) {
   assertSyntheticCapacity(draft, authority);
-  const inventory =
-    loaded?.inventory ?? (await loadSyntheticInventory(tx, draft.id));
   const { premises, floors } = inventory;
   if (
     !premises?.buildingType ||
@@ -355,7 +477,7 @@ export async function loadSyntheticReadiness(
   )
     fail(409, "Inventori premis sintetik belum lengkap.");
 
-  if (syntheticPortalDatabase()) {
+  if (enforcePortal) {
     const inventory = evaluateDraftReadiness({
       premises: premisesFields(premises),
       floors: floors.map(
@@ -377,11 +499,7 @@ export async function loadSyntheticReadiness(
       );
   }
 
-  const context = documentContext(
-    draft,
-    inventory,
-    loaded?.documents ?? (await loadSyntheticEvidence(tx, draft.id)),
-  );
+  const context = documentContext(draft, inventory, documents);
   const { eligible, evidence } = context;
   if (
     authority &&
@@ -407,6 +525,18 @@ export async function requireSyntheticSnapshotAuthority(
   tx: Prisma.TransactionClient,
   row: { snapshot: Prisma.JsonValue; actorId: string },
 ) {
+  return assertSnapshotAuthority(row, (userId, companyId) =>
+    companyAuthority(tx, userId, companyId),
+  );
+}
+
+export async function assertSnapshotAuthority(
+  row: { snapshot: Prisma.JsonValue; actorId: string },
+  locateAuthority: (
+    userId: string,
+    companyId: string,
+  ) => Promise<NonNullable<Authority>>,
+) {
   const context = z
     .object({
       capacity: z.enum(["INDIVIDUAL", "COMPANY"]),
@@ -419,8 +549,7 @@ export async function requireSyntheticSnapshotAuthority(
   )
     fail(409, "Konteks kuasa serahan sintetik tidak sah.");
   if (context.data.companyId) {
-    const authority = await companyAuthority(
-      tx,
+    const authority = await locateAuthority(
       row.actorId,
       context.data.companyId,
     );

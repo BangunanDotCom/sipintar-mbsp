@@ -1,10 +1,21 @@
+import {
+  isPersonalDemoDatabase,
+  personalDistrictAssignments,
+} from "./demo-host-config.mjs";
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { floorFacilitySchema } from "../../../packages/shared/src/floor-summary.js";
-import { Prisma } from "@prisma/client";
+import { Prisma, type SyntheticSubmission } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { postgresAuth } from "./auth-repository.js";
+import type { AuditEntry } from "./oracle/audit.js";
+import { authorizedDraft } from "./premise-floors.js";
 import { authorize, fail } from "./auth.js";
 import { db } from "./core.js";
-import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
+import {
+  assertSnapshotAuthority,
+  requireSyntheticSnapshotAuthority,
+} from "./synthetic-submissions.js";
 import { lockSyntheticPortalSession } from "./synthetic-portal-session.js";
 import {
   applySyntheticReview,
@@ -56,18 +67,34 @@ const snapshotSchema = z.object({
 });
 
 export const correctionAction = "SYNTHETIC_PORTAL_CORRECTION_REQUESTED";
-const completeAction = "SYNTHETIC_PORTAL_COMPLETE";
-const registerAction = "SYNTHETIC_PORTAL_REGISTERED";
-const actions = [correctionAction, completeAction, registerAction];
+export const completeAction = "SYNTHETIC_PORTAL_COMPLETE";
+export const registerAction = "SYNTHETIC_PORTAL_REGISTERED";
+export const reviewActions = [correctionAction, completeAction, registerAction];
 
-export async function syntheticReviewOfficer(req: FastifyRequest) {
-  const operator = await authorize(req, "areas.read");
+export async function syntheticReviewOfficer(
+  req: FastifyRequest,
+  auth = postgresAuth,
+) {
+  const operator = await authorize(req, "areas.read", auth);
   const assignedRole = role.safeParse(operator.activeRole);
-  const pic = uuid.safeParse(process.env.STAYLINK_SYNTHETIC_PIC_ID);
+  const personal =
+    process.env.STAYLINK_DEMO_HOST === "true" &&
+    isPersonalDemoDatabase(syntheticPortalDatabase());
+  const allocation =
+    personal && assignedRole.data === "PIC_KAWASAN"
+      ? personalDistrictAssignments(process.env).find(
+          ({ id }) => id === operator.userId,
+        )
+      : null;
+  const pic = uuid.safeParse(
+    allocation?.id ?? process.env.STAYLINK_SYNTHETIC_PIC_ID,
+  );
   const supervisor = uuid.safeParse(
     process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID,
   );
-  const area = district.safeParse(process.env.STAYLINK_SYNTHETIC_DISTRICT);
+  const area = district.safeParse(
+    allocation?.district ?? process.env.STAYLINK_SYNTHETIC_DISTRICT,
+  );
   if (
     !assignedRole.success ||
     !pic.success ||
@@ -98,7 +125,7 @@ export async function lockSyntheticOfficer(
   );
 }
 
-type Submission = {
+export type Submission = {
   id: string;
   draftId: string;
   actorId: string;
@@ -127,7 +154,7 @@ function evidenceRows(tx: Prisma.TransactionClient, ids: string[]) {
   });
 }
 
-type CurrentEvidence = Awaited<ReturnType<typeof evidenceRows>>[number];
+export type CurrentEvidence = Awaited<ReturnType<typeof evidenceRows>>[number];
 
 function eligibleEvidence(
   draftId: string,
@@ -156,16 +183,12 @@ function eligibleEvidence(
 }
 
 export async function requireCurrentSyntheticEvidence(
-  tx: Prisma.TransactionClient,
+  tx: SyntheticReviewTransaction,
   draftId: string,
   expected: SnapshotEvidence[],
 ) {
-  await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
-  await tx.$queryRaw`SELECT "documentId" FROM draft_document_scopes WHERE "draftId" = ${draftId} FOR SHARE`;
-  const rows = await evidenceRows(
-    tx,
-    expected.map(({ id }) => id),
-  );
+  await tx.lockEvidence(draftId);
+  const rows = await tx.evidenceRows(expected.map(({ id }) => id));
   if (
     rows.length !== expected.length ||
     eligibleEvidence(
@@ -179,17 +202,21 @@ export async function requireCurrentSyntheticEvidence(
 
 function reviewEvents(tx: Prisma.TransactionClient, ids: string[]) {
   return tx.auditLog.findMany({
-    where: { target: { in: ids }, action: { in: actions }, outcome: "SUCCESS" },
+    where: {
+      target: { in: ids },
+      action: { in: reviewActions },
+      outcome: "SUCCESS",
+    },
     select: { target: true, action: true, actorId: true, metadata: true },
   });
 }
-type ReviewEvent = Awaited<ReturnType<typeof reviewEvents>>[number];
+export type ReviewEvent = Awaited<ReturnType<typeof reviewEvents>>[number];
 
 export async function loadSyntheticReview(
-  tx: Prisma.TransactionClient,
+  tx: SyntheticReviewTransaction,
   row: Submission,
 ) {
-  return assembleSyntheticReview(row, await reviewEvents(tx, [row.id]));
+  return assembleSyntheticReview(row, await tx.reviewEvents([row.id]));
 }
 
 function assembleSyntheticReview(row: Submission, events: ReviewEvent[]) {
@@ -230,28 +257,17 @@ function assembleSyntheticReview(row: Submission, events: ReviewEvent[]) {
 }
 
 export async function lockSyntheticReview(
-  tx: Prisma.TransactionClient,
+  tx: SyntheticReviewTransaction,
   id: string,
   officer: ReviewOfficer,
   options: { forWrite: boolean } = { forWrite: true },
 ) {
-  await lockSyntheticOfficer(tx, officer);
-  // One lock per immutable submission serializes review and billing state writes.
-  if (options.forWrite) {
-    await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id}
-      AND snapshot->>'districtId' = ${officer.district} AND "actorId" <> ${officer.operator.userId}
-      FOR UPDATE`;
-  }
-  const row = await tx.syntheticSubmission.findFirst({
-    where: {
-      id,
-      correction: null,
-      snapshot: { path: ["districtId"], equals: officer.district },
-    },
-  });
+  await tx.lockOfficer(officer);
+  if (options.forWrite) await tx.lockSubmission(id, officer);
+  const row = await tx.activeSubmission(id, officer);
   if (!row || row.actorId === officer.operator.userId)
     fail(404, "Tugasan sintetik tidak ditemui.");
-  await requireSyntheticSnapshotAuthority(tx, row);
+  await tx.requireSnapshotAuthority(row);
   return {
     ...(await loadSyntheticReview(tx, row)),
     actorId: row.actorId,
@@ -261,7 +277,7 @@ export async function lockSyntheticReview(
   };
 }
 
-const reviewPageSize = 20;
+export const reviewPageSize = 20;
 const reviewQuery = z.strictObject({
   view: z
     .enum([
@@ -286,7 +302,9 @@ const reviewQuery = z.strictObject({
 });
 const cursorSchema = z.tuple([z.iso.datetime().max(32), uuid]);
 
-function readCursor(input: string | undefined) {
+export type ReviewQuery = z.infer<typeof reviewQuery>;
+
+export function readCursor(input: string | undefined) {
   if (!input) return null;
   try {
     return cursorSchema.parse(
@@ -300,7 +318,7 @@ function readCursor(input: string | undefined) {
 async function findReviewPage(
   tx: Prisma.TransactionClient,
   officer: ReviewOfficer,
-  input: z.infer<typeof reviewQuery>,
+  input: ReviewQuery,
 ) {
   const cursor = readCursor(input.cursor);
   const range = cursor
@@ -310,7 +328,7 @@ async function findReviewPage(
     SELECT 1 FROM audit_logs a
     WHERE a.target = s.id AND a.outcome = 'SUCCESS' AND a.action IN (${Prisma.join(kinds)})
   )`;
-  const submitted = Prisma.sql`AND NOT ${event(actions)}`;
+  const submitted = Prisma.sql`AND NOT ${event(reviewActions)}`;
   const awaitingRegistration = Prisma.sql`AND ${event([completeAction])} AND NOT ${event([registerAction, correctionAction])}`;
   const filter = {
     all: Prisma.empty,
@@ -407,169 +425,285 @@ function compareUnits(
   });
 }
 
-export async function syntheticReviewRoutes(portal: FastifyInstance) {
-  portal.get("/reviews", async (req) => {
-    const officer = await syntheticReviewOfficer(req);
-    const input = reviewQuery.parse(req.query);
-    return db.$transaction(
-      async (tx) => {
-        await lockSyntheticOfficer(tx, officer);
-        const rows = await findReviewPage(tx, officer, input);
-        const page = rows.slice(0, reviewPageSize);
-        const last = page.at(-1);
-        const nextCursor =
-          last && rows.length > reviewPageSize
-            ? Buffer.from(JSON.stringify([last.cursorTime, last.id])).toString(
-                "base64url",
-              )
-            : null;
-        const authorized: Submission[] = [];
-        for (const row of page) {
-          try {
-            await requireSyntheticSnapshotAuthority(tx, row);
-            authorized.push(row);
-          } catch (error) {
-            if (
-              !(error instanceof Error) ||
-              !("statusCode" in error) ||
-              (error.statusCode !== 404 && error.statusCode !== 409)
-            )
-              throw error;
-          }
-        }
-        const events = await reviewEvents(
-          tx,
-          authorized.map(({ id }) => id),
-        );
-        const grouped = new Map<string | null, ReviewEvent[]>();
-        for (const event of events) {
-          const group = grouped.get(event.target) ?? [];
-          group.push(event);
-          grouped.set(event.target, group);
-        }
-        const reviews = authorized.map((row) =>
-          assembleSyntheticReview(row, grouped.get(row.id) ?? []),
-        );
-        const documents = await evidenceRows(tx, [
-          ...new Set(
-            reviews.flatMap(({ snapshot }) =>
-              snapshot.evidence.map(({ id }) => id),
-            ),
-          ),
-        ]);
-        const current = new Map(documents.map((doc) => [doc.id, doc]));
-        return {
-          role: officer.role,
-          district: officer.district,
-          nextCursor,
-          reviews: reviews.map(({ state, snapshot, correctionReason }) => {
-            const evidence = eligibleEvidence(
-              state.caseId,
-              snapshot.evidence,
-              current,
-            );
-            return {
-              id: state.submissionId,
-              status: state.status,
-              version: state.version,
-              reference: state.officialReference,
-              correctionReason,
-              units: snapshot.units.map(({ unitLabel, floorIds }) => ({
-                label: unitLabel,
-                floorCount: floorIds.length,
-              })),
-              evidenceEligible: evidence.length === snapshot.evidence.length,
-              evidence: evidence.map(({ category, version, scanStatus }) => ({
-                category,
-                version,
-                scanStatus,
-              })),
-              advice: mockPrecheck({
-                unitCount: snapshot.units.length,
-                floorCount: snapshot.floors.length,
-                evidenceCount: evidence.length,
-              }),
-            };
+type NotificationData = {
+  userId: string;
+  title: string;
+  type: string;
+  message: string;
+};
+type LedgerEvent = { action: string; metadata: Prisma.JsonValue };
+
+export interface SyntheticReviewTransaction {
+  lockOfficer(officer: ReviewOfficer): Promise<void>;
+  lockEvidence(draftId: string): Promise<void>;
+  evidenceRows(ids: string[]): Promise<CurrentEvidence[]>;
+  reviewEvents(ids: string[]): Promise<ReviewEvent[]>;
+  reviewPage(
+    officer: ReviewOfficer,
+    input: ReviewQuery,
+  ): Promise<(Submission & { cursorTime: string })[]>;
+  requireSnapshotAuthority(
+    row: Pick<Submission, "snapshot" | "actorId">,
+  ): ReturnType<typeof assertSnapshotAuthority>;
+  lockSubmission(id: string, officer?: ReviewOfficer): Promise<void>;
+  activeSubmission(
+    id: string,
+    officer?: ReviewOfficer,
+  ): Promise<SyntheticSubmission | null>;
+  previousSubmission(
+    id: string,
+    draftId: string,
+    officer: ReviewOfficer,
+  ): Promise<SyntheticSubmission | null>;
+  applicantSubmission(
+    draftId: string,
+    userId: string,
+  ): Promise<Pick<Submission, "id" | "snapshot" | "actorId"> | null>;
+  ledgerEvents(id: string, actions: readonly string[]): Promise<LedgerEvent[]>;
+  audit(entry: AuditEntry): Promise<void>;
+  notify(entry: NotificationData): Promise<void>;
+}
+
+export interface SyntheticReviewRepository {
+  transaction<T>(
+    operation: (tx: SyntheticReviewTransaction) => Promise<T>,
+    consistentRead?: boolean,
+  ): Promise<T>;
+}
+
+export function postgresSyntheticReviewTransaction(
+  tx: Prisma.TransactionClient,
+): SyntheticReviewTransaction {
+  return {
+    lockOfficer: (officer) => lockSyntheticOfficer(tx, officer),
+    async lockEvidence(draftId) {
+      await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
+      await tx.$queryRaw`SELECT "documentId" FROM draft_document_scopes WHERE "draftId" = ${draftId} FOR SHARE`;
+    },
+    async evidenceRows(ids) {
+      return evidenceRows(tx, ids);
+    },
+    async reviewEvents(ids) {
+      return reviewEvents(tx, ids);
+    },
+    reviewPage: (officer, input) => findReviewPage(tx, officer, input),
+    requireSnapshotAuthority: (row) =>
+      requireSyntheticSnapshotAuthority(tx, row),
+    async lockSubmission(id, officer) {
+      if (officer) {
+        await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id}
+          AND snapshot->>'districtId' = ${officer.district} AND "actorId" <> ${officer.operator.userId} FOR UPDATE`;
+      } else {
+        await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id} FOR UPDATE`;
+      }
+    },
+    async activeSubmission(id, officer) {
+      return tx.syntheticSubmission.findFirst({
+        where: {
+          id,
+          correction: null,
+          ...(officer && {
+            snapshot: { path: ["districtId"], equals: officer.district },
+            actorId: { not: officer.operator.userId },
           }),
-        };
-      },
-      { isolationLevel: "RepeatableRead" },
+        },
+      });
+    },
+    async previousSubmission(id, draftId, officer) {
+      return tx.syntheticSubmission.findFirst({
+        where: {
+          id,
+          draftId,
+          actorId: { not: officer.operator.userId },
+          snapshot: { path: ["districtId"], equals: officer.district },
+        },
+      });
+    },
+    async applicantSubmission(draftId, userId) {
+      await authorizedDraft(tx, userId, draftId);
+      return tx.syntheticSubmission.findFirst({
+        where: { draftId, correction: null },
+        select: { id: true, snapshot: true, actorId: true },
+      });
+    },
+    async ledgerEvents(id, actions) {
+      return tx.auditLog.findMany({
+        where: { target: id, outcome: "SUCCESS", action: { in: [...actions] } },
+        select: { action: true, metadata: true },
+      });
+    },
+    async audit(entry) {
+      await tx.auditLog.create({
+        data: {
+          ...entry,
+          metadata: entry.metadata as Prisma.InputJsonValue | undefined,
+        },
+      });
+    },
+    async notify(entry) {
+      await tx.notification.create({ data: entry });
+    },
+  };
+}
+
+export const postgresSyntheticReviewRepository: SyntheticReviewRepository = {
+  transaction(operation, consistentRead) {
+    return db.$transaction(
+      (tx) => operation(postgresSyntheticReviewTransaction(tx)),
+      consistentRead ? { isolationLevel: "RepeatableRead" } : undefined,
     );
+  },
+};
+
+export async function syntheticReviewRoutes(
+  portal: FastifyInstance,
+  repository = postgresSyntheticReviewRepository,
+  auth = postgresAuth,
+) {
+  portal.get("/reviews", async (req) => {
+    const officer = await syntheticReviewOfficer(req, auth);
+    const input = reviewQuery.parse(req.query);
+    return repository.transaction(async (tx) => {
+      await tx.lockOfficer(officer);
+      const rows = await tx.reviewPage(officer, input);
+      const page = rows.slice(0, reviewPageSize);
+      const last = page.at(-1);
+      const nextCursor =
+        last && rows.length > reviewPageSize
+          ? Buffer.from(JSON.stringify([last.cursorTime, last.id])).toString(
+              "base64url",
+            )
+          : null;
+      const authorized: Submission[] = [];
+      for (const row of page) {
+        try {
+          await tx.requireSnapshotAuthority(row);
+          authorized.push(row);
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            !("statusCode" in error) ||
+            (error.statusCode !== 404 && error.statusCode !== 409)
+          )
+            throw error;
+        }
+      }
+      const events = await tx.reviewEvents(authorized.map(({ id }) => id));
+      const grouped = new Map<string | null, ReviewEvent[]>();
+      for (const event of events) {
+        const group = grouped.get(event.target) ?? [];
+        group.push(event);
+        grouped.set(event.target, group);
+      }
+      const reviews = authorized.map((row) =>
+        assembleSyntheticReview(row, grouped.get(row.id) ?? []),
+      );
+      const documents = await tx.evidenceRows([
+        ...new Set(
+          reviews.flatMap(({ snapshot }) =>
+            snapshot.evidence.map(({ id }) => id),
+          ),
+        ),
+      ]);
+      const current = new Map(documents.map((doc) => [doc.id, doc]));
+      return {
+        role: officer.role,
+        district: officer.district,
+        nextCursor,
+        reviews: reviews.map(({ state, snapshot, correctionReason }) => {
+          const evidence = eligibleEvidence(
+            state.caseId,
+            snapshot.evidence,
+            current,
+          );
+          return {
+            id: state.submissionId,
+            status: state.status,
+            version: state.version,
+            reference: state.officialReference,
+            correctionReason,
+            units: snapshot.units.map(({ unitLabel, floorIds }) => ({
+              label: unitLabel,
+              floorCount: floorIds.length,
+            })),
+            evidenceEligible: evidence.length === snapshot.evidence.length,
+            evidence: evidence.map(({ category, version, scanStatus }) => ({
+              category,
+              version,
+              scanStatus,
+            })),
+            advice: mockPrecheck({
+              unitCount: snapshot.units.length,
+              floorCount: snapshot.floors.length,
+              evidenceCount: evidence.length,
+            }),
+          };
+        }),
+      };
+    }, true);
   });
 
   portal.get("/reviews/:id/comparison", async (req) => {
-    const officer = await syntheticReviewOfficer(req);
+    const officer = await syntheticReviewOfficer(req, auth);
     const { id } = params.parse(req.params);
-    return db.$transaction(
-      async (tx) => {
-        const visible = await lockSyntheticReview(tx, id, officer, {
-          forWrite: false,
-        });
-        const current = comparisonSummary(
-          visible.snapshot,
-          visible.draftVersion,
-          visible.policyVersion,
-        );
-        if (!visible.previousId)
-          return { current, previous: null, unitChanges: [], newEvidence: [] };
-        const previousRow = await tx.syntheticSubmission.findFirst({
-          where: {
-            id: visible.previousId,
-            draftId: visible.state.caseId,
-            actorId: { not: officer.operator.userId },
-            snapshot: { path: ["districtId"], equals: officer.district },
-          },
-          select: {
-            actorId: true,
-            draftVersion: true,
-            policyVersion: true,
-            snapshot: true,
-          },
-        });
-        if (!previousRow)
-          return { current, previous: null, unitChanges: [], newEvidence: [] };
-        try {
-          await requireSyntheticSnapshotAuthority(tx, previousRow);
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            "statusCode" in error &&
-            [404, 409].includes(Number(error.statusCode))
-          )
-            return {
-              current,
-              previous: null,
-              unitChanges: [],
-              newEvidence: [],
-            };
-          throw error;
-        }
-        const prior = snapshotSchema.safeParse(previousRow.snapshot);
-        if (!prior.success)
-          fail(409, "Snapshot terdahulu tidak tersedia untuk perbandingan.");
-        const evidenceIds = new Set(prior.data.evidence.map((item) => item.id));
-        return {
-          current,
-          previous: comparisonSummary(
-            prior.data,
-            previousRow.draftVersion,
-            previousRow.policyVersion,
-          ),
-          unitChanges: compareUnits(prior.data.units, visible.snapshot.units),
-          newEvidence: visible.snapshot.evidence
-            .filter((item) => !evidenceIds.has(item.id))
-            .map(({ id, category, version }) => ({ id, category, version })),
-        };
-      },
-      { isolationLevel: "RepeatableRead" },
-    );
+    return repository.transaction(async (tx) => {
+      const visible = await lockSyntheticReview(tx, id, officer, {
+        forWrite: false,
+      });
+      const current = comparisonSummary(
+        visible.snapshot,
+        visible.draftVersion,
+        visible.policyVersion,
+      );
+      if (!visible.previousId)
+        return { current, previous: null, unitChanges: [], newEvidence: [] };
+      const previousRow = await tx.previousSubmission(
+        visible.previousId,
+        visible.state.caseId,
+        officer,
+      );
+      if (!previousRow)
+        return { current, previous: null, unitChanges: [], newEvidence: [] };
+      try {
+        await tx.requireSnapshotAuthority(previousRow);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          "statusCode" in error &&
+          [404, 409].includes(Number(error.statusCode))
+        )
+          return {
+            current,
+            previous: null,
+            unitChanges: [],
+            newEvidence: [],
+          };
+        throw error;
+      }
+      const prior = snapshotSchema.safeParse(previousRow.snapshot);
+      if (!prior.success)
+        fail(409, "Snapshot terdahulu tidak tersedia untuk perbandingan.");
+      const evidenceIds = new Set(prior.data.evidence.map((item) => item.id));
+      return {
+        current,
+        previous: comparisonSummary(
+          prior.data,
+          previousRow.draftVersion,
+          previousRow.policyVersion,
+        ),
+        unitChanges: compareUnits(prior.data.units, visible.snapshot.units),
+        newEvidence: visible.snapshot.evidence
+          .filter((item) => !evidenceIds.has(item.id))
+          .map(({ id, category, version }) => ({ id, category, version })),
+      };
+    }, true);
   });
 
   portal.post("/reviews/:id", { bodyLimit: 4096 }, async (req) => {
-    const officer = await syntheticReviewOfficer(req);
+    const officer = await syntheticReviewOfficer(req, auth);
     const { id } = params.parse(req.params);
     const input = edit.parse(req.body);
-    return db.$transaction(async (tx) => {
+    return repository.transaction(async (tx) => {
       const { state, snapshot, completerId, actorId } =
         await lockSyntheticReview(tx, id, officer);
       if (
@@ -602,32 +736,28 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
           state.caseId,
           snapshot.evidence,
         );
-      await tx.auditLog.create({
-        data: {
-          actorId: officer.operator.userId,
-          activeRole: officer.role,
-          target: id,
-          action:
-            input.action === "REGISTER"
-              ? registerAction
-              : input.action === "CONFIRM_COMPLETE"
-                ? completeAction
-                : correctionAction,
-          metadata: decision.audit,
-        },
+      await tx.audit({
+        actorId: officer.operator.userId,
+        activeRole: officer.role,
+        target: id,
+        action:
+          input.action === "REGISTER"
+            ? registerAction
+            : input.action === "CONFIRM_COMPLETE"
+              ? completeAction
+              : correctionAction,
+        metadata: decision.audit,
       });
-      await tx.notification.create({
-        data: {
-          userId: actorId,
-          type: "SYNTHETIC_REVIEW",
-          title: "Status permohonan latihan dikemas kini",
-          message:
-            input.action === "REQUEST_CORRECTION"
-              ? "PIC meminta pembetulan. Buka draf latihan untuk melihat perkara yang perlu dibaiki."
-              : input.action === "CONFIRM_COMPLETE"
-                ? "PIC mengesahkan kelengkapan. Permohonan latihan menunggu PPSK."
-                : "PPSK mendaftar permohonan latihan. Semak status dalam portal.",
-        },
+      await tx.notify({
+        userId: actorId,
+        type: "SYNTHETIC_REVIEW",
+        title: "Status permohonan latihan dikemas kini",
+        message:
+          input.action === "REQUEST_CORRECTION"
+            ? "PIC meminta pembetulan. Buka draf latihan untuk melihat perkara yang perlu dibaiki."
+            : input.action === "CONFIRM_COMPLETE"
+              ? "PIC mengesahkan kelengkapan. Permohonan latihan menunggu PPSK."
+              : "PPSK mendaftar permohonan latihan. Semak status dalam portal.",
       });
       return {
         status: decision.next.status,

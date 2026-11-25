@@ -9,6 +9,7 @@ export function oracleConfig(env: NodeJS.ProcessEnv, purpose: OraclePurpose) {
   const user = env.ORACLE_USER;
   const service = env.ORACLE_SERVICE;
   const database = env.ORACLE_EXPECTED_DB_NAME;
+  const expectedVersion = env.ORACLE_EXPECTED_SERVER_VERSION;
   const password = env.ORACLE_PASSWORD;
   const port = Number(env.ORACLE_PORT);
   if (
@@ -27,10 +28,21 @@ export function oracleConfig(env: NodeJS.ProcessEnv, purpose: OraclePurpose) {
     !database ||
     !/^(?:FREEPDB1|XEPDB1|FREE|XE|STLTEST[A-Z0-9_]{0,19})$/.test(database) ||
     !password ||
+    (expectedVersion !== undefined &&
+      !/^(?:19|23)(?:\.\d+){4}$/.test(expectedVersion)) ||
     (purpose === "install" ? user !== owner : user === owner)
   )
     throw Error(
       "Konfigurasi Oracle makmal tidak sah. Gunakan akaun dan Oracle loopback sintetik yang berasingan.",
     );
-  return { owner, user, service, database, password, port, purpose };
+  return {
+    owner,
+    user,
+    service,
+    database,
+    password,
+    port,
+    purpose,
+    expectedVersion,
+  };
 }

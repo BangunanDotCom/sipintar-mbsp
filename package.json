@@ -35,7 +35,9 @@
     "oracle:recovery": "tsx scripts/oracle/recovery.ts",
     "oracle:backup": "tsx scripts/oracle/backup.ts",
     "oracle:documents:scan": "tsx scripts/oracle/scan-documents.ts",
-    "oracle:mail:retry": "tsx scripts/oracle/retry-email.ts"
+    "oracle:mail:retry": "tsx scripts/oracle/retry-email.ts",
+    "oracle:serve:lab": "tsx scripts/oracle/serve-lab.ts",
+    "oracle:bootstrap": "tsx scripts/oracle/bootstrap.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

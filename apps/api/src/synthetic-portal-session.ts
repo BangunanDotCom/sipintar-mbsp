@@ -1,3 +1,4 @@
+import type { CompletionRole } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import type { Prisma } from "@prisma/client";
 import { isCurrent } from "../../../packages/shared/src/index.js";
 import { fail } from "./auth.js";
@@ -14,11 +15,15 @@ export type ObservedPortalSession = {
 export async function lockSyntheticPortalSession(
   tx: Prisma.TransactionClient,
   operator: ObservedPortalSession,
-  roleId: "PEMOHON" | "WAKIL_SYARIKAT" | "PIC_KAWASAN" | "PPSK",
+  roleId: CompletionRole,
   districtId?: string,
 ) {
   const applicant = roleId === "PEMOHON" || roleId === "WAKIL_SYARIKAT";
-  const permission = applicant ? "applications.draft" : "areas.read";
+  const permission = applicant
+    ? "applications.draft"
+    : roleId === "PIC_KAWASAN" || roleId === "PPSK"
+      ? "areas.read"
+      : "profile";
   await tx.$queryRaw`SELECT id FROM users WHERE id = ${operator.userId} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM user_role_assignments
       WHERE "userId" = ${operator.userId} AND "roleId" = ${roleId} FOR SHARE`;

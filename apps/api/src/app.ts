@@ -8,10 +8,14 @@ import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { ZodError } from "zod";
-import { authRoutes } from "./auth.js";
-import { routes } from "./routes.js";
-import { managementRoutes } from "./management-routes.js";
+import {
+  postgresRepositories,
+  registerRepositoryRoutes,
+  type DatabaseRepositories,
+} from "./database-provider.js";
+
 import { safeServerFailure } from "./errors.js";
+import type { OracleLabRepositories } from "./oracle/provider.js";
 import { syntheticPortalRoutes } from "./synthetic-portal.js";
 export const requestLogRedactions = [
   "req.headers.cookie",
@@ -23,6 +27,26 @@ export const requestLogRedactions = [
 ];
 
 export async function buildApp() {
+  return buildWithRepositories(postgresRepositories);
+}
+
+export async function buildOracleLabApp(repositories: OracleLabRepositories) {
+  if (process.env.NODE_ENV !== "test")
+    throw Error("API Oracle separa hanya tersedia dalam proses ujian.");
+  const app = await buildWithRepositories(
+    repositories,
+    repositories.checkConnection,
+    repositories.training,
+  );
+  await repositories.registerSyntheticLab(app);
+  return app;
+}
+
+async function buildWithRepositories(
+  repositories: DatabaseRepositories,
+  oracleLabHealth?: () => Promise<void>,
+  training?: () => { review: boolean; completion: boolean },
+) {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.
     // Per-document validation remains mandatory in the upload route.
@@ -102,16 +126,16 @@ export async function buildApp() {
     }
     return reply.code(e.statusCode).send({ message: e.message });
   });
-  app.get("/api/health", async () => ({
-    status: "ok",
-    service: "STAYLink MBSP",
-  }));
+  app.get("/api/health", async () => {
+    await oracleLabHealth?.();
+    return { status: "ok", service: "STAYLink MBSP" };
+  });
   app.addHook("onClose", async () => {
     closeMailer();
   });
-  await authRoutes(app);
-  await routes(app);
-  await managementRoutes(app);
-  await syntheticPortalRoutes(app);
+  await registerRepositoryRoutes(app, repositories, training);
+  if (!oracleLabHealth) {
+    await syntheticPortalRoutes(app);
+  }
   return app;
 }
