@@ -14,8 +14,30 @@ const databaseCodes = new Set([
   "28P01",
   "3D000",
   "57P01",
+  "NJS-040",
+  "NJS-065",
+  "NJS-076",
+  "NJS-500",
+  "NJS-501",
+  "NJS-503",
+  "NJS-511",
+  "ORA-01017",
+  "ORA-03113",
+  "ORA-03114",
+  "ORA-03135",
+  "ORA-12170",
+  "ORA-12514",
+  "ORA-12541",
+  "ORACLE_LAB_IDENTITY_MISMATCH",
 ]);
-const schemaCodes = new Set(["P2021", "P2022", "42P01", "42703"]);
+const schemaCodes = new Set([
+  "P2021",
+  "P2022",
+  "42P01",
+  "42703",
+  "ORA-00904",
+  "ORA-00942",
+]);
 const configurationCodes = new Set([
   "DATABASE_NOT_CONFIGURED",
   "REGISTRATION_NOT_CONFIGURED",
@@ -92,10 +114,9 @@ export function safeServerFailure(error: unknown) {
   return {
     status,
     code: "INTERNAL_ERROR",
-    diagnosticCode:
-      /^P\d{4}$/.test(code) || /^[0-9A-Z]{5}$/.test(code)
-        ? code
-        : "UNCLASSIFIED",
+    diagnosticCode: /^(?:P\d{4}|ORA-\d{5}|NJS-\d{3}|[0-9A-Z]{5})$/.test(code)
+      ? code
+      : "UNCLASSIFIED",
     message: "Perkhidmatan tidak dapat diproses. Cuba lagi.",
   };
 }

@@ -1,11 +1,17 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authorize, fail } from "./auth.js";
-import { db } from "./core.js";
-import { validRepresentative } from "./company-invitations.js";
-import { loadDocumentSubmissionReadiness } from "./document-submission-readiness-db.js";
-import { validDraftApplicantContext, isDraftApplicantCapacity } from "./draft-applicant-context.js";
+import { documentSubmissionReadiness } from "./document-submission-readiness.js";
+import { postgresAuth } from "./auth-repository.js";
+import {
+  postgresDraftRepository,
+  type DraftTransaction,
+} from "./draft-repository.js";
+export { postgresCompanyAuthority as companyAuthority } from "./draft-repository.js";
+import {
+  validDraftApplicantContext,
+  isDraftApplicantCapacity,
+} from "./draft-applicant-context.js";
 import { documentReadinessGuidance } from "./document-readiness-guidance.js";
 import {
   applicationDraftSchema,
@@ -28,46 +34,16 @@ function individual(user: UserProfile) {
     identificationMasked: user.identificationMasked,
   };
 }
-export async function applicant(req: FastifyRequest) {
-  const s = await authorize(req, "applications.draft");
+export async function applicant(req: FastifyRequest, auth = postgresAuth) {
+  const s = await authorize(req, "applications.draft", auth);
   if (s.user.kind !== "APPLICANT")
     fail(403, "Permohonan baharu hanya untuk akaun pemohon.");
   if (!s.user.identificationHash)
     fail(409, "Lengkapkan nombor pengenalan dalam Profil saya dahulu.");
   return s;
 }
-async function allowedCompanies(userId: string) {
-  const now = new Date();
-  return db.companyRepresentative.findMany({
-    where: {
-      userId,
-      status: { not: "REVOKED" },
-      startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-      company: { status: "ACTIVE" },
-    },
-    include: { company: true },
-    orderBy: { company: { name: "asc" } },
-  });
-}
-export async function companyAuthority(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  companyId: string,
-) {
-  // Serialize a save with authority/company changes, then re-read eligibility.
-  await tx.$queryRaw`SELECT id FROM company_representatives WHERE "userId" = ${userId} AND "companyId" = ${companyId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM companies WHERE id = ${companyId} FOR SHARE`;
-  const r = await tx.companyRepresentative.findUnique({
-    where: { userId_companyId: { userId, companyId } },
-    include: { company: true },
-  });
-  if (!r || !validRepresentative(r) || r.company.status !== "ACTIVE")
-    fail(404, "Draf atau kebenaran syarikat tidak ditemui.");
-  return r;
-}
 async function snapshots(
-  tx: Prisma.TransactionClient,
+  tx: DraftTransaction,
   s: Awaited<ReturnType<typeof applicant>>,
   input: z.infer<typeof applicationDraftSchema>,
 ) {
@@ -81,7 +57,7 @@ async function snapshots(
       applicantSnapshot: profile,
       representativeSnapshot: null,
     };
-  const r = await companyAuthority(tx, s.userId, input.companyId),
+  const r = await tx.companyAuthority(s.userId, input.companyId),
     c = r.company;
   return {
     capacity: input.capacity,
@@ -104,22 +80,17 @@ async function snapshots(
     },
   };
 }
-function persisted(data: Awaited<ReturnType<typeof snapshots>>) {
-  return {
-    ...data,
-    representativeSnapshot:
-      data.representativeSnapshot === null
-        ? Prisma.DbNull
-        : data.representativeSnapshot,
-  };
-}
-export async function applicationDraftRoutes(app: FastifyInstance) {
+export async function applicationDraftRoutes(
+  app: FastifyInstance,
+  repository = postgresDraftRepository,
+  auth = postgresAuth,
+) {
   app.get("/api/application-drafts/context", async (req) => {
-    const s = await applicant(req);
+    const s = await applicant(req, auth);
     return {
       individual: individual(s.user),
       initiatedBy: individual(s.user),
-      companies: (await allowedCompanies(s.userId)).map((r) => ({
+      companies: (await repository.allowedCompanies(s.userId)).map((r) => ({
         id: r.companyId,
         name: r.company.name,
         registrationNumber: r.company.registrationNumber,
@@ -140,51 +111,29 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
   app.get("/api/application-drafts", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store, max-age=0");
     reply.header("Pragma", "no-cache");
-    const s = await applicant(req),
-      companyIds = (await allowedCompanies(s.userId)).map((r) => r.companyId);
-    return db.applicationDraft.findMany({
-      where: {
-        initiatedByUserId: s.userId,
-        status: "DRAFT",
-        OR: [
-          { capacity: "INDIVIDUAL" },
-          { capacity: "COMPANY", companyId: { in: companyIds } },
-        ],
-      },
-      select: {
-        id: true,
-        capacity: true,
-        applicantSnapshot: true,
-        status: true,
-        version: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-    });
+    const s = await applicant(req, auth),
+      companyIds = (await repository.allowedCompanies(s.userId)).map(
+        (r) => r.companyId,
+      );
+    return repository.list(s.userId, companyIds);
   });
   app.post("/api/application-drafts", async (req, reply) => {
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       input = applicationDraftSchema.parse(req.body);
-    const draft = await db.$transaction(async (tx) => {
+    const draft = await repository.transaction(async (tx) => {
       const data = await snapshots(tx, s, input);
-      const d = await tx.applicationDraft.create({
-        data: {
-          ...persisted(data),
-          initiatedByUserId: s.userId,
-          initiatorSnapshot: individual(s.user),
-          notes: input.notes,
-        },
+      const d = await tx.createDraft({
+        ...data,
+        initiatedByUserId: s.userId,
+        initiatorSnapshot: individual(s.user),
+        notes: input.notes,
       });
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_DRAFT_CREATED",
-          target: d.id,
-          metadata: { capacity: d.capacity },
-        },
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_DRAFT_CREATED",
+        target: d.id,
+        metadata: { capacity: d.capacity },
       });
       return d;
     });
@@ -194,108 +143,115 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
   app.get("/api/application-drafts/:id", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store, max-age=0");
     reply.header("Pragma", "no-cache");
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       { id } = z.object({ id: z.uuid() }).parse(req.params);
-    return db.$transaction(async (tx) => {
-      const d = await tx.applicationDraft.findFirst({
-        where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-      });
+    return repository.transaction(async (tx) => {
+      const d = await tx.findDraft(s.userId, id);
       if (!d) fail(404, "Draf tidak ditemui.");
-      if (!isDraftApplicantCapacity(d.capacity) || !validDraftApplicantContext(
-        d.capacity, d.companyId, d.officialApplicantUserId, d.initiatedByUserId,
-      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
-      if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_DRAFT_RESUMED",
-          target: d.id,
-        },
+      if (
+        !isDraftApplicantCapacity(d.capacity) ||
+        !validDraftApplicantContext(
+          d.capacity,
+          d.companyId,
+          d.officialApplicantUserId,
+          d.initiatedByUserId,
+        )
+      )
+        fail(409, "Maklumat pemohon draf tidak konsisten.");
+      if (d.companyId) await tx.companyAuthority(s.userId, d.companyId);
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_DRAFT_RESUMED",
+        target: d.id,
       });
       return d;
     });
   });
   app.patch("/api/application-drafts/:id", async (req) => {
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       { id } = z.object({ id: z.uuid() }).parse(req.params),
       input = applicationDraftUpdateSchema.parse(req.body);
-    return db.$transaction(async (tx) => {
-      const d = await tx.applicationDraft.findFirst({
-        where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-      });
+    return repository.transaction(async (tx) => {
+      const d = await tx.findDraft(s.userId, id);
       if (!d) fail(404, "Draf tidak ditemui.");
       // Reject corrupted persisted applicant context before allowing any mutation.
-      if (!isDraftApplicantCapacity(d.capacity) || !validDraftApplicantContext(
-        d.capacity, d.companyId, d.officialApplicantUserId, d.initiatedByUserId,
-      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
+      if (
+        !isDraftApplicantCapacity(d.capacity) ||
+        !validDraftApplicantContext(
+          d.capacity,
+          d.companyId,
+          d.officialApplicantUserId,
+          d.initiatedByUserId,
+        )
+      )
+        fail(409, "Maklumat pemohon draf tidak konsisten.");
       // Changing capacity must not bypass revoked authority on the original company draft.
-      if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
+      if (d.companyId) await tx.companyAuthority(s.userId, d.companyId);
       const data = await snapshots(tx, s, input);
-      const updated = await tx.applicationDraft.updateMany({
-        where: {
-          id,
-          initiatedByUserId: s.userId,
-          version: input.version,
-          status: "DRAFT",
-        },
-        data: {
-          ...persisted(data),
-          notes: input.notes,
-          version: { increment: 1 },
-        },
+      const updated = await tx.saveDraft(s.userId, id, input.version, {
+        ...data,
+        notes: input.notes,
       });
-      if (!updated.count)
+      if (!updated)
         fail(
           409,
           "Draf telah dikemas kini dalam tab lain. Muat semula sebelum menyimpan.",
         );
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_DRAFT_SAVED",
-          target: id,
-          metadata: { capacity: data.capacity, version: input.version + 1 },
-        },
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_DRAFT_SAVED",
+        target: id,
+        metadata: { capacity: data.capacity, version: input.version + 1 },
       });
-      return tx.applicationDraft.findUniqueOrThrow({ where: { id } });
+      return (await tx.findDraft(s.userId, id))!;
     });
   });
   // Read-only pre-submission feedback; this does not activate submission.
-  app.get("/api/application-drafts/:id/submission-readiness", async (req, reply) => {
-    // Sensitive applicant-specific metadata must not be cached by browsers or proxies.
-    reply.header("Cache-Control", "private, no-store, max-age=0");
-    reply.header("Pragma", "no-cache");
-    const s = await applicant(req),
-      { id } = z.object({ id: z.uuid() }).parse(req.params);
-    return db.$transaction(async (tx) => {
-      const draft = await tx.applicationDraft.findFirst({
-        where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-        select: { id: true, capacity: true, companyId: true, officialApplicantUserId: true, initiatedByUserId: true },
+  app.get(
+    "/api/application-drafts/:id/submission-readiness",
+    async (req, reply) => {
+      // Sensitive applicant-specific metadata must not be cached by browsers or proxies.
+      reply.header("Cache-Control", "private, no-store, max-age=0");
+      reply.header("Pragma", "no-cache");
+      const s = await applicant(req, auth),
+        { id } = z.object({ id: z.uuid() }).parse(req.params);
+      return repository.transaction(async (tx) => {
+        const draft = await tx.findDraft(s.userId, id);
+        if (!draft) fail(404, "Draf tidak ditemui.");
+        if (
+          !isDraftApplicantCapacity(draft.capacity) ||
+          !validDraftApplicantContext(
+            draft.capacity,
+            draft.companyId,
+            draft.officialApplicantUserId,
+            draft.initiatedByUserId,
+          )
+        )
+          fail(409, "Maklumat pemohon draf tidak konsisten.");
+        if (draft.companyId)
+          await tx.companyAuthority(s.userId, draft.companyId);
+        const readiness = documentSubmissionReadiness(
+          draft.capacity,
+          (await tx.documents(id)).map((document) => ({
+            ...document,
+            supersededAt: document.supersededAt?.toISOString() ?? null,
+          })),
+        );
+        return {
+          draftId: draft.id,
+          ...readiness,
+          guidance: documentReadinessGuidance(draft.capacity, readiness),
+          submissionEnabled: false,
+        };
       });
-      if (!draft) fail(404, "Draf tidak ditemui.");
-      if (!isDraftApplicantCapacity(draft.capacity) || !validDraftApplicantContext(
-        draft.capacity, draft.companyId, draft.officialApplicantUserId, draft.initiatedByUserId,
-      )) fail(409, "Maklumat pemohon draf tidak konsisten.");
-      if (draft.companyId) await companyAuthority(tx, s.userId, draft.companyId);
-      const readiness = await loadDocumentSubmissionReadiness(tx, draft.id, draft.capacity);
-      return {
-        draftId: draft.id,
-        ...readiness,
-        guidance: documentReadinessGuidance(draft.capacity, readiness),
-        submissionEnabled: false,
-      };
-    });
-  });
+    },
+  );
   app.post("/api/application-drafts/:id/submit", async (req) => {
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       { id } = z.object({ id: z.uuid() }).parse(req.params);
-    if (
-      !(await db.applicationDraft.findFirst({
-        where: { id, initiatedByUserId: s.userId },
-      }))
-    )
+    if (!(await repository.ownsDraft(s.userId, id)))
       fail(404, "Draf tidak ditemui.");
     fail(
       409,

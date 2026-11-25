@@ -1,10 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ApplicationPremises, Prisma } from "@prisma/client";
-import { db } from "./core.js";
+import { postgresAuth } from "./auth-repository.js";
+import {
+  postgresDraftRepository,
+  type DraftTransaction,
+} from "./draft-repository.js";
 import { fail } from "./auth.js";
-import { applicant, companyAuthority } from "./application-drafts.js";
-import { premiseFloorsSchema, summarizePremiseFloors } from "../../../packages/shared/src/floor-summary.js";
+import { applicant } from "./application-drafts.js";
+import {
+  premiseFloorsSchema,
+  summarizePremiseFloors,
+} from "../../../packages/shared/src/floor-summary.js";
 import { comparePremisesTotals } from "../../../packages/shared/src/premises-consistency.js";
 import { evaluateDraftReadiness } from "../../../packages/shared/src/draft-readiness.js";
 import {
@@ -14,15 +21,13 @@ import {
   type PremisesFields,
 } from "../../../packages/shared/src/premises.js";
 async function own(
-  tx: Prisma.TransactionClient,
+  tx: DraftTransaction,
   s: Awaited<ReturnType<typeof applicant>>,
   id: string,
 ) {
-  const d = await tx.applicationDraft.findFirst({
-    where: { id, initiatedByUserId: s.userId, status: "DRAFT" },
-  });
+  const d = await tx.findDraft(s.userId, id);
   if (!d) fail(404, "Draf tidak ditemui.");
-  if (d.companyId) await companyAuthority(tx, s.userId, d.companyId);
+  if (d.companyId) await tx.companyAuthority(s.userId, d.companyId);
   return d;
 }
 export function premisesFields(p: ApplicationPremises | null): PremisesFields {
@@ -72,49 +77,58 @@ function response(
     submissionEnabled: false,
   };
 }
-export async function premisesRoutes(app: FastifyInstance) {
+export async function premisesRoutes(
+  app: FastifyInstance,
+  repository = postgresDraftRepository,
+  auth = postgresAuth,
+) {
   app.get("/api/application-drafts/:id/premises", async (req) => {
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       { id } = z.object({ id: z.uuid() }).parse(req.params);
-    return db.$transaction(async (tx) => {
+    return repository.transaction(async (tx) => {
       const d = await own(tx, s, id),
-        p = await tx.applicationPremises.findUnique({ where: { draftId: id } });
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_PREMISES_OPENED",
-          target: id,
-        },
+        p = await tx.findPremises(id);
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_PREMISES_OPENED",
+        target: id,
       });
-      const floors = await tx.premiseFloor.findMany({ where: { draftId: id }, orderBy: { position: "asc" } });
-      const parsed = premiseFloorsSchema.safeParse(floors.map((f) => ({
-        floorLabel: f.floorLabel, rooms: f.rooms, beds: f.beds, workers: f.workers,
-        areaSqm: Number(f.areaSqm), facilities: f.facilities,
-      })));
-      const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
-      return { ...response(d, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(premisesFields(p), totals) : [],
-        readiness: evaluateDraftReadiness({ premises: premisesFields(p), floors: parsed.success ? parsed.data : [] }) };
+      const floors = await tx.floors(id);
+      const parsed = premiseFloorsSchema.safeParse(
+        floors.map((f) => ({
+          floorLabel: f.floorLabel,
+          rooms: f.rooms,
+          beds: f.beds,
+          workers: f.workers,
+          areaSqm: Number(f.areaSqm),
+          facilities: f.facilities,
+        })),
+      );
+      const totals = parsed.success
+        ? summarizePremiseFloors(parsed.data)
+        : null;
+      return {
+        ...response(d, p),
+        floorTotals: totals,
+        floorMismatches: totals
+          ? comparePremisesTotals(premisesFields(p), totals)
+          : [],
+        readiness: evaluateDraftReadiness({
+          premises: premisesFields(p),
+          floors: parsed.success ? parsed.data : [],
+        }),
+      };
     });
   });
   app.put("/api/application-drafts/:id/premises", async (req) => {
-    const s = await applicant(req),
+    const s = await applicant(req, auth),
       { id } = z.object({ id: z.uuid() }).parse(req.params),
       b = premisesSaveSchema.parse(req.body);
     if (b.action === "CONTINUE") completePremisesSchema.parse(b.premises);
-    return db.$transaction(async (tx) => {
+    return repository.transaction(async (tx) => {
       const d = await own(tx, s, id);
-      const claim = await tx.applicationDraft.updateMany({
-        where: {
-          id,
-          initiatedByUserId: s.userId,
-          status: "DRAFT",
-          version: b.version,
-        },
-        data: { version: { increment: 1 } },
-      });
-      if (!claim.count)
+      if (!(await tx.saveDraft(s.userId, id, b.version)))
         fail(
           409,
           "Draf telah dikemas kini dalam tab lain. Muat semula sebelum menyimpan.",
@@ -127,33 +141,43 @@ export async function premisesRoutes(app: FastifyInstance) {
         locationSource: b.premises.latitude === null ? null : "USER_PIN",
         boundaryStatus: "UNVERIFIED",
       };
-      const p = await tx.applicationPremises.upsert({
-        where: { draftId: id },
-        create: { ...data, draftId: id },
-        update: data,
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: s.userId,
-          activeRole: s.activeRole,
-          action: "APPLICATION_PREMISES_SAVED",
-          target: id,
-          metadata: {
-            version: b.version + 1,
-            complete: completePremisesSchema.safeParse(b.premises).success,
-            intent: b.action,
-          },
+      const p = await tx.savePremises(id, data);
+      await tx.audit({
+        actorId: s.userId,
+        activeRole: s.activeRole,
+        action: "APPLICATION_PREMISES_SAVED",
+        target: id,
+        metadata: {
+          version: b.version + 1,
+          complete: completePremisesSchema.safeParse(b.premises).success,
+          intent: b.action,
         },
       });
-      const floors = await tx.premiseFloor.findMany({ where: { draftId: id }, orderBy: { position: "asc" } });
-      const parsed = premiseFloorsSchema.safeParse(floors.map((f) => ({
-        floorLabel: f.floorLabel, rooms: f.rooms, beds: f.beds, workers: f.workers,
-        areaSqm: Number(f.areaSqm), facilities: f.facilities,
-      })));
-      const totals = parsed.success ? summarizePremiseFloors(parsed.data) : null;
-      return { ...response({ ...d, version: b.version + 1 }, p), floorTotals: totals,
-        floorMismatches: totals ? comparePremisesTotals(premisesFields(p), totals) : [],
-        readiness: evaluateDraftReadiness({ premises: premisesFields(p), floors: parsed.success ? parsed.data : [] }) };
+      const floors = await tx.floors(id);
+      const parsed = premiseFloorsSchema.safeParse(
+        floors.map((f) => ({
+          floorLabel: f.floorLabel,
+          rooms: f.rooms,
+          beds: f.beds,
+          workers: f.workers,
+          areaSqm: Number(f.areaSqm),
+          facilities: f.facilities,
+        })),
+      );
+      const totals = parsed.success
+        ? summarizePremiseFloors(parsed.data)
+        : null;
+      return {
+        ...response({ ...d, version: b.version + 1 }, p),
+        floorTotals: totals,
+        floorMismatches: totals
+          ? comparePremisesTotals(premisesFields(p), totals)
+          : [],
+        readiness: evaluateDraftReadiness({
+          premises: premisesFields(p),
+          floors: parsed.success ? parsed.data : [],
+        }),
+      };
     });
   });
 }

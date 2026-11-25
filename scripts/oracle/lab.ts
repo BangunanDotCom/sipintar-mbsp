@@ -85,6 +85,93 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
             `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
           );
       }
+      if (env.ORACLE_LAB_ENABLE_ADMIN === "true") {
+        const grants = [
+          ["STL_USERS", "UPDATE (STATUS, UPDATED_AT)"],
+          ["STL_MFA_FACTORS", "DELETE"],
+          ["STL_USER_ROLE_ASSIGNMENTS", "UPDATE (STATUS, ENDS_AT)"],
+          ["STL_DEPARTMENTS", "SELECT"],
+          ["STL_DISTRICTS", "SELECT"],
+          ["STL_AREAS", "SELECT, INSERT"],
+          ["STL_AREA_ASSIGNMENTS", "SELECT, INSERT, UPDATE (ENDS_AT)"],
+          ["STL_TEMPLATE_DEFINITIONS", "SELECT, INSERT"],
+          [
+            "STL_TEMPLATE_VERSIONS",
+            "SELECT, INSERT, UPDATE (STATUS, ACTIVATED_BY)",
+          ],
+        ];
+        for (const [table, privileges] of grants)
+          await connection.execute(
+            `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
+          );
+      }
+      if (env.ORACLE_LAB_ENABLE_DASHBOARD === "true") {
+        for (const table of [
+          "STL_NOTIFICATIONS",
+          "STL_AREAS",
+          "STL_AREA_ASSIGNMENTS",
+          "STL_DISTRICTS",
+        ])
+          await connection.execute(
+            `GRANT SELECT ON ${table} TO ${runtime.user}`,
+          );
+      }
+      if (env.ORACLE_LAB_ENABLE_APPLICANTS === "true") {
+        const grants = [
+          [
+            "STL_USERS",
+            "UPDATE (NAME, PHONE, IDENTIFICATION_HASH, IDENTIFICATION_ENCRYPTED, IDENTIFICATION_MASKED, UPDATED_AT)",
+          ],
+          ["STL_DISTRICTS", "SELECT"],
+          [
+            "STL_COMPANIES",
+            "SELECT, INSERT, UPDATE (NAME, ADDRESS, PHONE, EMAIL, INFORMATION_STATUS)",
+          ],
+          [
+            "STL_COMPANY_REPRESENTATIVES",
+            "SELECT, INSERT, UPDATE (STATUS, VERIFIED_BY)",
+          ],
+          ["STL_DELEGATION_DOCUMENTS", "SELECT, INSERT, UPDATE (STATUS)"],
+          ["STL_SYSTEM_CONFIGURATIONS", "SELECT"],
+        ];
+        for (const [table, privileges] of grants)
+          await connection.execute(
+            `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
+          );
+      }
+      if (env.ORACLE_LAB_ENABLE_DRAFTS === "true") {
+        const grants = [
+          ["STL_COMPANIES", "SELECT"],
+          ["STL_COMPANY_REPRESENTATIVES", "SELECT"],
+          ["STL_APPLICATION_DRAFTS", "SELECT, INSERT, UPDATE"],
+          ["STL_APPLICATION_PREMISES", "SELECT, INSERT, UPDATE"],
+          ["STL_PREMISE_FLOORS", "SELECT, INSERT, UPDATE, DELETE"],
+          ["STL_PREMISE_UNITS", "SELECT, INSERT, UPDATE, DELETE"],
+          ["STL_PREMISE_UNIT_FLOORS", "SELECT, INSERT, DELETE"],
+          ["STL_APPLICATION_DOCUMENTS", "SELECT"],
+          ["STL_DRAFT_DOCUMENT_SCOPES", "SELECT"],
+        ];
+        for (const [table, privileges] of grants)
+          await connection.execute(
+            `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
+          );
+      }
+      if (env.ORACLE_LAB_ENABLE_SUBMISSIONS === "true") {
+        const grants = [
+          ["STL_SYNTHETIC_SUBMISSIONS", "SELECT, INSERT"],
+          ["STL_AUDIT_LOGS", "SELECT"],
+          [
+            "STL_APPLICATION_DOCUMENTS",
+            "SELECT, INSERT, UPDATE (SUPERSEDED_AT)",
+          ],
+          ["STL_DRAFT_DOCUMENT_SCOPES", "SELECT, INSERT"],
+          ["STL_NOTIFICATIONS", "INSERT"],
+        ];
+        for (const [table, privileges] of grants)
+          await connection.execute(
+            `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
+          );
+      }
       if (env.ORACLE_LAB_ENABLE_DOCUMENT_SCAN === "true")
         await connection.execute(
           `GRANT SELECT, UPDATE (SCAN_STATUS, SCAN_LEASE_TOKEN, SCAN_LEASE_EXPIRES_AT)

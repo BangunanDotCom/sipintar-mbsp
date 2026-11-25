@@ -1,12 +1,9 @@
 import { createHmac, randomUUID } from "node:crypto";
-import type { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { applicant } from "./application-drafts.js";
-import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
 import { fail } from "./auth.js";
-import { db } from "./core.js";
-import { authorizedDraft } from "./premise-floors.js";
+import { postgresAuth } from "./auth-repository.js";
 import {
   callbackSchema,
   issueMockInvoice,
@@ -17,6 +14,8 @@ import {
 } from "./synthetic-billing.js";
 import {
   loadSyntheticReview,
+  postgresSyntheticReviewRepository,
+  type SyntheticReviewTransaction,
   lockSyntheticReview,
   requireCurrentSyntheticEvidence,
   syntheticReviewOfficer,
@@ -32,17 +31,10 @@ const callbackBody = z.strictObject({ payload: z.string().max(4096) });
 const minute = 60_000;
 
 async function ledgerFor(
-  tx: Prisma.TransactionClient,
+  tx: SyntheticReviewTransaction,
   id: string,
 ): Promise<MockLedger> {
-  const events = await tx.auditLog.findMany({
-    where: {
-      target: id,
-      outcome: "SUCCESS",
-      action: { in: [issued, settled] },
-    },
-    select: { action: true, metadata: true },
-  });
+  const events = await tx.ledgerEvents(id, [issued, settled]);
   const invoices = events
     .filter((row) => row.action === issued)
     .map((row) => mockInvoiceSchema.safeParse(row.metadata));
@@ -95,7 +87,7 @@ function invoiceView(ledger: MockLedger) {
 }
 
 async function storeReconciliation(
-  tx: Prisma.TransactionClient,
+  tx: SyntheticReviewTransaction,
   id: string,
   ledger: MockLedger,
   payload: string,
@@ -124,14 +116,12 @@ async function storeReconciliation(
     fail(409, "Padanan atau tempoh invois sintetik tidak sah.");
   if (result.status === "SETTLED") {
     const receipt = result.ledger.settlements[0];
-    await tx.auditLog.create({
-      data: {
-        actorId,
-        activeRole: actorId ? "PPSK" : null,
-        action: settled,
-        target: id,
-        metadata: receipt,
-      },
+    await tx.audit({
+      actorId,
+      activeRole: actorId ? "PPSK" : null,
+      action: settled,
+      target: id,
+      metadata: receipt,
     });
   }
   return { ...invoiceView(result.ledger), result: result.status };
@@ -140,46 +130,39 @@ async function storeReconciliation(
 export async function syntheticBillingRoutes(
   portal: FastifyInstance,
   options: { ttlMinutes: number; policyVersion: string },
+  repository = postgresSyntheticReviewRepository,
+  auth = postgresAuth,
 ) {
   const configured = process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY;
   if (!configured || !/^[a-f0-9]{64}$/.test(configured)) return;
   const secret = Buffer.from(configured, "hex");
 
   portal.get("/drafts/:id/billing", async (req) => {
-    const { userId } = await applicant(req);
+    const { userId } = await applicant(req, auth);
     const { id } = params.parse(req.params);
-    return db.$transaction(
-      async (tx) => {
-        await authorizedDraft(tx, userId, id);
-        const row = await tx.syntheticSubmission.findFirst({
-          where: { draftId: id, correction: null },
-          select: { id: true, snapshot: true, actorId: true },
-        });
-        if (row) await requireSyntheticSnapshotAuthority(tx, row);
-        return row
-          ? invoiceView(await ledgerFor(tx, row.id))
-          : { invoice: null };
-      },
-      { isolationLevel: "RepeatableRead" },
-    );
+    return repository.transaction(async (tx) => {
+      const row = await tx.applicantSubmission(id, userId);
+      if (row) await tx.requireSnapshotAuthority(row);
+      return row ? invoiceView(await ledgerFor(tx, row.id)) : { invoice: null };
+    }, true);
   });
 
   portal.get("/reviews/:id/billing", async (req) => {
-    const officer = await syntheticReviewOfficer(req);
+    const officer = await syntheticReviewOfficer(req, auth);
     const { id } = params.parse(req.params);
-    return db.$transaction(async (tx) => {
+    return repository.transaction(async (tx) => {
       await lockSyntheticReview(tx, id, officer);
       return invoiceView(await ledgerFor(tx, id));
     });
   });
 
   portal.post("/reviews/:id/billing", { bodyLimit: 1024 }, async (req) => {
-    const officer = await syntheticReviewOfficer(req);
+    const officer = await syntheticReviewOfficer(req, auth);
     if (officer.role !== "PPSK")
       fail(403, "Tindakan kewangan latihan memerlukan PPSK.");
     const { id } = params.parse(req.params);
     const { action } = billingBody.parse(req.body);
-    return db.$transaction(async (tx) => {
+    return repository.transaction(async (tx) => {
       const { state, snapshot } = await lockSyntheticReview(tx, id, officer);
       const ledger = await ledgerFor(tx, id);
       if (state.status !== "REGISTERED")
@@ -204,17 +187,15 @@ export async function syntheticBillingRoutes(
         if (output.status !== "ISSUED" && output.status !== "REPLAY")
           fail(409, "Invois sintetik tidak dapat dijana.");
         if (output.status === "ISSUED") {
-          await tx.auditLog.create({
-            data: {
-              actorId: officer.operator.userId,
-              activeRole: officer.role,
-              action: issued,
-              target: id,
-              metadata: {
-                ...output.invoice,
-                policyVersion: options.policyVersion,
-                unitIds: [...output.invoice.unitIds],
-              },
+          await tx.audit({
+            actorId: officer.operator.userId,
+            activeRole: officer.role,
+            action: issued,
+            target: id,
+            metadata: {
+              ...output.invoice,
+              policyVersion: options.policyVersion,
+              unitIds: [...output.invoice.unitIds],
             },
           });
         }
@@ -254,13 +235,11 @@ export async function syntheticBillingRoutes(
       verifyMockCallback(payload, signature, secret).status !== "VERIFIED"
     )
       fail(401, "Callback sintetik tidak sah.");
-    return db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${id} FOR UPDATE`;
-      const row = await tx.syntheticSubmission.findFirst({
-        where: { id, correction: null },
-      });
+    return repository.transaction(async (tx) => {
+      await tx.lockSubmission(id);
+      const row = await tx.activeSubmission(id);
       if (!row) fail(404, "Serahan sintetik tidak ditemui.");
-      await requireSyntheticSnapshotAuthority(tx, row);
+      await tx.requireSnapshotAuthority(row);
       const { state } = await loadSyntheticReview(tx, row);
       if (state.status !== "REGISTERED")
         fail(409, "Keputusan sintetik belum didaftarkan.");
