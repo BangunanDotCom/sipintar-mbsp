@@ -34,3 +34,9 @@
 ## Regresi paparan semakan pegawai
 
 Run [45524207627](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45524207627/job/138903485722) melaporkan kegagalan menunggu tajuk semakan selepas halaman selamat datang. Sebelum pembetulan, komponen tidak memaparkan apa-apa semasa GET barisan pertama sedang berjalan. Dashboard juga memanggil modul penutupan pada fixture Personal Demo yang modulnya tidak aktif. Dashboard kini menyampaikan kebolehan latihan mengikut gerbang hos, dan panel semakan menunjukkan struktur memuat tanpa mendedahkan data sebelum API berjaya. Ujian memegang GET pertama bagi PIC SPT untuk memastikan keadaan ini boleh diulang, kemudian mengesahkan respons sebenar dalam pelayar, daerah, kad serahan dan penolakan rentas daerah. Ujian memeriksa sesi, peranan, e-mel disahkan serta MFA sebelum semakan.
+
+### Bukti ujian untuk PR #69
+
+- Ujian dengan GET ditahan gagal pada heading di `3b0dfac`, dan lulus pada kod `91a0e40`. Respons semakan sebenar, kes daerah yang dibenarkan dan penolakan rentas daerah disemak selepas GET dilepaskan.
+- Validasi dan enam job integrasi GitHub Actions lulus pada `91a0e40`, termasuk job Personal Demo HTTPS yang gagal sebelum ini. Larian setempat meluluskan 340 Vitest, 79 ujian API PostgreSQL, satu ujian keserasian data lama, satu perjalanan Issue #68, 27 Playwright biasa, ujian khas HTTPS dan latihan pemulihan. Audit npm melaporkan 0 advisori. [Larian CI 45526316808](https://github.com/BangunanDotCom/sipintar-mbsp/actions/runs/45526316808)
+- Kontrak bersama disahkan pada PR #70 di `bfc4683`. Fail kontrak sepadan dengan PR #69 dan 22 ujian kontrak serta integrasi Oracle Free lulus. [Draft PR #70](https://github.com/BangunanDotCom/sipintar-mbsp/pull/70)
