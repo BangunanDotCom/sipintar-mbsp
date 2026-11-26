@@ -35,6 +35,7 @@ type View = Pick<CompletionState, "version" | "closed"> & {
     assigned?: boolean;
     acknowledged?: boolean;
     acknowledgementRequired?: boolean;
+    paperSubmitted?: boolean;
     comment?: unknown;
     comments?: Partial<Record<string, unknown>>;
     departments?: string[];
@@ -410,7 +411,7 @@ function CompletionForm({
             })}
           {tech && view.referral?.assigned && view.referral.acknowledgementRequired && !view.referral.acknowledged &&
             action("Sahkan penerimaan tugas latihan",{action:"ACK_REFERRAL"})}
-          {role === "PIC_KAWASAN" && view.bktEnabled && view.bkt && view.referral?.comments &&
+          {role === "PIC_KAWASAN" && view.bktEnabled && view.bkt && view.referral?.comments && !view.referral.paperSubmitted &&
             (["PERANCANG_BANDAR","KEJURUTERAAN"] as const).filter((department)=>view.referral?.comments?.[department]).map((department)=>(
               <div key={department}>
                 {noteForm("Sebab pulang ulasan " + departmentLabels[department],(event)=>{

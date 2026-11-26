@@ -206,6 +206,9 @@ it.runIf(Boolean(kitFile))(
       ).toBe(200);
       expect((await command(spt, 0, "REFER")).statusCode).toBe(404);
       expect((await command(pic,0,"REFER")).statusCode).toBe(409);
+      const intake=await app.inject({url:root+"/completion/queue",headers:council});
+      expect(intake.json().cases).toContainEqual(expect.objectContaining({id,version:0,bkt:null}));
+
       expect((await command(council,0,"RECEIVE_BKT",{note:"Penerimaan BKT latihan."})).statusCode).toBe(200);
       phaseOffset++;
       expect((await command(pic, 0, "REFER")).statusCode).toBe(200);

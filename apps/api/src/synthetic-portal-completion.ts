@@ -321,7 +321,13 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         >`SELECT s.id FROM synthetic_submissions s
         WHERE s.snapshot->>'districtId' = ${district} AND s."actorId" <> ${officer.userId}
           AND NOT EXISTS (SELECT 1 FROM synthetic_submissions child WHERE child."previousId" = s.id)
-          AND EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${eventName})
+          AND (
+            EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${eventName} AND a.outcome = 'SUCCESS')
+            OR (${bktEnabled && role === "URUS_SETIA_JK"} AND EXISTS (
+              SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.outcome = 'SUCCESS'
+                AND a.action = 'SYNTHETIC_PORTAL_INVOICE_SETTLED'
+            ))
+          )
         ORDER BY s."createdAt" DESC, s.id LIMIT 50`;
         const cases = [];
         const summary = {
