@@ -69,6 +69,7 @@ jobs:
       STAYLINK_CLAMAV_ENABLED: 'false'
       STAYLINK_DOCUMENT_SCAN_BATCH_ENABLED: 'false'
       STAYLINK_SYNTHETIC_PORTAL: 'true'
+      STAYLINK_SYNTHETIC_REMINDERS: ${{ matrix.suite == 'browser' && 'true' || 'false' }}
       STAYLINK_SYNTHETIC_DISTRICT: SPU
     services:
       postgres:

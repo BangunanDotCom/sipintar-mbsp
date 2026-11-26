@@ -31,3 +31,9 @@ Rekod untuk Issue #68, cabang `issue-68-advanced-functional`, berasaskan Draft P
 - Ujian API meliputi lebih 50 serahan, penolakan daerah lain dan penapis tarikh MYT, rollback ketika notifikasi gagal, pemprosesan serentak, retry dan pembatalan selepas perubahan draf. Semakan PDF meliputi versi, determinisme, digest dan akses pengurus templat.
 - Ujian Completion meliputi arkib mengikut skop, bayaran tiruan, keputusan dan surat. Rehearsal restore menyemak fingerprint outbox dan status penghantaran bagi migrasi ini.
 - Gunakan [Actions cabang](https://github.com/BangunanDotCom/sipintar-mbsp/actions/workflows/staylink-synthetic-uat.yml?query=branch%3Aissue-68-advanced-functional) untuk memadankan keputusan dengan SHA terkini. Penerimaan bebas masih diperlukan bagi P0 dan gerbang operasi sebenar.
+
+
+## Jejak binaan
+
+- Komit fungsi `8fdced3` dan komit ujian/matriks `8e3964e` berada dalam cabang semakan yang berlapis pada PR #75. Saluran penciptaan Draft PR melalui API memulangkan HTTP 403 dalam persekitaran semasa. [Bandingkan calon dengan PR #75](https://github.com/BangunanDotCom/sipintar-mbsp/compare/issue-68-functional-development...issue-68-advanced-functional?expand=1)
+- Regresi tempatan untuk calon ini merekod 358 Vitest lulus, 98 API PostgreSQL lulus, satu aliran Completion berpaket lulus, TypeScript, lint dan build lulus serta `npm audit` melaporkan 0 kelemahan. Ujian CLI Mailpit menghantar sekali sahaja dalam dua larian. Semak CI pada SHA semasa untuk regresi pelayar dan keputusan penerimaan akhir.

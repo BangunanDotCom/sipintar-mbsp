@@ -3563,13 +3563,23 @@ describe("Issue 31 integrated synthetic portal", () => {
       applicantSnapshot:{},initiatorSnapshot:{},
     }))});
     await db.syntheticSubmission.createMany({data:rows});
+    await db.auditLog.createMany({data:[0,1].map((index)=>({
+      target:rows[index].id, action:"SYNTHETIC_PORTAL_COMPLETION", activeRole:"PIC_KAWASAN",
+      actorId:pic.id,createdAt:new Date("2026-07-24T00:00:00Z"),
+      metadata:{version:1,command:{action:"REFER"}},
+    }))});
+    await db.auditLog.createMany({data:["PERANCANG_BANDAR","KEJURUTERAAN"].map((activeRole,index)=>({
+      target:rows[1].id,action:"SYNTHETIC_PORTAL_COMPLETION",activeRole,
+      actorId:pic.id,createdAt:new Date("2026-07-25T00:00:00Z"),
+      metadata:{version:2+index,command:{action:"COMMENT"}},
+    }))});
     const report = `${root}/reports/applications?category=${category}&from=2026-07-24&to=2026-07-24`;
     const result = await request(pic,report);
     expect(result.statusCode, result.body).toBe(200);
-    expect(result.json()).toMatchObject({district:"SPU",rows:[{status:"SUBMITTED",cases:52}]});
+    expect(result.json()).toMatchObject({district:"SPU",rows:[{status:"SUBMITTED",cases:52,referred:2,overdue:1}]});
     const csv = await request(ppsk,report+"&format=csv");
     expect(csv.statusCode).toBe(200);
-    expect(csv.body).toContain("SPU,SUBMITTED,52,0,0,0,0,0");
+    expect(csv.body).toContain("SPU,SUBMITTED,52,0,0,2,1,0");
     expect(csv.body).not.toContain(rows[0].id);
     expect((await request(pic,report+"&district=SPT")).statusCode).toBe(404);
     expect((await request(applicant,report)).statusCode).toBe(403);
