@@ -1,10 +1,10 @@
-import { trainingLetterPdf } from "./synthetic-letter-pdf.js";
+import { trainingLetterPdf, unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
 import {
   completionEvent as eventName,
   completionEventRole,
   completionProvider as provider,
   completionStoredMetadata,
-  trainingLetterTemplate,
+  unicodeLetterTemplate,
 } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import { randomUUID } from "node:crypto";
@@ -260,7 +260,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
             firstPaid,
             feeSen,
             ...(invoiceId && { invoiceId }),
-            ...(command.action === "SIGN" && { letterTemplate: trainingLetterTemplate }),
+            ...(command.action === "SIGN" && { letterTemplate: unicodeLetterTemplate }),
             command,
           } as Prisma.InputJsonValue,
         },
@@ -594,13 +594,24 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         ].join("\n") + "\n" };
     });
     if (format === "pdf") {
+      let bytes: Buffer;
+      try {
+        bytes = templateVersion === unicodeLetterTemplate
+          ? await unicodeTrainingPdf(contents, signedAt, templateVersion)
+          : await trainingLetterPdf(contents, signedAt);
+      } catch (error) {
+        if (error instanceof UnsupportedTrainingGlyph)
+          fail(422, "Sebahagian aksara belum disokong oleh PDF latihan. Muat turun versi teks UTF-8.");
+        throw error;
+      }
       return reply
+        .header("Content-Digest", trainingPdfDigest(bytes))
         .header("Content-Disposition", `attachment; filename="staylink-latihan-v${number}.pdf"`)
         .header("X-Content-Type-Options", "nosniff")
         .header("Content-Security-Policy", "sandbox")
         .header("X-Staylink-Letter-Template", templateVersion)
         .type("application/pdf")
-        .send(await trainingLetterPdf(contents, signedAt));
+        .send(bytes);
     }
     return reply
       .header(

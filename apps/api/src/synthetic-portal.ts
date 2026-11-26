@@ -1,3 +1,5 @@
+import { trainingReminderRoutes } from "./training-reminders.js";
+import { syntheticAnalyticsRoutes } from "./synthetic-analytics.js";
 import { verifiedDelegation } from "./delegation-evidence.js";
 import {
   loadSyntheticOwnerPolicy,
@@ -392,7 +394,11 @@ export async function syntheticPortalRoutes(app: FastifyInstance) {
           operator,
         );
       });
-      if (review.enabled) await syntheticReviewRoutes(portal);
+      if (review.enabled) {
+        await syntheticReviewRoutes(portal);
+        await syntheticAnalyticsRoutes(portal);
+        await trainingReminderRoutes(portal);
+      }
       if (billing.mode === "MOCK") {
         await syntheticBillingRoutes(portal, {
           ttlMinutes: billing.ttlMinutes,
