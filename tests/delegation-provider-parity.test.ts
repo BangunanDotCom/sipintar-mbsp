@@ -972,6 +972,138 @@ for (const oracle of [false, true]) {
       await direct.unchanged();
     });
 
+    it("B-N02 rejects an expired issuer role, including the database-clock expiry boundary", async () => {
+      const f = await inviteFixture(true);
+      await f.unchanged();
+      if (oracle)
+        await sql(
+          "UPDATE STL_USER_ROLE_ASSIGNMENTS SET ENDS_AT=SYSTIMESTAMP WHERE USER_ID=:id",
+          { id: f.applicant.id },
+        );
+      else
+        await db.$executeRaw`UPDATE user_role_assignments SET "endsAt"=date_trunc('milliseconds',clock_timestamp() AT TIME ZONE 'UTC')
+        WHERE "userId"=${f.applicant.id}`;
+      expect((await f.accept()).statusCode).toBe(403);
+      await f.unchanged();
+    });
+
+    it("B-N02 rolls back when the issuer appointment expires after all four writes", async () => {
+      const f = await inviteFixture(true);
+      await f.unchanged();
+      if (oracle) {
+        // The trigger only runs after the preliminary authorization, membership, audit
+        // and notification insert. It waits on the database clock rather than JS time.
+        await sql(`CREATE TRIGGER STL_P0_ROLE_CLOCK AFTER INSERT ON STL_NOTIFICATIONS FOR EACH ROW
+          DECLARE deadline TIMESTAMP WITH TIME ZONE;
+          BEGIN
+            IF :NEW.TITLE='Perwakilan syarikat diterima' THEN
+              SELECT MAX(A.ENDS_AT) INTO deadline FROM STL_USER_ROLE_ASSIGNMENTS A JOIN STL_COMPANY_REP_INVITATIONS I
+                ON I.INVITED_BY=A.USER_ID WHERE I.RECIPIENT_ID=:NEW.USER_ID AND I.ACCEPTED_AT IS NOT NULL;
+              IF deadline IS NULL OR deadline<=SYSTIMESTAMP THEN
+                RAISE_APPLICATION_ERROR(-20026,'Fixture did not enter writes before expiry');
+              END IF;
+              WHILE SYSTIMESTAMP<deadline LOOP DBMS_SESSION.SLEEP(0.025); END LOOP;
+            END IF;
+          END;`);
+        try {
+          await sql(
+            "UPDATE STL_USER_ROLE_ASSIGNMENTS SET ENDS_AT=SYSTIMESTAMP+INTERVAL '3' SECOND WHERE USER_ID=:id",
+            { id: f.applicant.id },
+          );
+          const response = await f.accept();
+          expect(response.statusCode, response.body).toBe(403);
+        } finally {
+          await sql("DROP TRIGGER STL_P0_ROLE_CLOCK");
+        }
+      } else {
+        await db.$executeRaw`CREATE FUNCTION p0_role_clock() RETURNS trigger LANGUAGE plpgsql AS $$
+          DECLARE deadline timestamp;
+          BEGIN
+            IF NEW.title='Perwakilan syarikat diterima' THEN
+              SELECT max(a."endsAt") INTO deadline FROM user_role_assignments a JOIN company_representation_invitations i
+                ON i."invitedBy"=a."userId" WHERE i."recipientId"=NEW."userId" AND i."acceptedAt" IS NOT NULL;
+              IF deadline IS NULL OR deadline <= (clock_timestamp() AT TIME ZONE 'UTC') THEN
+                RAISE EXCEPTION 'Fixture did not enter writes before expiry';
+              END IF;
+              PERFORM pg_sleep_until(deadline AT TIME ZONE 'UTC');
+            END IF;
+            RETURN NEW;
+          END $$`;
+        await db.$executeRaw`CREATE TRIGGER p0_role_clock AFTER INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION p0_role_clock()`;
+        try {
+          await db.$executeRaw`UPDATE user_role_assignments SET "endsAt"=(clock_timestamp() AT TIME ZONE 'UTC')+interval '3 seconds'
+            WHERE "userId"=${f.applicant.id}`;
+          const response = await f.accept();
+          expect(response.statusCode, response.body).toBe(403);
+        } finally {
+          await db.$executeRaw`DROP TRIGGER p0_role_clock ON notifications`;
+          await db.$executeRaw`DROP FUNCTION p0_role_clock()`;
+        }
+      }
+      await f.unchanged();
+    });
+
+    it("B-N05 leaves the invitation claim and recipient unchanged on audit failure", async () => {
+      const f = await inviteFixture(true);
+      if (oracle)
+        await sql(`CREATE TRIGGER STL_P0_ACCEPT_AUDIT BEFORE INSERT ON STL_AUDIT_LOGS FOR EACH ROW
+        BEGIN IF :NEW.ACTION='COMPANY_INVITATION_ACCEPTED' THEN
+          RAISE_APPLICATION_ERROR(-20027, 'Fixture acceptance audit failure');
+        END IF; END;`);
+      else {
+        await db.$executeRaw`CREATE FUNCTION p0_accept_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN IF NEW.action='COMPANY_INVITATION_ACCEPTED' THEN RAISE EXCEPTION 'Fixture acceptance audit failure'; END IF;
+          RETURN NEW; END $$`;
+        await db.$executeRaw`CREATE TRIGGER p0_accept_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION p0_accept_audit()`;
+      }
+      try {
+        expect((await f.accept()).statusCode).toBe(500);
+        await f.unchanged();
+      } finally {
+        if (oracle) await sql("DROP TRIGGER STL_P0_ACCEPT_AUDIT");
+        else {
+          await db.$executeRaw`DROP TRIGGER p0_accept_audit ON audit_logs`;
+          await db.$executeRaw`DROP FUNCTION p0_accept_audit()`;
+        }
+      }
+    });
+
+    it("B-N04 preserves a completed acceptance when issuer revocation commits later", async () => {
+      const f = await inviteFixture(true);
+      const accepted = await f.accept();
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      if (oracle)
+        await sql(
+          "UPDATE STL_USER_ROLE_ASSIGNMENTS SET STATUS='REVOKED' WHERE USER_ID=:id",
+          { id: f.applicant.id },
+        );
+      else
+        await db.userRoleAssignment.updateMany({
+          where: { userId: f.applicant.id },
+          data: { status: "REVOKED" },
+        });
+      expect((await f.accept()).statusCode).toBe(400);
+      const acceptedId: string = accepted.json().id;
+      expect(await proof(acceptedId)).toEqual({
+        verifiedDocumentId: null,
+        verificationRevision: 0,
+      });
+      const claimed = oracle
+        ? (
+            await owner!.use((c) =>
+              queryRows<{ N: number }>(
+                c,
+                "SELECT COUNT(*) N FROM STL_COMPANY_REP_INVITATIONS WHERE ID=:id AND ACCEPTED_AT IS NOT NULL",
+                { id: f.invitationId },
+              ),
+            )
+          )[0].N
+        : await db.companyRepresentationInvitation.count({
+            where: { id: f.invitationId, acceptedAt: { not: null } },
+          });
+      expect(claimed).toBe(1);
+    });
+
     it("B-N04/B-N05 rejects committed revocation and rolls back failed acceptance writes", async () => {
       const f = await inviteFixture(true);
       let locked!: () => void, release!: () => void;
