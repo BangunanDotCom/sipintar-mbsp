@@ -322,6 +322,13 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: `Serahan sintetik ${first.id}`,
     });
     await expect(firstCard.getByText(/Nasihat AI tiruan sahaja/)).toBeVisible();
+    await firstCard.getByRole("button", {name:"Sejarah semakan awal"}).click();
+    await firstCard.getByRole("button", {name:"Jalankan semakan awal latihan"}).click();
+    await expect(firstCard.getByText(/Semakan manual diperlukan|Peraturan latihan/)).toBeVisible();
+    await firstCard.getByLabel("Catatan semakan manual").fill("Semakan bukti dan premis latihan.");
+    await firstCard.getByRole("button", {name:"Rekod semakan manual"}).click();
+    await expect(firstCard.getByText("Semakan bukti dan premis latihan.")).toBeVisible();
+
     uiTimings.pic = Math.round(performance.now() - openPic);
     await pic.setViewportSize({ width: 390, height: 850 });
     const tasks = pic.getByRole("region", { name: "Tugasan semakan sintetik" });

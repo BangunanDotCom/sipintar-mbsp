@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   applyCompletion,
+  assertCompletionHistoryCount,
   completionState,
   noTechnicalComment,
   sixMonthLimit,
@@ -182,4 +183,17 @@ it("records the JK follow-up date and flags a late response without changing the
   expect(late.response?.allowed).toBe(false);
   expect(late.decisions[0].outcome).toBe("TANGGUH");
   expect(late.closed).toBe(false);
+});
+
+
+it("permits 499 and 500 history records and blocks record 501 without changing state", () => {
+  expect(() => assertCompletionHistoryCount(499)).not.toThrow();
+  expect(() => assertCompletionHistoryCount(500)).not.toThrow();
+  expect(() => assertCompletionHistoryCount(501)).toThrow(/had/);
+  const context = { role:"PIC_KAWASAN", actorId:"pic", now, scopes, firstPaid:true, feeSen:null } as const;
+  const state = { ...completionState(), version:499 };
+  const last = applyCompletion(state, {action:"REFER"}, context).state;
+  expect(last.version).toBe(500);
+  expect(() => applyCompletion(last, {action:"SUBMIT_PAPER",summary:"KP"}, {...context,now:now+7*day})).toThrow(/had/);
+  expect(last.papers).toHaveLength(0);
 });

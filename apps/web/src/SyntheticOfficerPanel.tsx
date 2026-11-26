@@ -220,6 +220,78 @@ export function SyntheticOfficerPanel({
   );
 }
 
+const findings: Record<string, { reason: string; suggestion: string }> = {
+  NO_UNITS: { reason: "Tiada unit fizikal dalam serahan.", suggestion: "Semak inventori unit." },
+  NO_FLOORS: { reason: "Tiada tingkat dalam serahan.", suggestion: "Semak inventori tingkat." },
+  EVIDENCE_INELIGIBLE: { reason: "Bukti semasa tidak sepadan dengan serahan.", suggestion: "Semak versi, skop dan status imbasan dokumen." },
+  EVIDENCE_UNVERIFIED: { reason: "Bukti layak masih menunggu pengesahan manusia.", suggestion: "Semak setiap bukti sebelum mengesahkan kelengkapan." },
+};
+
+function PrecheckHistory({ review, userId, role, canRecord }: {
+  review: Review; userId:string; role:string; canRecord:boolean;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const path = `/synthetic-portal/reviews/${review.id}/precheck`;
+  const history = useQuery<{ history: {
+    id:string; version:number; createdAt:string;
+    result: { source:string; findings:string[]; reason:string|null };
+  }[] }>({
+    queryKey: ["synthetic-precheck", userId, role, review.id],
+    queryFn: () => api(path),
+    retry: false,
+  });
+  async function record(mode: "AUTO" | "MANUAL") {
+    setError("");
+    setBusy(true);
+    try {
+      await api(path, "POST", { mode, version:review.version, ...(mode === "MANUAL" && { reason }) });
+      setReason("");
+      await history.refetch();
+    } catch (error) {
+      setError(syntheticErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <p>Penemuan semakan awal ialah panduan. Pengesahan kelengkapan kekal di bawah tanggungjawab PIC.</p>
+      {canRecord && (
+        <>
+          <button type="button" className="button secondary small" disabled={busy}
+            onClick={() => void record("AUTO")}>Jalankan semakan awal latihan</button>
+          <label>
+            Catatan semakan manual
+            <textarea value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+          </label>
+          <button type="button" className="button secondary small" disabled={busy || reason.trim().length < 3}
+            onClick={() => void record("MANUAL")}>Rekod semakan manual</button>
+        </>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {history.isPending && <p role="status">Memuatkan sejarah semakan…</p>}
+      {history.isError && <SyntheticLoadError title="Sejarah semakan awal" error={history.error} retry={() => void history.refetch()} />}
+      {history.data?.history.length === 0 && <p>Belum ada rekod semakan.</p>}
+      <ol>
+        {history.data?.history.map(({id,version,createdAt,result}) => (
+          <li key={id}>
+            <strong>{result.source === "MANUAL" ? "Manual" : result.source === "MANUAL_REQUIRED"
+              ? "Semakan manual diperlukan" : "Peraturan latihan"} · v{version}</strong>
+            {" · "}<time dateTime={createdAt}>{new Date(createdAt).toLocaleString("ms-MY", {timeZone:"Asia/Kuala_Lumpur"})}</time>
+            {result.reason && <p>{result.reason}</p>}
+            {result.findings.length > 0 && <ul>{result.findings.map((code) => (
+              <li key={code}>{findings[code]?.reason} {findings[code]?.suggestion}</li>
+            ))}</ul>}
+            {result.source === "SYNTHETIC_RULES" && !result.findings.length && <p>Tiada penemuan daripada peraturan latihan.</p>}
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
 function SyntheticReviewCard({
   review,
   role,
@@ -236,6 +308,7 @@ function SyntheticReviewCard({
   const [message, setMessage] = useState<ActionFeedback | null>(null);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [precheckOpen, setPrecheckOpen] = useState(false);
   const picCanReview = role === "PIC_KAWASAN" && review.status === "SUBMITTED";
   const supervisorCanRegister = role === "PPSK" && review.status === "COMPLETE";
   async function decide(action: string) {
@@ -307,6 +380,13 @@ function SyntheticReviewCard({
               .join(" ")
           : "Tiada amaran berdasarkan kiraan."}
       </p>
+      <button type="button" className="button secondary small" aria-expanded={precheckOpen}
+        aria-controls={`precheck-${review.id}`} onClick={() => setPrecheckOpen((open) => !open)}>
+        Sejarah semakan awal
+      </button>
+      <section id={`precheck-${review.id}`} hidden={!precheckOpen}>
+        {precheckOpen && <PrecheckHistory review={review} userId={userId} role={role} canRecord={picCanReview} />}
+      </section>
       <button
         type="button"
         className="button secondary small"

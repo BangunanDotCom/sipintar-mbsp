@@ -87,6 +87,9 @@ export function DraftList({ userId }: { userId: string }) {
                   · Draf
                 </p>
                 <small>Disimpan {malaysiaTime(d.updatedAt)}</small>
+                {d.inactivity?.reviewDue && (
+                  <p>Draf tiada aktiviti selama sekurang-kurangnya 60 hari. Sambung semula jika masih diperlukan.</p>
+                )}
               </div>
               <Link
                 className="button secondary small"
