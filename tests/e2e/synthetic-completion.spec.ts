@@ -58,6 +58,7 @@ test("applicant can open the closed training case and download both decision let
 test("PPSK filters and downloads the district summary via HTTPS", async ({ page }) => {
   const kitPath = process.env.STAYLINK_COMPLETION_KIT_FILE;
   test.skip(!kitPath);
+  test.setTimeout(75_000);
   const { totp } = await import("../../apps/api/src/auth");
   const kit = JSON.parse(await readFile(kitPath!, "utf8")) as {
     accounts: { label: string; email: string; password: string; mfaSecretBase32: string }[];
@@ -70,6 +71,11 @@ test("PPSK filters and downloads the district summary via HTTPS", async ({ page 
   const session = await login.json();
   const headers = { Origin: "https://localhost:5444", "X-CSRF-Token": session.csrf };
   expect((await page.request.get("/api/synthetic-portal/completion/queue?format=csv")).status()).toBe(403);
+  // The packaged job uses this PPSK account in its API suite immediately before
+  // Playwright. Use a fresh TOTP time step so the replay guard stays enforced.
+  const untilNextStep = 30_000 - (Date.now() % 30_000);
+  await new Promise((resolve) => setTimeout(resolve, untilNextStep + 100));
+
   expect((await page.request.post("/api/auth/mfa/verify", {
     headers, data: { code: totp(officer.mfaSecretBase32).generate() },
   })).status()).toBe(200);
