@@ -175,6 +175,7 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
           ["STL_COMPANIES", "SELECT"],
           ["STL_COMPANY_REPRESENTATIVES", "SELECT"],
           ["STL_APPLICATION_DRAFTS", "SELECT, INSERT, UPDATE"],
+          ["STL_SYNTHETIC_SUBMISSIONS", "SELECT"],
           ["STL_APPLICATION_PREMISES", "SELECT, INSERT, UPDATE"],
           ["STL_PREMISE_FLOORS", "SELECT, INSERT, UPDATE, DELETE"],
           ["STL_PREMISE_UNITS", "SELECT, INSERT, UPDATE, DELETE"],
@@ -191,6 +192,23 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
         await connection.execute(
           `GRANT SELECT ON STL_SCHEMA_MIGRATIONS TO ${runtime.user}`,
         );
+      const outboxInsert =
+        "ID, DRAFT_ID, DRAFT_VERSION, RECIPIENT_ID, SOURCE, DEDUPE_KEY, KIND, CONTEXT, AVAILABLE_AT";
+      async function grantScopedInsert(
+        table: string,
+        columns: string,
+        grantee: string,
+      ) {
+        const broad = await connection.execute(
+          "SELECT 1 FROM USER_TAB_PRIVS WHERE TABLE_NAME=:tableName AND GRANTEE=:grantee AND PRIVILEGE='INSERT'",
+          { tableName: table, grantee },
+        );
+        if (broad.rows?.length)
+          await connection.execute(`REVOKE INSERT ON ${table} FROM ${grantee}`);
+        await connection.execute(
+          `GRANT SELECT, INSERT (${columns}) ON ${table} TO ${grantee}`,
+        );
+      }
       if (env.ORACLE_LAB_ENABLE_SUBMISSIONS === "true") {
         const grants = [
           ["STL_SYNTHETIC_SUBMISSIONS", "SELECT, INSERT"],
@@ -206,6 +224,50 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
           await connection.execute(
             `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
           );
+        await grantScopedInsert(
+          "STL_SYNTH_FINANCIAL_ENTRIES",
+          "ID, SUBMISSION_ID, INVOICE_ID, STAGE, EVENT, AMOUNT_SEN",
+          runtime.user,
+        );
+        await grantScopedInsert(
+          "STL_TRAINING_REMINDER_OUTBOX",
+          outboxInsert,
+          runtime.user,
+        );
+      }
+      const worker = env.ORACLE_LAB_TRAINING_WORKER_USER;
+      if (worker) {
+        if (
+          !/^STL_LAB_[A-Z][A-Z0-9_]{0,19}$/.test(worker) ||
+          [
+            config.user,
+            runtime.user,
+            env.ORACLE_LAB_DELEGATION_SCANNER_USER,
+          ].includes(worker)
+        )
+          throw Error("Akaun worker peringatan makmal mesti berasingan.");
+        for (const table of [
+          "STL_USERS",
+          "STL_USER_ROLE_ASSIGNMENTS",
+          "STL_PERMISSIONS",
+          "STL_APPLICATION_DRAFTS",
+          "STL_APPLICATION_PREMISES",
+          "STL_COMPANY_REPRESENTATIVES",
+          "STL_COMPANIES",
+          "STL_DELEGATION_DOCUMENTS",
+          "STL_SYNTHETIC_SUBMISSIONS",
+          "STL_AUDIT_LOGS",
+        ])
+          await connection.execute(`GRANT SELECT ON ${table} TO ${worker}`);
+        for (const table of ["STL_NOTIFICATIONS", "STL_AUDIT_LOGS"])
+          await connection.execute(`GRANT INSERT ON ${table} TO ${worker}`);
+        await grantScopedInsert(
+          "STL_TRAINING_REMINDER_OUTBOX",
+          outboxInsert,
+          worker,
+        );
+        await connection.execute(`GRANT UPDATE (STATUS, ATTEMPTS, LEASE_UNTIL, LAST_ERROR, SENT_AT, AVAILABLE_AT, NOTIFIED_AT)
+          ON STL_TRAINING_REMINDER_OUTBOX TO ${worker}`);
       }
       if (env.ORACLE_LAB_ENABLE_DOCUMENT_SCAN === "true")
         await connection.execute(

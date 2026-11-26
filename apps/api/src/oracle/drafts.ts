@@ -1,3 +1,4 @@
+import { draftInactivity } from "../../../../packages/shared/src/draft-inactivity.js";
 import { requireOracleUnclosedDraft } from "./completion-gate.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -526,17 +527,21 @@ export function createOracleDraftRepository(
     list: (userId) =>
       pool.use(async (connection) =>
         (
-          await queryRows<DraftSummaryRow>(
+          await queryRows<DraftSummaryRow & { submitted: number }>(
             connection,
-            `SELECT ${columns(draftSummary, "D.")} FROM ${drafts} D WHERE D.INITIATED_BY_USER_ID=:userId AND D.STATUS='DRAFT'
+            `SELECT ${columns(draftSummary, "D.")} , CASE WHEN EXISTS (SELECT 1 FROM ${oracleTable(pool, "STL_SYNTHETIC_SUBMISSIONS")} S WHERE S.DRAFT_ID=D.ID) THEN 1 ELSE 0 END AS "submitted"
+              FROM ${drafts} D WHERE D.INITIATED_BY_USER_ID=:userId AND D.STATUS='DRAFT'
         AND (D.CAPACITY='INDIVIDUAL' OR (D.CAPACITY='COMPANY' AND EXISTS (
           SELECT 1 FROM ${representatives} R JOIN ${companies} C ON C.ID=R.COMPANY_ID
           WHERE R.USER_ID=D.INITIATED_BY_USER_ID AND R.COMPANY_ID=D.COMPANY_ID AND ${eligible})))
         ORDER BY D.UPDATED_AT DESC,D.ID FETCH FIRST 50 ROWS ONLY`,
             { userId },
           )
-        ).map((row) => ({
+        ).map(({ submitted, ...row }) => ({
           ...row,
+          inactivity: submitted
+            ? null
+            : draftInactivity(row.updatedAt, new Date()),
           applicantSnapshot: JSON.parse(row.applicantSnapshot),
         })),
       ),

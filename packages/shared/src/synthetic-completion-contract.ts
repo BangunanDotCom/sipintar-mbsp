@@ -26,6 +26,14 @@ export const determination = z.strictObject({
 });
 export const completionCommand = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("REFER") }),
+  z.strictObject({ action: z.literal("RECEIVE_BKT"), note: notes }),
+  z.strictObject({ action: z.literal("ACK_REFERRAL") }),
+  z.strictObject({
+    action: z.literal("RETURN_COMMENT"),
+    department: z.enum(departments),
+    reason: notes,
+  }),
+
   z.strictObject({
     action: z.literal("REREFER"),
     departments: z.array(z.enum(departments)).min(1).max(2),
@@ -36,6 +44,7 @@ export const completionCommand = z.discriminatedUnion("action", [
     details: z.array(z.strictObject({ ...scope, comment: notes })).max(300),
   }),
   z.strictObject({ action: z.literal("SUBMIT_PAPER"), summary: notes }),
+  z.strictObject({ action: z.literal("RETURN_PAPER"), reason: notes }),
   z.strictObject({
     action: z.literal("DECIDE"),
     decisions: z.array(determination).min(1).max(300),
@@ -51,9 +60,13 @@ export const completionCommand = z.discriminatedUnion("action", [
 export type CompletionCommand = z.infer<typeof completionCommand>;
 const commandRoles: Record<CompletionCommand["action"], CompletionRole[]> = {
   REFER: ["PIC_KAWASAN"],
+  RECEIVE_BKT: ["URUS_SETIA_JK"],
+  ACK_REFERRAL: [...departments],
+  RETURN_COMMENT: ["PIC_KAWASAN"],
   REREFER: ["PIC_KAWASAN"],
   COMMENT: [...departments],
   SUBMIT_PAPER: ["PIC_KAWASAN"],
+  RETURN_PAPER: ["URUS_SETIA_JK"],
   DECIDE: ["URUS_SETIA_JK"],
   SIGN: ["PEGAWAI_PENANDATANGAN"],
   RESPOND: ["PEMOHON", "WAKIL_SYARIKAT"],
@@ -73,12 +86,20 @@ export function canActOnCompletion(
 
 export const completionEvent = "SYNTHETIC_PORTAL_COMPLETION";
 export const completionProvider = "SYNTHETIC_PROVIDER";
+export const trainingLetterTemplate = "SYNTHETIC-DECISION-LETTER-v1";
+export const unicodeLetterTemplate = "SYNTHETIC-DECISION-LETTER-v2";
+export const trainingLetterVersion = z.enum([
+  trainingLetterTemplate,
+  unicodeLetterTemplate,
+]);
+export type TrainingLetterVersion = z.infer<typeof trainingLetterVersion>;
 export const completionStoredMetadata = z.strictObject({
   version: z.number().int().positive(),
   timestamp: z.number().int().nonnegative(),
   firstPaid: z.boolean(),
   feeSen: z.number().int().nonnegative().nullable(),
   invoiceId: z.uuid().optional(),
+  letterTemplate: trainingLetterVersion.optional(),
   command: completionCommand,
 });
 

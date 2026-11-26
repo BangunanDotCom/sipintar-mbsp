@@ -1,3 +1,4 @@
+import { trainingRemindersEnabled } from "./training-reminders.js";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import { loadSyntheticOwnerPolicy } from "./synthetic-owner-policy.js";
@@ -14,6 +15,7 @@ function postgresTraining() {
   const review = policy?.config.review.enabled === true;
   return {
     review,
+    reminders: review && trainingRemindersEnabled(),
     completion:
       review && policy?.config.billing.mode === "MOCK" && completionSandbox(),
   };

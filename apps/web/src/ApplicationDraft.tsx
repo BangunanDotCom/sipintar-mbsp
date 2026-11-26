@@ -87,6 +87,12 @@ export function DraftList({ userId }: { userId: string }) {
                   · Draf
                 </p>
                 <small>Disimpan {malaysiaTime(d.updatedAt)}</small>
+                {d.inactivity?.reviewDue && (
+                  <p>
+                    Draf tiada aktiviti selama sekurang-kurangnya 60 hari.
+                    Sambung semula jika masih diperlukan.
+                  </p>
+                )}
               </div>
               <Link
                 className="button secondary small"
@@ -167,10 +173,17 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               setMessage("Draf berjaya disimpan. Belum dihantar kepada MBSP.");
               await qc.invalidateQueries({ queryKey: ["application-drafts"] });
               if (draft) {
-                qc.setQueryData(["application-draft", context.initiatedBy.userId, saved.id], saved);
+                qc.setQueryData(
+                  ["application-draft", context.initiatedBy.userId, saved.id],
+                  saved,
+                );
               }
               await qc.invalidateQueries({
-                queryKey: ["draft-document-readiness", context.initiatedBy.userId, saved.id],
+                queryKey: [
+                  "draft-document-readiness",
+                  context.initiatedBy.userId,
+                  saved.id,
+                ],
               });
               if (next) nav(`/permohonan/draf/${saved.id}/premis`);
               else if (!draft)
@@ -360,18 +373,22 @@ function DraftEditor({ context, draft }: { context: any; draft?: any }) {
               </span>
             </section>
           )}
-          {draft && capacity === draft.capacity &&
-            (capacity !== "COMPANY" || companyId === draft.companyId) ? (
-              <DraftDocumentReadiness
-                draftId={draft.id}
-                userId={context.initiatedBy.userId}
-              />
-            ) : draft ? (
-              <section className="panel">
-                <h2>Semakan awal dokumen sokongan</h2>
-                <p role="status">Simpan perubahan kapasiti pemohon dahulu untuk melihat semakan dokumen yang terkini.</p>
-              </section>
-            ) : null}
+          {draft &&
+          capacity === draft.capacity &&
+          (capacity !== "COMPANY" || companyId === draft.companyId) ? (
+            <DraftDocumentReadiness
+              draftId={draft.id}
+              userId={context.initiatedBy.userId}
+            />
+          ) : draft ? (
+            <section className="panel">
+              <h2>Semakan awal dokumen sokongan</h2>
+              <p role="status">
+                Simpan perubahan kapasiti pemohon dahulu untuk melihat semakan
+                dokumen yang terkini.
+              </p>
+            </section>
+          ) : null}
           <section className="panel">
             <h2>
               <FileText size={21} /> Langkah seterusnya

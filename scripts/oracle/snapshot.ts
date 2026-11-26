@@ -18,7 +18,14 @@ export type TableData = { name: string; columns: string[]; rows: Row[] };
 type Snapshot = { format: string; source: string; tables: TableData[] };
 
 export async function snapshotTables(connection: Connection) {
-  const inventory = JSON.parse(await readFile(manifest, "utf8")) as {
+  const inventory = (
+    await Promise.all(
+      [
+        manifest,
+        new URL("../../database/oracle/004-inventory.json", import.meta.url),
+      ].map(async (url) => JSON.parse(await readFile(url, "utf8"))),
+    )
+  ).flat() as {
     type: string;
     name: string;
   }[];
@@ -36,7 +43,10 @@ export async function snapshotTables(connection: Connection) {
     {},
   );
   return inventory
-    .filter(({ type }) => type === "TABLE")
+    .filter(
+      ({ type, name }) =>
+        type === "TABLE" && allColumns.some((row) => row.TABLE_NAME === name),
+    )
     .map(({ name }) => {
       const columns = allColumns.filter((item) => item.TABLE_NAME === name);
       const primaryKey = allKeys

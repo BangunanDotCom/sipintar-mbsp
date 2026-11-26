@@ -1,3 +1,4 @@
+import type { ReminderInput } from "./oracle/training-reminders.js";
 import type { Prisma, SyntheticSubmission } from "@prisma/client";
 import {
   completionEvent,
@@ -17,9 +18,7 @@ import {
 } from "./synthetic-portal-session.js";
 
 export interface CompletionTransaction extends SyntheticReviewTransaction {
-  events(
-    id: string,
-  ): Promise<
+  events(id: string): Promise<
     {
       actorId: string | null;
       activeRole: string | null;
@@ -27,6 +26,7 @@ export interface CompletionTransaction extends SyntheticReviewTransaction {
     }[]
   >;
   appendCompletion(entry: AuditEntry): Promise<void>;
+  enqueueReminders(entries: ReminderInput[]): Promise<void>;
   lockActor(
     operator: ObservedPortalSession,
     role: CompletionRole,
@@ -43,7 +43,11 @@ export interface CompletionTransaction extends SyntheticReviewTransaction {
   lockCase(id: string, district?: string): Promise<void>;
   caseRow(id: string, district?: string): Promise<SyntheticSubmission | null>;
   applicantCase(draftId: string, userId: string): Promise<string | null>;
-  queue(district: string, excludedActorId: string): Promise<{ id: string }[]>;
+  queue(
+    district: string,
+    excludedActorId: string,
+    includeBkt: boolean,
+  ): Promise<{ id: string }[]>;
 }
 
 export interface CompletionRepository {
@@ -61,6 +65,12 @@ export const postgresCompletion: CompletionRepository = {
         return operation({
           ...review,
           appendCompletion: review.audit,
+          async enqueueReminders(entries) {
+            await tx.trainingReminderOutbox.createMany({
+              data: entries,
+              skipDuplicates: true,
+            });
+          },
           async events(id) {
             return tx.auditLog.findMany({
               where: {
@@ -113,13 +123,13 @@ export const postgresCompletion: CompletionRepository = {
               )?.id ?? null
             );
           },
-          async queue(district, excludedActorId) {
+          async queue(district, excludedActorId, includeBkt) {
             return tx.$queryRaw<
               { id: string }[]
             >`SELECT s.id FROM synthetic_submissions s
             WHERE s.snapshot->>'districtId' = ${district} AND s."actorId" <> ${excludedActorId}
               AND NOT EXISTS (SELECT 1 FROM synthetic_submissions child WHERE child."previousId" = s.id)
-              AND EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${completionEvent})
+              AND EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.outcome='SUCCESS' AND (a.action = ${completionEvent} OR (${includeBkt} AND a.action='SYNTHETIC_PORTAL_INVOICE_SETTLED')))
             ORDER BY s."createdAt" DESC, s.id LIMIT 50`;
           },
         });

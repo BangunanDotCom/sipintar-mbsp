@@ -277,7 +277,7 @@ export function createOracleAdmin(pool: OraclePool): AdminRepository {
           { id },
         ),
       ),
-    assignRole: (userId, data) =>
+    assignRole: (userId, data, actorId, activeRole, guard) =>
       pool.transaction(async (connection) => {
         const user = await first<{ KIND: string }>(
           connection,
@@ -285,22 +285,54 @@ export function createOracleAdmin(pool: OraclePool): AdminRepository {
           { userId },
         );
         if (user.KIND !== "OFFICER") fail(400, "Pelantikan pegawai sahaja.");
-        return insertAppointment(connection, userId, data);
+        if (guard) {
+          const duplicate = await queryRows(
+            connection,
+            `SELECT ID FROM ${appointments}
+            WHERE USER_ID=:userId AND ROLE_ID=:role AND STATUS='ACTIVE'
+              AND (ENDS_AT IS NULL OR ENDS_AT>:startsAt)
+              AND (:endsAt IS NULL OR STARTS_AT<:endsAt)
+              AND (:district IS NULL OR DISTRICT_ID IS NULL OR DISTRICT_ID=:district) AND ROWNUM=1`,
+            {
+              userId,
+              role: data.roleId,
+              startsAt: timestamp(data.startsAt),
+              endsAt: timestamp(data.endsAt),
+              district: data.districtId,
+            },
+          );
+          if (duplicate.length)
+            fail(409, "Pelantikan latihan bertindih dalam skop yang sama.");
+        }
+        const role = await insertAppointment(connection, userId, data);
+        await audit.append(connection, {
+          actorId,
+          activeRole,
+          action: "ROLE_ASSIGNED",
+          target: role.id,
+        });
+        return role;
       }),
     appointment: (id) =>
       pool.use((connection) => readAppointment(connection, id)),
-    revoke: (id, userId) =>
+    revoke: (id, userId, actorId, activeRole) =>
       pool.transaction(async (connection) => {
         await lock(connection, users, userId);
-        requireRecord(
-          (await affected(
-            connection,
-            `UPDATE ${appointments} SET STATUS='REVOKED',ENDS_AT=SYSTIMESTAMP
-        WHERE ID=:id AND USER_ID=:userId`,
-            { id, userId },
-          )) || null,
+        const count = await affected(
+          connection,
+          `UPDATE ${appointments} SET STATUS='REVOKED',ENDS_AT=SYSTIMESTAMP
+        WHERE ID=:id AND USER_ID=:userId AND STATUS<>'REVOKED'`,
+          { id, userId },
         );
+        if (!count) return false;
         await deleteSessions(connection, userId);
+        await audit.append(connection, {
+          actorId,
+          activeRole,
+          action: "ROLE_REVOKED",
+          target: id,
+        });
+        return true;
       }),
     areas: (filter) =>
       pool.transaction(async (connection) => {
@@ -450,6 +482,23 @@ export function createOracleAdmin(pool: OraclePool): AdminRepository {
           createdBy,
           row.LAST_VERSION + 1,
         );
+      }),
+    templatePreview: (id) =>
+      pool.use(async (connection) => {
+        const [row] = await queryRows<{
+          version: number;
+          content: string;
+          createdAt: Date;
+          name: string;
+        }>(
+          connection,
+          `SELECT V.VERSION AS "version",V.CONTENT AS "content",V.CREATED_AT AS "createdAt",T.NAME AS "name"
+         FROM ${versions} V JOIN ${templates} T ON T.ID=V.TEMPLATE_ID WHERE V.ID=:id`,
+          { id },
+        );
+        if (!row) return null;
+        const { name, ...value } = row;
+        return { ...value, template: { name } };
       }),
     activateTemplate: (id, actorId, activeRole) =>
       pool.transaction(async (connection) => {

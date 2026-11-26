@@ -211,9 +211,15 @@ describe.skipIf(!ownerFile || !runtimeFile)(
 
     it("reports Oracle-generated LOB indexes through their STL segment and table", async () => {
       const indexes = await owner.use(oracleGeneratedLobIndexes);
-      expect(indexes).toHaveLength(14);
+      expect(indexes).toHaveLength(15);
       expect(indexes).toEqual(
         expect.arrayContaining([
+          expect.objectContaining({
+            TABLE_NAME: "STL_TRAINING_REMINDER_OUTBOX",
+            COLUMN_NAME: "CONTEXT",
+            SEGMENT_NAME: "STL_LOB_TR_CONTEXT",
+            INDEX_NAME: expect.stringMatching(/^SYS_IL/),
+          }),
           expect.objectContaining({
             TABLE_NAME: "STL_USERS",
             COLUMN_NAME: "IDENTIFICATION_ENCRYPTED",

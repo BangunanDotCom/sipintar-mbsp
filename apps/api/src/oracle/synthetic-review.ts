@@ -1,3 +1,4 @@
+import type { FinancialView } from "../synthetic-financial-journal.js";
 import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
 import type { Prisma, SyntheticSubmission } from "@prisma/client";
@@ -49,6 +50,7 @@ export function createOracleSyntheticReviewRepository(
   const submissionRepository = createOracleSyntheticSubmissions(pool);
   const lockSession = oracleSyntheticSession(pool);
   const submissions = oracleTable(pool, "STL_SYNTHETIC_SUBMISSIONS");
+  const finance = oracleTable(pool, "STL_SYNTH_FINANCIAL_ENTRIES");
   const audit = oracleTable(pool, "STL_AUDIT_LOGS");
   const documents = oracleTable(pool, "STL_APPLICATION_DOCUMENTS");
   const scopes = oracleTable(pool, "STL_DRAFT_DOCUMENT_SCOPES");
@@ -215,6 +217,47 @@ export function createOracleSyntheticReviewRepository(
       },
       ledgerEvents: (id, actions) => events([id], actions),
       audit: draftTx.audit,
+      financial: {
+        entries: (id) =>
+          queryRows<FinancialView>(
+            connection,
+            `SELECT STAGE AS "stage",EVENT AS "event",INVOICE_ID AS "invoiceId",AMOUNT_SEN AS "amountSen",CREATED_AT AS "createdAt"
+           FROM ${finance} WHERE SUBMISSION_ID=:id ORDER BY STAGE,CREATED_AT,ID`,
+            { id },
+          ),
+        invoice: async (id, stage) =>
+          (
+            await queryRows<Pick<FinancialView, "invoiceId" | "amountSen">>(
+              connection,
+              `SELECT INVOICE_ID AS "invoiceId",AMOUNT_SEN AS "amountSen" FROM ${finance}
+           WHERE SUBMISSION_ID=:id AND STAGE=:stage AND EVENT='INVOICE'`,
+              { id, stage },
+            )
+          )[0] ?? null,
+        async append(data) {
+          await connection.execute(
+            `INSERT INTO ${finance} (ID,SUBMISSION_ID,INVOICE_ID,STAGE,EVENT,AMOUNT_SEN)
+            VALUES (:id,:submissionId,:invoiceId,:stage,:event,:amountSen)`,
+            { id: randomUUID(), ...data },
+          );
+        },
+      },
+      async auditHistory(id, action, take) {
+        const rows = await queryRows<{
+          id: string;
+          createdAt: Date;
+          metadata: string;
+        }>(
+          connection,
+          `SELECT ID AS "id",CREATED_AT AS "createdAt",METADATA AS "metadata" FROM ${audit}
+            WHERE TARGET=:id AND ACTION=:action AND OUTCOME='SUCCESS' ORDER BY CREATED_AT DESC,ID DESC FETCH FIRST :take ROWS ONLY`,
+          { id, action, take },
+        );
+        return rows.map((row) => ({
+          ...row,
+          metadata: JSON.parse(row.metadata),
+        }));
+      },
       async notify(entry) {
         await connection.execute(
           `INSERT INTO ${notifications} (ID,USER_ID,TITLE,TYPE,MESSAGE) VALUES (:id,:userId,:title,:type,:message)`,

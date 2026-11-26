@@ -1,8 +1,20 @@
+import { technicalReminderEntries } from "./training-technical-reminders.js";
+import { stateFor } from "./synthetic-completion-journal.js";
+import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
+import {
+  recordAction,
+  syntheticRecordOverlay,
+} from "./synthetic-record-overlay.js";
+import {
+  trainingLetterPdf,
+  unicodeTrainingPdf,
+  trainingPdfDigest,
+  UnsupportedTrainingGlyph,
+} from "./synthetic-letter-pdf.js";
 import {
   completionEvent as eventName,
-  completionEventRole,
   completionProvider as provider,
-  completionStoredMetadata,
+  unicodeLetterTemplate,
 } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -12,7 +24,7 @@ import {
   canActOnCompletion,
   completionCommand,
   completionRoles,
-  completionState,
+  completionHistoryLimit,
   type CompletionRole,
 } from "../../../packages/shared/src/synthetic-completion.js";
 import { applicant } from "./application-drafts.js";
@@ -66,42 +78,6 @@ function inventory(
   };
 }
 
-async function stateFor(tx: Tx, id: string, scopes: Scope[]) {
-  const events = await tx.events(id);
-  if (events.length > 500)
-    fail(409, "Sejarah latihan melebihi had persediaan.");
-  const values = events
-    .map(({ actorId, activeRole, metadata }) => {
-      const parsed = completionStoredMetadata.safeParse(metadata);
-      if (!parsed.success || !actorId) fail(409, "Sejarah latihan tidak sah.");
-      const role = completionEventRole(
-        actorId,
-        activeRole,
-        parsed.data.command.action,
-      );
-      if (!role) fail(409, "Pelaku sejarah latihan tidak sah.");
-      return { actorId, role, ...parsed.data };
-    })
-    .sort((a, b) => a.version - b.version);
-  let state = completionState();
-  for (const value of values) {
-    if (value.version !== state.version + 1)
-      fail(409, "Versi sejarah latihan tidak konsisten.");
-    try {
-      const applied = applyCompletion(state, value.command, {
-        ...value,
-        now: value.timestamp,
-        scopes,
-      });
-      if (!applied.changed) fail(409, "Peralihan sejarah diduplikasi.");
-      state = applied.state;
-    } catch {
-      fail(409, "Sejarah peralihan latihan tidak konsisten.");
-    }
-  }
-  return state;
-}
-
 export function completionConfig(env = process.env) {
   if (
     env.STAYLINK_SYNTHETIC_COMPLETION !== "true" ||
@@ -152,9 +128,10 @@ export async function syntheticCompletionRoutes(
   config: Config,
   auth: AuthRepository,
   repository: CompletionRepository,
+  remindersEnabled = false,
 ) {
   await portal.register(async (api) =>
-    registerCompletion(api, config, auth, repository),
+    registerCompletion(api, config, auth, repository, remindersEnabled),
   );
 }
 
@@ -163,8 +140,11 @@ function registerCompletion(
   config: Config,
   auth: AuthRepository,
   repository: CompletionRepository,
+  remindersEnabled = false,
 ) {
   const { assignments, district, feeSen, secret } = config;
+  const bktEnabled = process.env.STAYLINK_SYNTHETIC_BKT === "true";
+  const recordsEnabled = process.env.STAYLINK_SYNTHETIC_RECORDS === "true";
   async function assigned(req: FastifyRequest) {
     const officer = await authorize(req, "profile", auth);
     const role = z.enum(completionRoles).safeParse(officer.activeRole);
@@ -209,7 +189,8 @@ function registerCompletion(
       fail(403, "Peranan tidak dibenarkan untuk tindakan ini.");
     const timestamp = Date.now();
     const firstPaid =
-      command.action === "REFER" && (await firstPaymentSettled(tx, id));
+      ["REFER", "RECEIVE_BKT"].includes(command.action) &&
+      (await firstPaymentSettled(tx, id));
     const invoiceId =
       command.action === "ISSUE_SECOND" ? randomUUID() : undefined;
     let result: ReturnType<typeof applyCompletion>;
@@ -222,6 +203,9 @@ function registerCompletion(
         firstPaid,
         feeSen,
         invoiceId,
+        ...(command.action === "SIGN" && {
+          letterTemplate: unicodeLetterTemplate,
+        }),
       });
     } catch (error) {
       fail(
@@ -230,6 +214,22 @@ function registerCompletion(
       );
     }
     if (result.changed) {
+      if (state.version >= completionHistoryLimit)
+        fail(409, "Sejarah latihan melebihi had persediaan.");
+      if (
+        (command.action === "ISSUE_SECOND" ||
+          command.action === "SETTLE_SECOND") &&
+        result.state.invoice
+      ) {
+        const invoice = result.state.invoice;
+        await recordSyntheticFinancialEntry(tx.financial, {
+          submissionId: id,
+          invoiceId: invoice.id,
+          stage: 2,
+          event: command.action === "ISSUE_SECOND" ? "INVOICE" : "RECEIPT",
+          amountSen: invoice.amountSen,
+        });
+      }
       await tx.appendCompletion({
         target: id,
         action: eventName,
@@ -241,6 +241,9 @@ function registerCompletion(
           firstPaid,
           feeSen,
           ...(invoiceId && { invoiceId }),
+          ...(command.action === "SIGN" && {
+            letterTemplate: unicodeLetterTemplate,
+          }),
           command,
         },
       });
@@ -281,10 +284,16 @@ function registerCompletion(
         version: state.version,
         closed: state.closed,
         scopes,
+        bktEnabled,
+        technicalHistory: state.technicalHistory.filter(
+          (item) => item.department === role,
+        ),
         referral: state.referral && {
           deadline: state.referral.deadline,
           assigned: state.referral.departments.includes(role),
           comment: state.referral.comments[role] ?? null,
+          acknowledged: state.referral.acknowledged.includes(role),
+          acknowledgementRequired: Boolean(state.bkt),
         },
       };
     }
@@ -294,6 +303,11 @@ function registerCompletion(
       decisionSigned: state.decisionSigned,
       response: state.response,
       papers: state.papers,
+      returnedPapers: state.returnedPapers,
+      bktEnabled,
+      bkt: state.bkt,
+      technicalHistory: state.technicalHistory,
+      recordsEnabled: recordsEnabled && role === "PPSK",
       referral: state.referral,
       overdue: Boolean(
         state.referral &&
@@ -303,7 +317,13 @@ function registerCompletion(
     };
   }
 
-  api.get("/completion/queue", async (req) => {
+  api.get("/completion/queue", async (req, reply) => {
+    const { format, view } = z
+      .strictObject({
+        format: z.enum(["json", "csv"]).default("json"),
+        view: z.enum(["all", "open", "overdue", "closed"]).default("all"),
+      })
+      .parse(req.query);
     const initial = await session(req, true, auth);
     const manager = ["PIC_KAWASAN", "PPSK"].includes(initial.activeRole ?? "")
       ? await syntheticReviewOfficer(req, auth)
@@ -313,9 +333,15 @@ function registerCompletion(
     const { officer, role } = manager
       ? { officer: manager.operator, role: manager.role }
       : await assigned(req);
-    return repository.transaction(async (tx) => {
+    if (format === "csv" && !manager)
+      fail(403, "Eksport latihan memerlukan PIC atau PPSK.");
+    const result = await repository.transaction(async (tx) => {
       await tx.lockActor(officer, role, district);
-      const rows = await tx.queue(district, officer.userId);
+      const rows = await tx.queue(
+        district,
+        officer.userId,
+        bktEnabled && role === "URUS_SETIA_JK",
+      );
       const cases = [];
       const summary = {
         sampled: 0,
@@ -323,6 +349,7 @@ function registerCompletion(
         closed: 0,
         paymentPending: 0,
       };
+      const now = Date.now();
       for (const { id } of rows) {
         try {
           const record = await lockedRow(tx, id, district, false);
@@ -336,17 +363,23 @@ function registerCompletion(
             role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN"
               ? [role]
               : (state.referral?.departments ?? []);
-          summary.sampled++;
-          if (state.closed) summary.closed++;
-          if (
+          const overdue = Boolean(
             !state.closed &&
             state.referral &&
-            Date.now() >= state.referral.deadline &&
+            now >= state.referral.deadline &&
             responsible.some(
               (department) => !state.referral?.comments[department],
-            )
+            ),
+          );
+          if (
+            (view === "open" && state.closed) ||
+            (view === "closed" && !state.closed) ||
+            (view === "overdue" && !overdue)
           )
-            summary.overdue++;
+            continue;
+          summary.sampled++;
+          if (state.closed) summary.closed++;
+          if (overdue) summary.overdue++;
           if (manager && state.invoice && !state.invoice.settled)
             summary.paymentPending++;
           if (!manager) cases.push({ id, ...scopedView(state, record, role) });
@@ -361,6 +394,20 @@ function registerCompletion(
       }
       return { cases, summary };
     }, true);
+    if (format === "json") return result;
+    const { sampled, overdue, closed, paymentPending } = result.summary;
+    return reply
+      .header(
+        "Content-Disposition",
+        `attachment; filename="staylink-latihan-${district}-${view}.csv"`,
+      )
+      .header("X-Content-Type-Options", "nosniff")
+      .type("text/csv; charset=utf-8")
+      .send(
+        "daerah,penapis,kes,lewat,tutup,bayaran_tertunda\r\n" +
+          [district, view, sampled, overdue, closed, paymentPending].join(",") +
+          "\r\n",
+      );
   });
 
   api.get("/completion/:id", async (req) => {
@@ -381,13 +428,115 @@ function registerCompletion(
     }, true);
   });
 
+  api.get("/completion/:id/financial-ledger", async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const { format } = z
+      .strictObject({ format: z.enum(["json", "csv"]).default("json") })
+      .parse(req.query);
+    const officer = await syntheticReviewOfficer(req, auth);
+    if (officer.role !== "PPSK" || officer.district !== district)
+      fail(404, "Lejar latihan tidak tersedia.");
+    const entries = await repository.transaction(async (tx) => {
+      await lockSyntheticReview(tx, id, officer, { forWrite: false });
+      return tx.financial.entries(id);
+    }, true);
+    if (format === "json") return { entries };
+    return reply
+      .header(
+        "Content-Disposition",
+        'attachment; filename="staylink-lejar-latihan.csv"',
+      )
+      .type("text/csv; charset=utf-8")
+      .send(
+        [
+          "peringkat,acara,nilai_sen,waktu_utc",
+          ...entries.map(({ stage, event, amountSen, createdAt }) =>
+            [stage, event, amountSen, createdAt.toISOString()].join(","),
+          ),
+          "",
+        ].join("\r\n"),
+      );
+  });
+
+  async function recordsOfficer(req: FastifyRequest) {
+    if (!recordsEnabled) fail(404, "Daftar rekod latihan tidak tersedia.");
+    const officer = await syntheticReviewOfficer(req, auth);
+    if (officer.role !== "PPSK" || officer.district !== district)
+      fail(404, "Daftar rekod latihan tidak tersedia.");
+    return officer;
+  }
+  async function closedRecord(
+    tx: Tx,
+    id: string,
+    officer: Awaited<ReturnType<typeof recordsOfficer>>,
+    forWrite: boolean,
+  ) {
+    const { snapshot } = await lockSyntheticReview(tx, id, officer, {
+      forWrite,
+    });
+    const { scopes } = inventory(snapshot);
+    if (!(await stateFor(tx, id, scopes)).closed)
+      fail(409, "Daftar rekod hanya tersedia selepas penutupan latihan.");
+    return syntheticRecordOverlay(tx, id);
+  }
+  api.get("/completion/:id/records", async (req) => {
+    const officer = await recordsOfficer(req);
+    const { id } = idParam.parse(req.params);
+    return repository.transaction(async (tx) => {
+      const overlay = await closedRecord(tx, id, officer, false);
+      await tx.audit({
+        actorId: officer.operator.userId,
+        activeRole: officer.role,
+        action: "SYNTHETIC_ARCHIVE_ACCESSED",
+        target: id,
+      });
+      return overlay;
+    }, true);
+  });
+  api.post("/completion/:id/records", { bodyLimit: 4096 }, async (req) => {
+    const officer = await recordsOfficer(req);
+    const { id } = idParam.parse(req.params);
+    const input = recordAction.parse(req.body);
+    return repository.transaction(async (tx) => {
+      const current = await closedRecord(tx, id, officer, true);
+      if (input.version !== current.version || current.version >= 100)
+        fail(409, "Versi daftar rekod latihan tidak tersedia.");
+      if (
+        (input.action === "PLACE_HOLD" && current.legalHold) ||
+        (input.action === "RELEASE_HOLD" && !current.legalHold) ||
+        (input.action === "REQUEST_REOPEN" && current.reopenRequested)
+      )
+        fail(409, "Tindakan rekod telah direkodkan atau tidak sah.");
+      await tx.audit({
+        actorId: officer.operator.userId,
+        activeRole: officer.role,
+        target: id,
+        action: "SYNTHETIC_ARCHIVE_CONTROL",
+        metadata: { ...input, version: current.version + 1 },
+      });
+      return syntheticRecordOverlay(tx, id);
+    });
+  });
+
   api.post("/completion/:id", { bodyLimit: 390_000 }, async (req) => {
     const { id } = idParam.parse(req.params);
     const input = edit.parse(req.body);
-    const managing = !["COMMENT", "DECIDE", "SIGN"].includes(
-      input.command.action,
-    );
+    const managing = ![
+      "COMMENT",
+      "DECIDE",
+      "SIGN",
+      "RETURN_PAPER",
+      "RECEIVE_BKT",
+      "ACK_REFERRAL",
+    ].includes(input.command.action);
     const manager = managing ? await syntheticReviewOfficer(req, auth) : null;
+    if (
+      !bktEnabled &&
+      ["RECEIVE_BKT", "ACK_REFERRAL", "RETURN_COMMENT"].includes(
+        input.command.action,
+      )
+    )
+      fail(404, "Aliran BKT latihan tidak diaktifkan.");
     if (manager && manager.district !== district)
       fail(404, "Tiada pelantikan latihan dalam skop ini.");
     return repository.transaction(async (tx) => {
@@ -411,6 +560,8 @@ function registerCompletion(
           })()
         : await assignedCase(tx, req, id);
       const state = await stateFor(tx, id, record.scopes);
+      if (bktEnabled && input.command.action === "REFER" && !state.bkt)
+        fail(409, "Rekod penerimaan BKT latihan dahulu.");
       if (state.version !== input.version)
         fail(409, "Versi aliran latihan sudah berubah.");
       const next = await mutate(
@@ -424,6 +575,20 @@ function registerCompletion(
       const command = input.command;
       if (command.action === "REFER" || command.action === "REREFER") {
         const referred = next.referral?.departments ?? [];
+        if (remindersEnabled && next.referral) {
+          const row = await tx.caseRow(id, district);
+          if (!row) fail(404, "Serahan latihan tidak ditemui.");
+          await tx.enqueueReminders(
+            technicalReminderEntries(
+              row,
+              id,
+              district,
+              next.referral,
+              assignments,
+              process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID,
+            ),
+          );
+        }
         for (const department of referred)
           await tx.notify({
             userId: assignments[department],
@@ -506,39 +671,76 @@ function registerCompletion(
   api.get("/drafts/:id/completion/letters/:number", async (req, reply) => {
     const { id, number } = letterParam.parse(req.params);
     const operator = await applicant(req, auth);
-    const contents = await repository.transaction(async (tx) => {
-      const record = await applicantRecord(tx, id, operator.userId);
-      const state = await stateFor(tx, record.row.id, record.scopes);
-      const letter = state.letters.find((item) => item.number === number);
-      if (!letter) fail(404, "Surat latihan tidak ditemui.");
-      const clean = (value: string | undefined) =>
-        (value ?? "").replace(/[\r\n\t]/g, " ");
-      return (
-        [
-          "STAYLink MBSP — LATIHAN / TIADA KESAN RASMI",
-          "Rujukan latihan: SYNTHETIC-" + record.row.draftId,
-          number === 1
-            ? "Surat keputusan induk"
-            : "Surat susulan kepada surat induk versi 1",
-          "Versi " + number + " · " + new Date(letter.signedAt).toISOString(),
-          "Tandatangan disimulasikan.",
-          "Unit | Tingkat | Keputusan | Sebab | Tarikh syarat | Tarikh susulan",
-          ...letter.decisions.map((d) =>
+    const { format } = z
+      .strictObject({ format: z.enum(["txt", "pdf"]).default("txt") })
+      .parse(req.query);
+    const { contents, signedAt, templateVersion } =
+      await repository.transaction(async (tx) => {
+        const record = await applicantRecord(tx, id, operator.userId);
+        const state = await stateFor(tx, record.row.id, record.scopes);
+        const letter = state.letters.find((item) => item.number === number);
+        if (!letter) fail(404, "Surat latihan tidak ditemui.");
+        const clean = (value: string | undefined) =>
+          (value ?? "").replace(/[\r\n\t]/g, " ");
+        return {
+          signedAt: letter.signedAt,
+          templateVersion: letter.templateVersion,
+          contents:
             [
-              record.unitLabel.get(d.unitId),
-              record.floorLabel.get(d.floorId),
-              d.outcome,
-              d.reason,
-              d.conditionUntil,
-              d.followUpBy,
-            ]
-              .map(clean)
-              .join(" | "),
-          ),
-          "Kapasiti pekerja: Mengikut jumlah kapasiti yang ditetapkan oleh JTK.",
-        ].join("\n") + "\n"
-      );
-    });
+              "STAYLink MBSP — LATIHAN / TIADA KESAN RASMI",
+              "Rujukan latihan: SYNTHETIC-" + record.row.draftId,
+              number === 1
+                ? "Surat keputusan induk"
+                : "Surat susulan kepada surat induk versi 1",
+              "Versi " +
+                number +
+                " · " +
+                new Date(letter.signedAt).toISOString(),
+              "Tandatangan disimulasikan.",
+              "Unit | Tingkat | Keputusan | Sebab | Tarikh syarat | Tarikh susulan",
+              ...letter.decisions.map((d) =>
+                [
+                  record.unitLabel.get(d.unitId),
+                  record.floorLabel.get(d.floorId),
+                  d.outcome,
+                  d.reason,
+                  d.conditionUntil,
+                  d.followUpBy,
+                ]
+                  .map(clean)
+                  .join(" | "),
+              ),
+              "Kapasiti pekerja: Mengikut jumlah kapasiti yang ditetapkan oleh JTK.",
+            ].join("\n") + "\n",
+        };
+      });
+    if (format === "pdf") {
+      let bytes: Buffer;
+      try {
+        bytes =
+          templateVersion === unicodeLetterTemplate
+            ? await unicodeTrainingPdf(contents, signedAt, templateVersion)
+            : await trainingLetterPdf(contents, signedAt);
+      } catch (error) {
+        if (error instanceof UnsupportedTrainingGlyph)
+          fail(
+            422,
+            "Sebahagian aksara belum disokong oleh PDF latihan. Muat turun versi teks UTF-8.",
+          );
+        throw error;
+      }
+      return reply
+        .header("Content-Digest", trainingPdfDigest(bytes))
+        .header(
+          "Content-Disposition",
+          `attachment; filename="staylink-latihan-v${number}.pdf"`,
+        )
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "sandbox")
+        .header("X-Staylink-Letter-Template", templateVersion)
+        .type("application/pdf")
+        .send(bytes);
+    }
     return reply
       .header(
         "Content-Disposition",

@@ -1,3 +1,13 @@
+import {
+  syntheticAnalyticsRoutes,
+  type AnalyticsRepository,
+} from "./synthetic-analytics.js";
+import {
+  trainingReminderRoutes,
+  type TrainingReminderRepository,
+  trainingRemindersEnabled,
+  oracleTrainingRemindersEnabled,
+} from "./training-reminders.js";
 import { verifiedDelegation } from "./delegation-evidence.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import {
@@ -240,6 +250,10 @@ export async function registerSyntheticPortal(
     config: NonNullable<ReturnType<typeof completionConfig>>;
     repository: CompletionRepository;
   },
+  advanced?: {
+    analytics: AnalyticsRepository;
+    reminders: TrainingReminderRepository;
+  },
 ) {
   const {
     declaration,
@@ -471,8 +485,11 @@ export async function registerSyntheticPortal(
       });
 
       registerSyntheticSubmitRoute(portal, owner, auth, capture);
-      if (review.enabled)
+      if (review.enabled) {
         await syntheticReviewRoutes(portal, reviewRepository, auth);
+        await syntheticAnalyticsRoutes(portal, auth, advanced?.analytics);
+        await trainingReminderRoutes(portal, auth, advanced?.reminders);
+      }
       if (billing.mode === "MOCK")
         await syntheticBillingRoutes(
           portal,
@@ -489,6 +506,9 @@ export async function registerSyntheticPortal(
           completion.config,
           auth,
           completion.repository,
+          (advanced
+            ? oracleTrainingRemindersEnabled
+            : trainingRemindersEnabled)(),
         );
     },
     { prefix: "/api/synthetic-portal" },

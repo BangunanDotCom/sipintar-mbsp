@@ -1,3 +1,4 @@
+import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { createHmac, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -123,6 +124,13 @@ async function storeReconciliation(
     fail(409, "Padanan atau tempoh invois sintetik tidak sah.");
   if (result.status === "SETTLED") {
     const receipt = result.ledger.settlements[0];
+    await recordSyntheticFinancialEntry(tx.financial, {
+      submissionId: id,
+      invoiceId: receipt.invoiceId,
+      stage: 1,
+      event: "RECEIPT",
+      amountSen: receipt.amountSen,
+    });
     await tx.audit({
       actorId,
       activeRole: actorId ? "PPSK" : null,
@@ -194,6 +202,13 @@ export async function syntheticBillingRoutes(
         if (output.status !== "ISSUED" && output.status !== "REPLAY")
           fail(409, "Invois sintetik tidak dapat dijana.");
         if (output.status === "ISSUED") {
+          await recordSyntheticFinancialEntry(tx.financial, {
+            submissionId: id,
+            invoiceId: output.invoice.id,
+            stage: 1,
+            event: "INVOICE",
+            amountSen: output.invoice.amountSen,
+          });
           await tx.audit({
             actorId: officer.operator.userId,
             activeRole: officer.role,

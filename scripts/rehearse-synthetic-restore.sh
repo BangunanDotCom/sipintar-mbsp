@@ -46,3 +46,17 @@ restored_fingerprints=$(sql "$restore_db" "$fingerprints")
 test "$source_fingerprints" = "$restored_fingerprints"
 [[ "$restored_counts" == *'|1' ]]
 echo "Match (submissions|evidence links|completion|invoices|settlement|review notifications|immutable trigger): $restored_counts"
+
+if [[ $(sql "$source_db" "SELECT to_regclass('training_reminder_outbox') IS NOT NULL") == t ]]; then
+  reminder_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(r)::text, chr(10) ORDER BY r.id), ''), 'UTF8')), 'hex') FROM training_reminder_outbox r"
+  [[ $(sql "$source_db" "$reminder_proof") == "$(sql "$restore_db" "$reminder_proof")" ]]
+  echo "Training reminder rows and delivery states match."
+fi
+
+if [[ $(sql "$source_db" "SELECT to_regclass('synthetic_financial_entries') IS NOT NULL") == t ]]; then
+  journal_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(e)::text, chr(10) ORDER BY e.id), ''), 'UTF8')), 'hex') FROM synthetic_financial_entries e"
+  [[ $(sql "$source_db" "$journal_proof") == "$(sql "$restore_db" "$journal_proof")" ]]
+  archive_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(a)::text, chr(10) ORDER BY a.id), ''), 'UTF8')), 'hex') FROM audit_logs a WHERE action = 'SYNTHETIC_ARCHIVE_CONTROL'"
+  [[ $(sql "$source_db" "$archive_proof") == "$(sql "$restore_db" "$archive_proof")" ]]
+  echo "Synthetic financial journal and archive control events match."
+fi

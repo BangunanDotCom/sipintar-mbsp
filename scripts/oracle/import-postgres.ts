@@ -75,7 +75,9 @@ async function readPostgres(
       "STL_" +
         (model.name === "CompanyRepresentationInvitation"
           ? "COMPANY_REP_INVITATIONS"
-          : oracleName(model.dbName ?? model.name)),
+          : model.name === "SyntheticFinancialEntry"
+            ? "SYNTH_FINANCIAL_ENTRIES"
+            : oracleName(model.dbName ?? model.name)),
       model,
     ]),
   );
