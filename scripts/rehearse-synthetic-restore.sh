@@ -60,3 +60,23 @@ if [[ $(sql "$source_db" "SELECT to_regclass('synthetic_financial_entries') IS N
   [[ $(sql "$source_db" "$archive_proof") == "$(sql "$restore_db" "$archive_proof")" ]]
   echo "Synthetic financial journal and archive control events match."
 fi
+
+proof="
+SELECT
+  (SELECT count(*) FROM delegation_documents),
+  (SELECT count(*) FROM application_documents),
+  (SELECT count(*) FROM mfa_factors),
+  (SELECT encode(sha256(convert_to(COALESCE(string_agg(
+    to_jsonb(d)::text, chr(10) ORDER BY d.id), ''), 'UTF8')), 'hex')
+    FROM delegation_documents d),
+  (SELECT encode(sha256(convert_to(COALESCE(string_agg(
+    to_jsonb(a)::text, chr(10) ORDER BY a.id), ''), 'UTF8')), 'hex')
+    FROM application_documents a),
+  (SELECT encode(sha256(convert_to(COALESCE(string_agg(
+    to_jsonb(m)::text, chr(10) ORDER BY m.id), ''), 'UTF8')), 'hex')
+    FROM mfa_factors m)
+"
+source_security_proof=$(sql "$source_db" "$proof")
+[[ "$source_security_proof" == "$(sql "$restore_db" "$proof")" ]]
+IFS='|' read -r delegations attachments factors _ <<< "$source_security_proof"
+echo "Restored delegation PDFs: $delegations; application document metadata: $attachments; encrypted MFA factors: $factors."

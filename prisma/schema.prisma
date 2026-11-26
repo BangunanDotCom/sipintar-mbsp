@@ -280,6 +280,7 @@ model AuditLog {
  metadata Json?
  createdAt DateTime @default(now())
  @@index([createdAt])
+ @@index([target, action, outcome], map: "audit_logs_target_action_outcome_idx")
  @@map("audit_logs")
 }
 

@@ -32,17 +32,18 @@ const billingBody = z.strictObject({
 const callbackBody = z.strictObject({ payload: z.string().max(4096) });
 const minute = 60_000;
 
-async function ledgerFor(
+export async function legacyFirstPayment(
   tx: Prisma.TransactionClient,
   id: string,
-): Promise<MockLedger> {
+) {
   const events = await tx.auditLog.findMany({
     where: {
       target: id,
       outcome: "SUCCESS",
       action: { in: [issued, settled] },
     },
-    select: { action: true, metadata: true },
+    select: { action: true, metadata: true, createdAt: true },
+    take: 3,
   });
   const invoices = events
     .filter((row) => row.action === issued)
@@ -71,6 +72,8 @@ async function ledgerFor(
   return {
     invoices: invoice ? [invoice] : [],
     settlements: receipt ? [receipt] : [],
+    issuedAt: events.find((event) => event.action === issued)?.createdAt,
+    settledAt: events.find((event) => event.action === settled)?.createdAt,
   };
 }
 
@@ -78,7 +81,7 @@ export async function firstPaymentSettled(
   tx: Prisma.TransactionClient,
   id: string,
 ) {
-  return (await ledgerFor(tx, id)).settlements.length === 1;
+  return (await legacyFirstPayment(tx, id)).settlements.length === 1;
 }
 
 function invoiceView(ledger: MockLedger) {
@@ -168,7 +171,7 @@ export async function syntheticBillingRoutes(
         });
         if (row) await requireSyntheticSnapshotAuthority(tx, row);
         return row
-          ? invoiceView(await ledgerFor(tx, row.id))
+          ? invoiceView(await legacyFirstPayment(tx, row.id))
           : { invoice: null };
       },
       { isolationLevel: "RepeatableRead" },
@@ -180,7 +183,7 @@ export async function syntheticBillingRoutes(
     const { id } = params.parse(req.params);
     return db.$transaction(async (tx) => {
       await lockSyntheticReview(tx, id, officer);
-      return invoiceView(await ledgerFor(tx, id));
+      return invoiceView(await legacyFirstPayment(tx, id));
     });
   });
 
@@ -192,7 +195,7 @@ export async function syntheticBillingRoutes(
     const { action } = billingBody.parse(req.body);
     return db.$transaction(async (tx) => {
       const { state, snapshot } = await lockSyntheticReview(tx, id, officer);
-      const ledger = await ledgerFor(tx, id);
+      const ledger = await legacyFirstPayment(tx, id);
       if (state.status !== "REGISTERED")
         fail(409, "Daftar keputusan sintetik dahulu.");
       if (action === "ISSUE") {
@@ -281,7 +284,7 @@ export async function syntheticBillingRoutes(
       return storeReconciliation(
         tx,
         id,
-        await ledgerFor(tx, id),
+        await legacyFirstPayment(tx, id),
         payload,
         signature,
         secret,

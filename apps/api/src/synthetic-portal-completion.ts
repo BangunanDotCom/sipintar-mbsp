@@ -1,6 +1,8 @@
 import { syntheticRecordOverlay, recordAction } from "./synthetic-record-overlay.js";
 import { trainingRemindersEnabled } from "./training-reminders.js";
 import { enqueueTechnicalReminders } from "./training-technical-reminders.js";
+import { reconcileSyntheticLedger } from "./synthetic-financial-reconciliation.js";
+import { technicalConsolidation } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
 import { stateFor } from "./synthetic-completion-journal.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { trainingLetterPdf, unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
@@ -283,6 +285,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     }
     return {
       ...stats,
+      consolidation: technicalConsolidation(state, Date.now()),
       decisions: state.decisions,
       decisionSigned: state.decisionSigned,
       response: state.response,
@@ -429,6 +432,39 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       .send(["peringkat,acara,nilai_sen,waktu_utc",
         ...entries.map(({stage,event,amountSen,createdAt})=>[stage,event,amountSen,createdAt.toISOString()].join(",")),
         ""].join("\r\n"));
+  });
+
+  async function reconcileLedger(req: FastifyRequest, apply: boolean) {
+    const officer = await syntheticReviewOfficer(req);
+    if (
+      officer.role !== "PPSK" ||
+      officer.district !== district ||
+      (apply && process.env.STAYLINK_SYNTHETIC_LEDGER_BACKFILL !== "true")
+    ) fail(404, "Padanan lejar latihan tidak tersedia.");
+    const { id } = idParam.parse(req.params);
+    return db.$transaction(async (tx) => {
+      const { state, snapshot } = await lockSyntheticReview(tx, id, officer, { forWrite: apply });
+      const report = await reconcileSyntheticLedger(
+        tx, id, state.caseId, snapshot.units.map(({ id }) => id), inventory(snapshot).scopes, apply,
+      );
+      if (report.added > 0) {
+        await tx.auditLog.create({ data: {
+          actorId: officer.operator.userId,
+          activeRole: officer.role,
+          target: id,
+          action: "SYNTHETIC_LEDGER_BACKFILLED",
+          metadata: { slots: report.missing },
+        } });
+      }
+      return report;
+    }, apply ? undefined : { isolationLevel: "RepeatableRead" });
+  }
+  api.get("/completion/:id/financial-ledger/reconciliation", async (req) =>
+    reconcileLedger(req, false),
+  );
+  api.post("/completion/:id/financial-ledger/reconciliation", { bodyLimit: 512 }, async (req) => {
+    z.strictObject({ confirm: z.literal(true) }).parse(req.body);
+    return reconcileLedger(req, true);
   });
 
   async function recordsOfficer(req:FastifyRequest) {

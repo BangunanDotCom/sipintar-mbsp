@@ -1,6 +1,7 @@
 import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
 import { afterAll, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
+import { reconcileSyntheticLedger } from "../apps/api/src/synthetic-financial-reconciliation";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { buildApp } from "../apps/api/src/app";
 import { totp } from "../apps/api/src/auth";
@@ -35,7 +36,7 @@ it.runIf(Boolean(kitFile))(
       accounts: Credentials[];
       scenarios: { id: string; draftPath: string }[];
     };
-    const flags = ["STAYLINK_SYNTHETIC_BKT","STAYLINK_SYNTHETIC_RECORDS","STAYLINK_SYNTHETIC_REMINDERS"] as const;
+    const flags = ["STAYLINK_SYNTHETIC_BKT","STAYLINK_SYNTHETIC_RECORDS","STAYLINK_SYNTHETIC_REMINDERS","STAYLINK_SYNTHETIC_LEDGER_BACKFILL"] as const;
     const originalFlags = flags.map((key)=>process.env[key]);
     for (const key of flags) process.env[key]="true";
     const app = await buildApp();
@@ -212,6 +213,9 @@ it.runIf(Boolean(kitFile))(
       expect((await command(council,0,"RECEIVE_BKT",{note:"Penerimaan BKT latihan."})).statusCode).toBe(200);
       phaseOffset++;
       expect((await command(pic, 0, "REFER")).statusCode).toBe(200);
+      const waiting = await app.inject({ url: completion, headers: pic });
+      expect(waiting.json().consolidation.departments.map(({ status }: { status: string }) => status))
+        .toEqual(["PENDING", "PENDING"]);
       const reminders = await db.trainingReminderOutbox.findMany({where:{draftId:draft,kind:{startsWith:"TECH_"}}});
       expect(reminders).toHaveLength(5);
       const pre = reminders.find((entry)=>entry.kind==="TECH_PRE_DUE")!;
@@ -292,6 +296,20 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
+      const consolidated = await app.inject({ url: completion, headers: pic });
+      expect(consolidated.json().consolidation).toMatchObject({
+        submittedPaperVersion: 4 + phaseOffset,
+        departments: [
+          { department: "PERANCANG_BANDAR", status: "RECEIVED",
+            current: { general: "Semakan perancang dipinda" },
+            previous: { comment: { general: "Semakan perancang latihan" } },
+            returnReason: "Ulasan latihan dipulangkan." },
+          { department: "KEJURUTERAAN", status: "RECEIVED" },
+        ],
+      });
+      expect((await app.inject({ url: appUrl + "/completion", headers: owner })).json()).not.toHaveProperty("consolidation");
+      expect((await app.inject({ url: root + "/completion/queue", headers: planning })).json().cases[0]).not.toHaveProperty("consolidation");
+      expect((await app.inject({ url: completion, headers: spt })).statusCode).toBe(404);
       const eventWhere = { target:id, action:"SYNTHETIC_PORTAL_COMPLETION" };
       const originalEvents = await db.auditLog.findMany({where:eventWhere,select:{id:true}});
       const keep = originalEvents.map(({id})=>id);
@@ -511,6 +529,81 @@ it.runIf(Boolean(kitFile))(
       expect((await app.inject({url:ledgerPath+"?format=csv",headers:ppsk})).body).toContain("2,RECEIPT,1234,");
       await expect(db.syntheticFinancialEntry.updateMany({where:{submissionId:id},data:{amountSen:9}})).rejects.toThrow();
       await expect(db.syntheticFinancialEntry.deleteMany({where:{submissionId:id}})).rejects.toThrow();
+
+      const reconciliation = ledgerPath + "/reconciliation";
+      const report = await app.inject({ url: reconciliation, headers: ppsk });
+      expect(report.statusCode, report.body).toBe(200);
+      expect(report.headers["cache-control"]).toContain("no-store");
+      expect(report.json()).toEqual({
+        source: { invoicedSen: 6234, settledSen: 6234, outstandingSen: 0 },
+        ledger: { invoicedSen: 6234, settledSen: 6234, outstandingSen: 0 },
+        missing: [], conflicts: [], added: 0,
+      });
+      expect((await app.inject({ url: reconciliation, headers: pic })).statusCode).toBe(404);
+      expect((await app.inject({ url: reconciliation, headers: spt })).statusCode).toBe(404);
+      const invalidHeaders = { ...ppsk, "x-csrf-token": "invalid" };
+      expect((await post(reconciliation, invalidHeaders, { confirm: true })).statusCode).toBe(403);
+      expect((await post(reconciliation, ppsk, { confirm: true })).json()).toMatchObject({ added: 0 });
+
+      // Replay the exact historical event shapes on a synthetic fixture inside a transaction.
+      // Rolling back must remove fixture rows and appended entries together.
+      const legacyId = randomUUID();
+      const legacyInvoice = randomUUID();
+      const legacySecondInvoice = randomUUID();
+      const invoiceEvents = await db.auditLog.findMany({
+        where: { target: id, action: { in: [
+          "SYNTHETIC_PORTAL_INVOICE_ISSUED", "SYNTHETIC_PORTAL_INVOICE_SETTLED",
+          "SYNTHETIC_PORTAL_COMPLETION",
+        ] } },
+        select: { actorId: true, activeRole: true, action: true, metadata: true, createdAt: true },
+      });
+      const original = await db.syntheticSubmission.findUniqueOrThrow({ where: { id } });
+      const rollback = Error("Rollback fixture ledger");
+      await expect(db.$transaction(async (tx) => {
+        await tx.syntheticSubmission.create({ data: {
+          ...original, id: legacyId, key: legacyId, draftVersion: original.draftVersion + 100,
+          previousId: null, snapshot: original.snapshot!,
+        } });
+        const oldRef = financial.json().entries.find((entry: { stage: number }) => entry.stage === 1).invoiceId;
+        const appendHistory = async (reference: string) => {
+          await tx.auditLog.createMany({ data: invoiceEvents.map((item) => {
+            const stored = item.metadata as Record<string, string | number>;
+            const metadata = item.action === "SYNTHETIC_PORTAL_INVOICE_ISSUED"
+              ? { ...stored, id: reference, submissionId: legacyId }
+              : item.action === "SYNTHETIC_PORTAL_INVOICE_SETTLED"
+                ? { ...stored, invoiceId: reference, eventId: reference, providerReference: "SYNTHETIC-" + reference }
+                : stored.invoiceId
+                  ? { ...stored, invoiceId: legacySecondInvoice }
+                  : stored;
+            return { ...item, target: legacyId, metadata };
+          }) });
+        };
+        const run = (apply: boolean) => reconcileSyntheticLedger(
+          tx, legacyId, draft, [...new Set<string>(scopes.map((scope: { unitId: string }) => scope.unitId))], scopes, apply,
+        );
+        await appendHistory(oldRef);
+        expect((await run(false)).conflicts).toEqual([
+          { stage: 1, event: "INVOICE", reason: "REFERENCE_CONFLICT" },
+          { stage: 1, event: "RECEIPT", reason: "REFERENCE_CONFLICT" },
+        ]);
+        await expect(run(true)).rejects.toThrow("Padanan bercanggah");
+        expect(await tx.syntheticFinancialEntry.count({ where: { submissionId: legacyId } })).toBe(0);
+        await tx.auditLog.deleteMany({ where: { target: legacyId } });
+        await appendHistory(legacyInvoice);
+        expect(await run(false)).toMatchObject({
+          source: { settledSen: 6234 }, ledger: { settledSen: 0 },
+          missing: [
+            { stage: 1, event: "INVOICE" }, { stage: 1, event: "RECEIPT" },
+            { stage: 2, event: "INVOICE" }, { stage: 2, event: "RECEIPT" },
+          ],
+          conflicts: [], added: 0,
+        });
+        expect(await run(true)).toMatchObject({ added: 4, ledger: { settledSen: 6234 } });
+        expect(await run(true)).toMatchObject({ added: 0, missing: [] });
+        throw rollback;
+      })).rejects.toBe(rollback);
+      expect(await db.syntheticFinancialEntry.count({ where: { submissionId: legacyId } })).toBe(0);
+      expect(await db.auditLog.count({ where: { target: legacyId } })).toBe(0);
 
       const records=completion+"/records";
       expect((await post(records, spt, {version:0,action:"PLACE_HOLD",reason:"Semak fail latihan"})).statusCode).toBe(404);

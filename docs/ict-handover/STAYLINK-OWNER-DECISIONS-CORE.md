@@ -30,3 +30,7 @@ Noto Sans CJK dan Noto Naskh Arabic mempunyai fail lesen OFL. Sebelum memilih su
 | GIS dan identiti/SSO | Versi sempadan, provenance, audience/issuer dan skop aplikasi | Respons hilang atau tidak sah mengekalkan semakan manual atau akses tertutup. |
 
 Pada prototaip makmal berasingan, kedua-dua fon menemui glyph untuk sampel Han dan Jawi yang dipilih. Ekstraksi Han menghasilkan teks yang dijangka, sementara pembaca PDF melaporkan amaran embedding fon. Ekstraksi Jawi bercampur Latin menyusun aksara RTL secara berbeza daripada input, dan satu aksara sampel bertukar pada ekstraksi. Sokongan Han/Jawi kekal belum diterima. Jadual berbilang skrip, pemisahan halaman, bentuk visual dan round-trip teks merentas pembaca perlu dibuktikan sebelum renderer v3 dipilih.
+
+## Perkara pada calon penyatuan
+
+Kewangan perlu menerima sumber yang layak untuk rekonsiliasi, rawatan percanggahan selepas komit dan pengasingan kuasa sebelum klasifikasi rasmi bagi tunggakan, kegagalan, refund/dispute, reversal atau pelarasan. Padanan dan backfill baharu menggunakan rekod sintetik per serahan. Jabatan Bangunan, JTIK dan Unit Rekod perlu menentukan klasifikasi lampiran BKT dan siapa boleh menerima atau meminda lampiran selepas snapshot. Team 2 dan JTIK perlu menerima kesetaraan replay, lock, indeks dan pemulihan Oracle; Team 3 perlu menilai semula A/B pada calon yang akan diuji pengguna. [Matriks penerimaan sistem](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)
