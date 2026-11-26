@@ -43,9 +43,17 @@ async function main() {
         ...email,
       });
     });
+    await db.auditLog.create({data:{
+      action:"SYNTHETIC_REMINDER_RUN",metadata:{queued},
+    }});
     console.log(
       `Peringatan baharu: ${queued}. Semak status dalam pemantauan latihan.`,
     );
+  } catch (error) {
+    await db.auditLog.create({data:{
+      action:"SYNTHETIC_REMINDER_RUN",outcome:"FAILURE",metadata:{code:"WORKER_FAILED"},
+    }});
+    throw error;
   } finally {
     transport.close();
   }

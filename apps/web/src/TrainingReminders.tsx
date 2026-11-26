@@ -101,7 +101,7 @@ export function TrainingInactiveDrafts({ userId }: { userId: string }) {
 }
 
 export function TrainingReminderMonitor({ userId }: { userId: string }) {
-  const query = useQuery<{ counts: { status: string; count: number }[] }>({
+  const query = useQuery<{ counts: { status: string; count: number }[]; recent: { createdAt: string; outcome: string }[] }>({
     queryKey: ["training-reminder-monitor", userId],
     queryFn: () => api(root + "/reminder-monitor"),
     retry: false,
@@ -118,6 +118,11 @@ export function TrainingReminderMonitor({ userId }: { userId: string }) {
           {status} · {count}
         </p>
       ))}
+      {query.data?.recent.length ? (
+        <details><summary>Larian worker terkini</summary><ul>{query.data.recent.map((run,index)=>
+          <li key={run.createdAt+index}>{malaysiaTime(run.createdAt)} · {run.outcome}</li>,
+        )}</ul></details>
+      ) : null}
       {query.data?.counts.length === 0 && <p>Tiada rekod penghantaran.</p>}
     </section>
   );

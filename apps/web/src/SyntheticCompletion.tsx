@@ -1,3 +1,4 @@
+import { CompletionFinancialLedger, CompletionRecordOverlay } from "./SyntheticCompletionTools";
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -25,9 +26,15 @@ type View = Pick<CompletionState, "version" | "closed"> & {
   letters?: number[];
   papers?: CompletionState["papers"];
   returnedPapers?: CompletionState["returnedPapers"];
+  bktEnabled?: boolean;
+  bkt?: CompletionState["bkt"];
+  technicalHistory?: CompletionState["technicalHistory"];
+  recordsEnabled?: boolean;
   referral?: null | {
     deadline: number;
     assigned?: boolean;
+    acknowledged?: boolean;
+    acknowledgementRequired?: boolean;
     comment?: unknown;
     comments?: Partial<Record<string, unknown>>;
     departments?: string[];
@@ -76,6 +83,7 @@ export function SyntheticCompletionCase({
       view={query.data}
       path={path}
       role={role}
+      identity={identity}
       reload={async () => {
         await query.refetch();
       }}
@@ -145,6 +153,7 @@ export function SyntheticCompletionQueue({
           view={view}
           path={base + "/" + view.id}
           role={role}
+          identity={identity}
           reload={async () => {
             await query.refetch();
           }}
@@ -158,11 +167,13 @@ function CompletionForm({
   view,
   path,
   role,
+  identity,
   reload,
 }: {
   view: View;
   path: string;
   role: string;
+  identity: string;
   reload: () => Promise<void>;
 }) {
   const queryClient = useQueryClient();
@@ -284,6 +295,15 @@ function CompletionForm({
           <p>{paper.summary}</p>
         </details>
       ))}
+      {view.bkt && <p>BKT latihan diterima · {malaysiaTime(new Date(view.bkt.receivedAt).toISOString())}</p>}
+      {view.technicalHistory && view.technicalHistory.length > 0 && (
+        <details>
+          <summary>Sejarah versi ulasan teknikal</summary>
+          {view.technicalHistory.map(({department,version,action,reason,comment})=>(
+            <p key={version}>{department} · v{version} · {action === "RETURNED" ? "Dipulangkan" : "Diserah"} · {reason ?? comment?.general}</p>
+          ))}
+        </details>
+      )}
       {view.papers?.map((paper, index) => (
         <details key={index}>
           <summary>Kertas Pertimbangan v{index + 1}</summary>
@@ -361,6 +381,8 @@ function CompletionForm({
             </a>
           </p>
         ))}
+      {role === "PPSK" && <CompletionFinancialLedger path={path} identity={identity} />}
+      {view.recordsEnabled && view.closed && role === "PPSK" && <CompletionRecordOverlay path={path} identity={identity} />}
       {view.invoice && (
         <p>
           Invois kedua tiruan ·{" "}
@@ -381,8 +403,24 @@ function CompletionForm({
       )}
       {!view.closed && (
         <>
+          {role === "URUS_SETIA_JK" && view.bktEnabled && !view.bkt && !view.referral &&
+            noteForm("Catatan penerimaan BKT latihan",(event)=>{
+              event.preventDefault();
+              void send({action:"RECEIVE_BKT",note:comment});
+            })}
+          {tech && view.referral?.assigned && view.referral.acknowledgementRequired && !view.referral.acknowledged &&
+            action("Sahkan penerimaan tugas latihan",{action:"ACK_REFERRAL"})}
+          {role === "PIC_KAWASAN" && view.bktEnabled && view.bkt && view.referral?.comments &&
+            (["PERANCANG_BANDAR","KEJURUTERAAN"] as const).filter((department)=>view.referral?.comments?.[department]).map((department)=>(
+              <div key={department}>
+                {noteForm("Sebab pulang ulasan " + departmentLabels[department],(event)=>{
+                  event.preventDefault();
+                  void send({action:"RETURN_COMMENT",department,reason:comment});
+                })}
+              </div>
+            ))}
           {role === "PIC_KAWASAN" &&
-            !view.referral &&
+            !view.referral && (!view.bktEnabled || view.bkt) &&
             action("Rujuk Perancang dan Kejuruteraan", { action: "REFER" })}
           {role === "PIC_KAWASAN" &&
             view.referral &&
@@ -426,6 +464,7 @@ function CompletionForm({
           {tech &&
             view.referral?.assigned &&
             !view.referral.comment &&
+            (!view.referral.acknowledgementRequired || view.referral.acknowledged) &&
             noteForm(
               "Ulasan umum jabatan",
               (e) => {

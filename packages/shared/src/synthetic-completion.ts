@@ -63,10 +63,14 @@ type Paper = {
 export function completionState() {
   return {
     version: 0,
+    bkt: null as null | { receivedAt: number; note:string },
+    technicalHistory: [] as { department:TechnicalDepartment; version:number; action:"SUBMITTED"|"RETURNED"; comment:Omit<Comment,"action"> | null; reason:string|null }[],
     referral: null as null | {
       deadline: number;
+      version: number;
       paperSubmitted: boolean;
       departments: TechnicalDepartment[];
+      acknowledged: TechnicalDepartment[];
       comments: Partial<Record<TechnicalDepartment, Omit<Comment, "action">>>;
     },
     papers: [] as Paper[],
@@ -125,6 +129,28 @@ export function applyCompletion(
     new Set(items.map(key)).size === items.length &&
     items.every((item) => scopeKeys.has(key(item)));
   switch (command.action) {
+    case "RECEIVE_BKT":
+      if (next.bkt || referral || !context.firstPaid)
+        throw Error("Penerimaan BKT latihan memerlukan bayaran pertama dan kes yang belum dirujuk.");
+      next.bkt = { receivedAt:now, note:command.note };
+      break;
+    case "ACK_REFERRAL": {
+      const department = role as TechnicalDepartment;
+      if (!next.bkt || !referral?.departments.includes(department) ||
+          referral.acknowledged.includes(department))
+        throw Error("Penerimaan rujukan tidak tersedia.");
+      referral.acknowledged.push(department);
+      break;
+    }
+    case "RETURN_COMMENT": {
+      if (!next.bkt || !referral || referral.paperSubmitted || !referral.comments[command.department])
+        throw Error("Ulasan tiada atau telah dimasukkan dalam snapshot Kertas Pertimbangan.");
+      delete referral.comments[command.department];
+      next.technicalHistory.push({
+        department:command.department,version:state.version+1,action:"RETURNED",comment:null,reason:command.reason,
+      });
+      break;
+    }
     case "REFER":
       if (
         !context.firstPaid ||
@@ -136,7 +162,9 @@ export function applyCompletion(
       next.referral = {
         departments: [...departments],
         comments: {},
+        acknowledged: [],
         deadline: now + 7 * day,
+        version: state.version + 1,
         paperSubmitted: false,
       };
       break;
@@ -156,7 +184,9 @@ export function applyCompletion(
       next.referral = {
         departments: command.departments,
         comments: {},
+        acknowledged: [],
         deadline: now + 7 * day,
+        version: state.version + 1,
         paperSubmitted: false,
       };
       break;
@@ -165,6 +195,7 @@ export function applyCompletion(
       if (
         !referral?.departments.includes(department) ||
         referral.comments[department] ||
+        (next.bkt && !referral.acknowledged.includes(department)) ||
         !uniqueValid(command.details)
       )
         throw Error("Ulasan atau skop rujukan tidak sah.");
@@ -172,6 +203,10 @@ export function applyCompletion(
         general: command.general,
         details: command.details,
       };
+      if (next.bkt) next.technicalHistory.push({
+        department,version:state.version+1,action:"SUBMITTED",
+        comment:referral.comments[department],reason:null,
+      });
       break;
     }
     case "SUBMIT_PAPER":
