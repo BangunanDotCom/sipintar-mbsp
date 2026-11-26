@@ -16,6 +16,8 @@ Laluan latihan meliputi akaun, permohonan, ulang hantar, semakan PIC, pendaftara
 
 Kaedah audit merangkumi penelusuran dari skrin ke pengendali API, semakan transaksi serta kekangan PostgreSQL, perbandingan dokumentasi dengan kod, pengesahan metadata CI dan larian tempatan. Data ujian dijana khusus untuk PostgreSQL, Mailpit dan pelayar loopback. Tiada deployment, merge, akses data sebenar, panggilan MBSPPay, sambungan Oracle MBSP atau perubahan Cloudflare. Cabang audit tempatan mengandungi dokumentasi sahaja.
 
+**Penerimaan terkini.** [Matriks K01–K11 dan Issue #68 bagi PR #75–#77](PENERIMAAN-SISTEM-PR75-77.md) memuatkan regresi bebas, jurang Oracle dan tindakan mengikut P0–P3.
+
 ## Pemetaan 20 perkara audit
 
 | Perkara | Ulasan / bukti |
