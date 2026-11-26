@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import {
   canActOnCompletion,
+  trainingLetterTemplate,
   departments,
   type TechnicalDepartment,
   type CompletionRole,
@@ -19,6 +20,13 @@ export type {
 
 export const completionDatabaseName =
   /^staylink_issue62_personal_completion[a-z0-9]{0,14}_test$/;
+
+export const completionHistoryLimit = 500;
+
+export function assertCompletionHistoryCount(count: number) {
+  if (!Number.isSafeInteger(count) || count < 0 || count > completionHistoryLimit)
+    throw Error("Sejarah latihan melebihi had persediaan.");
+}
 
 type Determination = z.infer<typeof determination>;
 type Scope = Pick<Determination, "unitId" | "floorId">;
@@ -41,6 +49,16 @@ export function sixMonthLimit(timestamp: number) {
     .slice(0, 10);
 }
 
+type Paper = {
+  submittedVersion: number;
+  summary: string;
+  comments: {
+    department: TechnicalDepartment;
+    text: string;
+    details: Comment["details"];
+  }[];
+};
+
 export function completionState() {
   return {
     version: 0,
@@ -50,19 +68,14 @@ export function completionState() {
       departments: TechnicalDepartment[];
       comments: Partial<Record<TechnicalDepartment, Omit<Comment, "action">>>;
     },
-    papers: [] as {
-      summary: string;
-      comments: {
-        department: TechnicalDepartment;
-        text: string;
-        details: Comment["details"];
-      }[];
-    }[],
+    papers: [] as Paper[],
+    returnedPapers: [] as { paper: Paper; reason: string; returnedVersion: number }[],
     decisions: [] as (Determination & { firstConditionAt?: number })[],
     letters: [] as {
       number: number;
       decisions: Determination[];
       signedAt: number;
+      templateVersion: typeof trainingLetterTemplate;
     }[],
     decisionSigned: false,
     decisionScope: [] as string[],
@@ -88,6 +101,7 @@ export function applyCompletion(
     now: number;
     scopes: Scope[];
     firstPaid: boolean;
+    letterTemplate?: typeof trainingLetterTemplate;
     feeSen: number | null;
     invoiceId?: string;
   },
@@ -99,6 +113,7 @@ export function applyCompletion(
   if (action === "SETTLE_SECOND" && state.invoice?.settled)
     return { state, changed: false };
   if (state.closed) throw Error("Permohonan telah ditutup.");
+  assertCompletionHistoryCount(state.version + 1);
   const next = structuredClone(state);
   const { referral, response } = next;
   const pending = next.decisions.filter(
@@ -169,6 +184,7 @@ export function applyCompletion(
         throw Error("Kertas Pertimbangan belum sedia diserah.");
       referral.paperSubmitted = true;
       next.papers.push({
+        submittedVersion: state.version + 1,
         summary: command.summary,
         comments: referral.departments.map((department) => ({
           department,
@@ -177,6 +193,18 @@ export function applyCompletion(
         })),
       });
       break;
+    case "RETURN_PAPER": {
+      if (
+        !referral?.paperSubmitted ||
+        next.papers.length !== next.letters.length + 1 ||
+        (next.decisions.length > 0 && !next.decisionSigned)
+      )
+        throw Error("Kertas Pertimbangan tiada atau keputusan telah direkod.");
+      const paper = next.papers.pop()!;
+      next.returnedPapers.push({ paper, reason: command.reason, returnedVersion: state.version + 1 });
+      referral.paperSubmitted = false;
+      break;
+    }
     case "DECIDE": {
       const required = next.decisions.length ? pending : scopes;
       if (
@@ -246,6 +274,7 @@ export function applyCompletion(
           .filter((item) => next.decisionScope.includes(key(item)))
           .map(({ firstConditionAt: _, ...item }) => item),
         signedAt: now,
+        templateVersion: context.letterTemplate ?? trainingLetterTemplate,
       });
       next.decisionSigned = true;
       break;

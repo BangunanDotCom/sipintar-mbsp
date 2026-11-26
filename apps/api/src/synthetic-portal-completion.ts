@@ -1,8 +1,10 @@
+import { trainingLetterPdf } from "./synthetic-letter-pdf.js";
 import {
   completionEvent as eventName,
   completionEventRole,
   completionProvider as provider,
   completionStoredMetadata,
+  trainingLetterTemplate,
 } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import { randomUUID } from "node:crypto";
@@ -11,6 +13,8 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   applyCompletion,
+  completionHistoryLimit,
+  assertCompletionHistoryCount,
   canActOnCompletion,
   completionCommand,
   completionRoles,
@@ -74,10 +78,13 @@ async function stateFor(tx: Tx, id: string, scopes: Scope[]) {
   const events = await tx.auditLog.findMany({
     where: { target: id, action: eventName, outcome: "SUCCESS" },
     select: { actorId: true, activeRole: true, metadata: true },
-    take: 501,
+    take: completionHistoryLimit + 1,
   });
-  if (events.length > 500)
+  try {
+    assertCompletionHistoryCount(events.length);
+  } catch {
     fail(409, "Sejarah latihan melebihi had persediaan.");
+  }
   const values = events
     .map(({ actorId, activeRole, metadata }) => {
       const parsed = completionStoredMetadata.safeParse(metadata);
@@ -253,6 +260,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
             firstPaid,
             feeSen,
             ...(invoiceId && { invoiceId }),
+            ...(command.action === "SIGN" && { letterTemplate: trainingLetterTemplate }),
             command,
           } as Prisma.InputJsonValue,
         },
@@ -307,6 +315,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       decisionSigned: state.decisionSigned,
       response: state.response,
       papers: state.papers,
+      returnedPapers: state.returnedPapers,
       referral: state.referral,
       overdue: Boolean(
         state.referral &&
@@ -316,7 +325,11 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     };
   }
 
-  api.get("/completion/queue", async (req) => {
+  api.get("/completion/queue", async (req, reply) => {
+    const { format, view } = z.strictObject({
+      format: z.enum(["json", "csv"]).default("json"),
+      view: z.enum(["all", "open", "overdue", "closed"]).default("all"),
+    }).parse(req.query);
     const initial = await session(req);
     const manager = ["PIC_KAWASAN", "PPSK"].includes(initial.activeRole ?? "")
       ? await syntheticReviewOfficer(req)
@@ -326,7 +339,8 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     const { officer, role } = manager
       ? { officer: manager.operator, role: manager.role }
       : await assigned(req);
-    return db.$transaction(
+    if (format === "csv" && !manager) fail(403, "Eksport latihan memerlukan PIC atau PPSK.");
+    const result = await db.$transaction(
       async (tx) => {
         await lockSyntheticPortalSession(tx, officer, role, district);
         const rows = await tx.$queryRaw<
@@ -343,6 +357,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           closed: 0,
           paymentPending: 0,
         };
+        const now = Date.now();
         for (const { id } of rows) {
           try {
             const record = await lockedRow(tx, id, district, false);
@@ -356,17 +371,18 @@ function registerCompletion(api: FastifyInstance, config: Config) {
               role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN"
                 ? [role]
                 : (state.referral?.departments ?? []);
-            summary.sampled++;
-            if (state.closed) summary.closed++;
-            if (
+            const overdue = Boolean(
               !state.closed &&
               state.referral &&
-              Date.now() >= state.referral.deadline &&
-              responsible.some(
-                (department) => !state.referral?.comments[department],
-              )
-            )
-              summary.overdue++;
+              now >= state.referral.deadline &&
+              responsible.some((department) => !state.referral?.comments[department]),
+            );
+            if ((view === "open" && state.closed) ||
+                (view === "closed" && !state.closed) ||
+                (view === "overdue" && !overdue)) continue;
+            summary.sampled++;
+            if (state.closed) summary.closed++;
+            if (overdue) summary.overdue++;
             if (manager && state.invoice && !state.invoice.settled)
               summary.paymentPending++;
             if (!manager)
@@ -384,6 +400,14 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       },
       { isolationLevel: "RepeatableRead" },
     );
+    if (format === "json") return result;
+    const { sampled, overdue, closed, paymentPending } = result.summary;
+    return reply
+      .header("Content-Disposition", `attachment; filename="staylink-latihan-${district}-${view}.csv"`)
+      .header("X-Content-Type-Options", "nosniff")
+      .type("text/csv; charset=utf-8")
+      .send("daerah,penapis,kes,lewat,tutup,bayaran_tertunda\r\n" +
+        [district, view, sampled, overdue, closed, paymentPending].join(",") + "\r\n");
   });
 
   api.get("/completion/:id", async (req) => {
@@ -410,7 +434,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
   api.post("/completion/:id", { bodyLimit: 390_000 }, async (req) => {
     const { id } = idParam.parse(req.params);
     const input = edit.parse(req.body);
-    const managing = !["COMMENT", "DECIDE", "SIGN"].includes(
+    const managing = !["COMMENT", "DECIDE", "SIGN", "RETURN_PAPER"].includes(
       input.command.action,
     );
     const manager = managing ? await syntheticReviewOfficer(req) : null;
@@ -537,15 +561,15 @@ function registerCompletion(api: FastifyInstance, config: Config) {
   api.get("/drafts/:id/completion/letters/:number", async (req, reply) => {
     const { id, number } = letterParam.parse(req.params);
     const operator = await applicant(req);
-    const contents = await db.$transaction(async (tx) => {
+    const { format } = z.strictObject({ format: z.enum(["txt", "pdf"]).default("txt") }).parse(req.query);
+    const { contents, signedAt, templateVersion } = await db.$transaction(async (tx) => {
       const record = await applicantRecord(tx, id, operator.userId);
       const state = await stateFor(tx, record.row.id, record.scopes);
       const letter = state.letters.find((item) => item.number === number);
       if (!letter) fail(404, "Surat latihan tidak ditemui.");
       const clean = (value: string | undefined) =>
         (value ?? "").replace(/[\r\n\t]/g, " ");
-      return (
-        [
+      return { signedAt: letter.signedAt, templateVersion: letter.templateVersion, contents: [
           "STAYLink MBSP — LATIHAN / TIADA KESAN RASMI",
           "Rujukan latihan: SYNTHETIC-" + record.row.draftId,
           number === 1
@@ -567,9 +591,17 @@ function registerCompletion(api: FastifyInstance, config: Config) {
               .join(" | "),
           ),
           "Kapasiti pekerja: Mengikut jumlah kapasiti yang ditetapkan oleh JTK.",
-        ].join("\n") + "\n"
-      );
+        ].join("\n") + "\n" };
     });
+    if (format === "pdf") {
+      return reply
+        .header("Content-Disposition", `attachment; filename="staylink-latihan-v${number}.pdf"`)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "sandbox")
+        .header("X-Staylink-Letter-Template", templateVersion)
+        .type("application/pdf")
+        .send(await trainingLetterPdf(contents, signedAt));
+    }
     return reply
       .header(
         "Content-Disposition",

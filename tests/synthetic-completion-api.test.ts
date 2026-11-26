@@ -9,6 +9,7 @@ import { inspectDemoHost } from "../apps/api/src/demo-host-config.mjs";
 const kitFile = process.env.STAYLINK_COMPLETION_KIT_FILE;
 const root = "/api/synthetic-portal";
 type Credentials = {
+  id: string;
   label: string;
   role: string;
   email: string;
@@ -243,6 +244,47 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
+      const eventWhere = { target:id, action:"SYNTHETIC_PORTAL_COMPLETION" };
+      const originalEvents = await db.auditLog.findMany({where:eventWhere,select:{id:true}});
+      const keep = originalEvents.map(({id})=>id);
+      expect(keep).toHaveLength(4);
+      const timestamp = Date.now();
+      const extraEvent = (version: number) => {
+        const returned = version % 2 === 1;
+        const subject = kit.accounts.find(({label}) => label === (returned ? "urus-setia" : "pic-spu"))!;
+        return {
+          ...eventWhere, actorId:subject.id, activeRole:subject.role,
+          metadata: {
+            version, timestamp, firstPaid:false, feeSen:1234,
+            command: returned
+              ? {action:"RETURN_PAPER",reason:"Pembetulan sejarah sintetik"}
+              : {action:"SUBMIT_PAPER",summary:"Pindaan sejarah sintetik"},
+          },
+        };
+      };
+      try {
+        await db.auditLog.createMany({data:Array.from({length:495},(_,i)=>extraEvent(i+5))});
+        const read = () => app.inject({url:completion,headers:pic});
+        expect((await read()).json().version).toBe(499);
+        expect((await command(pic,499,"SUBMIT_PAPER",{summary:"Versi ke-500"})).statusCode).toBe(200);
+        expect((await read()).json().version).toBe(500);
+        expect((await command(council,500,"RETURN_PAPER",{reason:"Versi ke-501"})).statusCode).toBe(409);
+        expect(await db.auditLog.count({where:eventWhere})).toBe(500);
+        await db.auditLog.create({data:extraEvent(501)});
+        expect((await read()).statusCode).toBe(409);
+      } finally {
+        await db.auditLog.deleteMany({where:{...eventWhere,id:{notIn:keep}}});
+      }
+      expect((await command(pic,4,"RETURN_PAPER",{reason:"Pinda ringkasan latihan."})).statusCode).toBe(404);
+      expect((await command(council,4,"RETURN_PAPER",{reason:"Pinda ringkasan latihan."})).statusCode).toBe(200);
+      expect((await command(council,4,"RETURN_PAPER",{reason:"Revisi lapuk."})).statusCode).toBe(409);
+      expect((await command(pic,5,"SUBMIT_PAPER",{summary:"Kertas Pertimbangan dipinda"})).statusCode).toBe(200);
+      const papers = (await app.inject({url:completion,headers:pic})).json();
+      expect(papers.papers[0].summary).toBe("Kertas Pertimbangan dipinda");
+      expect(papers.returnedPapers[0]).toMatchObject({
+        reason:"Pinda ringkasan latihan.",
+        paper:{summary:"Kertas Pertimbangan latihan",submittedVersion:4},
+      });
       const outcomes = scopes.map(
         (
           { unitId, floorId }: { unitId: string; floorId: string },
@@ -255,14 +297,14 @@ it.runIf(Boolean(kitFile))(
         }),
       );
       expect(
-        (await command(signer, 4, "DECIDE", { decisions: outcomes }))
+        (await command(signer, 6, "DECIDE", { decisions: outcomes }))
           .statusCode,
       ).toBe(403);
       expect(
-        (await command(council, 4, "DECIDE", { decisions: outcomes }))
+        (await command(council, 6, "DECIDE", { decisions: outcomes }))
           .statusCode,
       ).toBe(200);
-      expect((await command(signer, 5, "SIGN")).statusCode).toBe(200);
+      expect((await command(signer, 7, "SIGN")).statusCode).toBe(200);
       const first = await app.inject({
         url: appUrl + "/completion/letters/1",
         headers: owner,
@@ -270,6 +312,14 @@ it.runIf(Boolean(kitFile))(
       expect(first.statusCode).toBe(200);
       expect(first.headers["cache-control"]).toContain("no-store");
       expect(first.body).toMatch(/LATIHAN[\s\S]+TANGGUH/);
+      const pdfUrl = appUrl + "/completion/letters/1?format=pdf";
+      const firstPdf = await app.inject({url:pdfUrl, headers:owner});
+      expect(firstPdf.statusCode).toBe(200);
+      expect(firstPdf.headers["content-type"]).toContain("application/pdf");
+      expect(firstPdf.headers["x-staylink-letter-template"]).toBe("SYNTHETIC-DECISION-LETTER-v1");
+      expect(firstPdf.rawPayload.subarray(0, 5).toString()).toBe("%PDF-");
+      expect((await app.inject({url:pdfUrl, headers:other})).statusCode).toBe(404);
+
       expect(
         (
           await app.inject({
@@ -278,11 +328,11 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(404);
-      expect((await command(ppsk, 6, "CLOSE")).statusCode).toBe(409);
+      expect((await command(ppsk, 8, "CLOSE")).statusCode).toBe(409);
       expect(
         (
           await post(appUrl + "/completion", owner, {
-            version: 6,
+            version: 8,
             command: {
               action: "RESPOND",
               note: "Bukti pindaan latihan tersedia",
@@ -290,17 +340,17 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
-      expect((await command(pic, 7, "CHECK_RESPONSE")).statusCode).toBe(200);
-      expect((await command(ppsk, 8, "ALLOW_RECONSIDERATION")).statusCode).toBe(
+      expect((await command(pic, 9, "CHECK_RESPONSE")).statusCode).toBe(200);
+      expect((await command(ppsk, 10, "ALLOW_RECONSIDERATION")).statusCode).toBe(
         200,
       );
       expect(
-        (await command(pic, 9, "REREFER", { departments: ["KEJURUTERAAN"] }))
+        (await command(pic, 11, "REREFER", { departments: ["KEJURUTERAAN"] }))
           .statusCode,
       ).toBe(200);
       expect(
         (
-          await command(planning, 10, "COMMENT", {
+          await command(planning, 12, "COMMENT", {
             general: "Tidak dirujuk semula",
             details: [],
           })
@@ -308,7 +358,7 @@ it.runIf(Boolean(kitFile))(
       ).toBe(409);
       expect(
         (
-          await command(engineering, 10, "COMMENT", {
+          await command(engineering, 12, "COMMENT", {
             general: "Semakan susulan selesai",
             details: [],
           })
@@ -316,19 +366,20 @@ it.runIf(Boolean(kitFile))(
       ).toBe(200);
       expect(
         (
-          await command(pic, 11, "SUBMIT_PAPER", {
+          await command(pic, 13, "SUBMIT_PAPER", {
             summary: "Kertas susulan latihan",
           })
         ).statusCode,
       ).toBe(200);
       expect(
         (
-          await command(council, 12, "DECIDE", {
+          await command(council, 14, "DECIDE", {
             decisions: [{ ...outcomes[1], outcome: "SK" }],
           })
         ).statusCode,
       ).toBe(200);
-      expect((await command(signer, 13, "SIGN")).statusCode).toBe(200);
+      expect((await command(signer, 15, "SIGN")).statusCode).toBe(200);
+      expect((await app.inject({url:pdfUrl,headers:owner})).rawPayload).toEqual(firstPdf.rawPayload);
       expect(
         (
           await app.inject({
@@ -345,11 +396,11 @@ it.runIf(Boolean(kitFile))(
           })
         ).body,
       ).toContain("Surat susulan");
-      const invoice = await command(ppsk, 14, "ISSUE_SECOND").then(
+      const invoice = await command(ppsk, 16, "ISSUE_SECOND").then(
         (r) => r.json().invoice,
       );
       expect(invoice.amountSen).toBe(1234);
-      expect((await command(ppsk, 15, "CLOSE")).statusCode).toBe(409);
+      expect((await command(ppsk, 17, "CLOSE")).statusCode).toBe(409);
       const callback = (
         amountSen: number,
         key = process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY!,
@@ -383,7 +434,7 @@ it.runIf(Boolean(kitFile))(
         "REPLAY",
         "SETTLED",
       ]);
-      expect((await command(ppsk, 16, "CLOSE")).statusCode).toBe(200);
+      expect((await command(ppsk, 18, "CLOSE")).statusCode).toBe(200);
       expect(
         (
           await app.inject({ url: appUrl + "/completion", headers: owner })
@@ -393,6 +444,15 @@ it.runIf(Boolean(kitFile))(
         url: root + "/completion/queue",
         headers: ppsk,
       });
+      const csvPath = root + "/completion/queue?format=csv&view=closed";
+      const csv = await app.inject({url:csvPath,headers:ppsk});
+      expect(csv.statusCode).toBe(200);
+      expect(csv.headers["cache-control"]).toContain("no-store");
+      expect(csv.headers["content-type"]).toContain("text/csv");
+      expect(csv.body).toContain("SPU,closed,1,0,1,0");
+      expect(csv.body).not.toContain(id);
+      expect((await app.inject({url:csvPath,headers:spt})).statusCode).toBe(404);
+      expect((await app.inject({url:csvPath,headers:planning})).statusCode).toBe(403);
       expect(aggregate.statusCode).toBe(200);
       expect(aggregate.json()).toEqual({
         cases: [],
@@ -431,7 +491,7 @@ it.runIf(Boolean(kitFile))(
         await db.auditLog.count({
           where: { target: id, action: "SYNTHETIC_PORTAL_COMPLETION" },
         }),
-      ).toBe(17);
+      ).toBe(19);
     } finally {
       await app.close();
     }

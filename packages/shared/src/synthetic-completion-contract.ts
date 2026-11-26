@@ -36,6 +36,7 @@ export const completionCommand = z.discriminatedUnion("action", [
     details: z.array(z.strictObject({ ...scope, comment: notes })).max(300),
   }),
   z.strictObject({ action: z.literal("SUBMIT_PAPER"), summary: notes }),
+  z.strictObject({ action: z.literal("RETURN_PAPER"), reason: notes }),
   z.strictObject({
     action: z.literal("DECIDE"),
     decisions: z.array(determination).min(1).max(300),
@@ -54,6 +55,7 @@ const commandRoles: Record<CompletionCommand["action"], CompletionRole[]> = {
   REREFER: ["PIC_KAWASAN"],
   COMMENT: [...departments],
   SUBMIT_PAPER: ["PIC_KAWASAN"],
+  RETURN_PAPER: ["URUS_SETIA_JK"],
   DECIDE: ["URUS_SETIA_JK"],
   SIGN: ["PEGAWAI_PENANDATANGAN"],
   RESPOND: ["PEMOHON", "WAKIL_SYARIKAT"],
@@ -73,12 +75,14 @@ export function canActOnCompletion(
 
 export const completionEvent = "SYNTHETIC_PORTAL_COMPLETION";
 export const completionProvider = "SYNTHETIC_PROVIDER";
+export const trainingLetterTemplate = "SYNTHETIC-DECISION-LETTER-v1";
 export const completionStoredMetadata = z.strictObject({
   version: z.number().int().positive(),
   timestamp: z.number().int().nonnegative(),
   firstPaid: z.boolean(),
   feeSen: z.number().int().nonnegative().nullable(),
   invoiceId: z.uuid().optional(),
+  letterTemplate: z.literal(trainingLetterTemplate).optional(),
   command: completionCommand,
 });
 

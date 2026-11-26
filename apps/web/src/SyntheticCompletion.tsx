@@ -24,6 +24,7 @@ type View = Pick<CompletionState, "version" | "closed"> & {
   decisions?: CompletionState["decisions"];
   letters?: number[];
   papers?: CompletionState["papers"];
+  returnedPapers?: CompletionState["returnedPapers"];
   referral?: null | {
     deadline: number;
     assigned?: boolean;
@@ -89,6 +90,8 @@ export function SyntheticCompletionQueue({
   identity: string;
   role: string;
 }) {
+  const [filter, setFilter] = useState("all");
+  const manager = ["PIC_KAWASAN", "PPSK"].includes(role);
   const query = useQuery<{
     cases: (View & { id: string })[];
     summary: {
@@ -98,8 +101,8 @@ export function SyntheticCompletionQueue({
       paymentPending: number;
     };
   }>({
-    queryKey: ["synthetic-completion-queue", identity, role],
-    queryFn: () => api(base + "/queue"),
+    queryKey: ["synthetic-completion-queue", identity, role, filter],
+    queryFn: () => api(base + "/queue?view=" + filter),
     retry: false,
   });
   if (query.error instanceof ApiError && query.error.status === 404)
@@ -112,12 +115,21 @@ export function SyntheticCompletionQueue({
         retry={() => void query.refetch()}
       />
     );
-  if (!query.data) return null;
   return (
     <section className="panel synthetic-panel">
       <h3>Tugasan keputusan latihan</h3>
       <p>Sehingga 50 kes terbaru dalam skop daerah.</p>
-      <ul className="synthetic-meta">
+      <label>
+        Status kes latihan
+        <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+          <option value="all">Semua</option>
+          <option value="open">Dalam proses</option>
+          <option value="overdue">Melepasi SLA</option>
+          <option value="closed">Ditutup</option>
+        </select>
+      </label>
+      {manager && <p><a href={`/api${base}/queue?format=csv&view=${filter}`}>Muat turun ringkasan daerah CSV</a></p>}
+      {!query.data ? <p role="status">Memuatkan ringkasan…</p> : <><ul className="synthetic-meta">
         <li>{query.data.summary.sampled} kes dalam ringkasan</li>
         <li>{query.data.summary.overdue} melepasi SLA ulasan</li>
         <li>{query.data.summary.closed} ditutup</li>
@@ -137,7 +149,7 @@ export function SyntheticCompletionQueue({
             await query.refetch();
           }}
         />
-      ))}
+      ))}</>}
     </section>
   );
 }
@@ -265,6 +277,13 @@ function CompletionForm({
           {view.overdue ? " · Lewat" : ""}
         </p>
       )}
+      {view.returnedPapers?.map(({paper, reason, returnedVersion}) => (
+        <details key={returnedVersion}>
+          <summary>Kertas Pertimbangan dipulangkan · v{paper.submittedVersion}</summary>
+          <p>Sebab pemulangan: {reason}</p>
+          <p>{paper.summary}</p>
+        </details>
+      ))}
       {view.papers?.map((paper, index) => (
         <details key={index}>
           <summary>Kertas Pertimbangan v{index + 1}</summary>
@@ -335,6 +354,10 @@ function CompletionForm({
             <a href={"/api" + path + "/letters/" + number}>
               Muat turun {number === 1 ? "surat induk" : "surat susulan"}{" "}
               LATIHAN v{number}
+            </a>
+            {" · "}
+            <a href={"/api" + path + "/letters/" + number + "?format=pdf"}>
+              PDF {number === 1 ? "induk" : "susulan"} LATIHAN v{number}
             </a>
           </p>
         ))}
@@ -435,6 +458,13 @@ function CompletionForm({
                 ))}
               </fieldset>,
             )}
+          {role === "URUS_SETIA_JK" &&
+            papers === letters.length + 1 &&
+            (decisions.size === 0 || view.decisionSigned) &&
+            noteForm("Sebab pemulangan Kertas Pertimbangan", (event) => {
+              event.preventDefault();
+              void send({ action:"RETURN_PAPER", reason:comment });
+            })}
           {role === "URUS_SETIA_JK" &&
             papers === letters.length + 1 &&
             (decisions.size === 0 || view.decisionSigned) && (
