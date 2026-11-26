@@ -16,6 +16,7 @@ on:
       - 'feature/personal-demo'
       - 'issue-68-phase1-completion'
       - 'security/p0-delegation-evidence'
+      - 'issue-68-functional-development'
 
 permissions:
   contents: read
