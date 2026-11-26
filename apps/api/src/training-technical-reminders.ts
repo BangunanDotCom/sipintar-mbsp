@@ -117,6 +117,12 @@ export async function eligibleTechnicalRecipient(
     return null;
   }
   if (assignment !== row.recipientId) return null;
+  if ((row.kind === "TECH_ESCALATE") !== (role === "PPSK")) return null;
+  await tx.$queryRaw`SELECT id FROM users WHERE id = ${row.recipientId} FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM user_role_assignments
+    WHERE "userId" = ${row.recipientId} AND "roleId" = ${role} ORDER BY id FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${submissionId} FOR SHARE`;
+
 
   const user = await tx.user.findFirst({
     where: {
@@ -160,6 +166,10 @@ export async function eligibleTechnicalRecipient(
     const state = await stateFor(tx, submissionId, scopes);
     const referral = state.referral;
     if (state.closed || referral?.version !== referralVersion) return null;
+    const now = Date.now();
+    if (row.kind === "TECH_PRE_DUE" ? now >= referral.deadline : now < referral.deadline)
+      return null;
+
     const missing = referral.departments.filter(
       (department) => !referral.comments[department],
     );
