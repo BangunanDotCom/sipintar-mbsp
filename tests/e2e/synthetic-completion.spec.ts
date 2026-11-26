@@ -93,6 +93,9 @@ test("PPSK filters and downloads the district summary via HTTPS", async ({ page 
   await expect(page.getByText("SPU · Halaman 1",{exact:true})).toBeVisible();
   await page.getByText("Lejar kewangan latihan",{exact:true}).click();
   await expect(page.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
+  await expect(page.getByText(/Catatan belum dipindah: 0. Percanggahan: 0/)).toBeVisible();
+  await page.getByText("Jadual konsolidasi teknikal latihan", { exact: true }).click();
+  await expect(page.getByText(/Snapshot Kertas Pertimbangan v/)).toBeVisible();
   if (process.env.STAYLINK_SYNTHETIC_RECORDS === "true") {
     await page.getByText("Daftar kawalan rekod latihan",{exact:true}).click();
     await expect(page.getByText("Rekod ditahan",{exact:true})).toBeVisible();

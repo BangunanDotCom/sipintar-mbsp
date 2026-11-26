@@ -19,6 +19,7 @@ on:
       - 'issue-68-functional-development'
       - 'issue-68-advanced-functional'
       - 'issue-68-core-functional-completion'
+      - 'issue-68-system-consolidation'
 
 permissions:
   contents: read

@@ -13,7 +13,7 @@ import {
 import { fail } from "./auth.js";
 type Tx = Prisma.TransactionClient;
 
-export async function stateFor(
+export async function replayCompletion(
   tx: Tx,
   id: string,
   scopes: { unitId: string; floorId: string }[],
@@ -42,6 +42,8 @@ export async function stateFor(
     })
     .sort((a, b) => a.version - b.version);
   let state = completionState();
+  let issuedAt: Date | undefined;
+  let settledAt: Date | undefined;
   for (const value of values) {
     if (value.version !== state.version + 1)
       fail(409, "Versi sejarah latihan tidak konsisten.");
@@ -53,9 +55,17 @@ export async function stateFor(
       });
       if (!applied.changed) fail(409, "Peralihan sejarah diduplikasi.");
       state = applied.state;
+      if (value.command.action === "ISSUE_SECOND")
+        issuedAt = new Date(value.timestamp);
+      if (value.command.action === "SETTLE_SECOND")
+        settledAt = new Date(value.timestamp);
     } catch {
       fail(409, "Sejarah peralihan latihan tidak konsisten.");
     }
   }
-  return state;
+  return { state, issuedAt, settledAt };
+}
+
+export async function stateFor(...args: Parameters<typeof replayCompletion>) {
+  return (await replayCompletion(...args)).state;
 }
