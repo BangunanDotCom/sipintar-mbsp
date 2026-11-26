@@ -46,3 +46,9 @@ restored_fingerprints=$(sql "$restore_db" "$fingerprints")
 test "$source_fingerprints" = "$restored_fingerprints"
 [[ "$restored_counts" == *'|1' ]]
 echo "Match (submissions|evidence links|completion|invoices|settlement|review notifications|immutable trigger): $restored_counts"
+
+if [[ $(sql "$source_db" "SELECT to_regclass('training_reminder_outbox') IS NOT NULL") == t ]]; then
+  reminder_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(r)::text, chr(10) ORDER BY r.id), ''), 'UTF8')), 'hex') FROM training_reminder_outbox r"
+  [[ $(sql "$source_db" "$reminder_proof") == "$(sql "$restore_db" "$reminder_proof")" ]]
+  echo "Training reminder rows and delivery states match."
+fi

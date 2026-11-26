@@ -3532,6 +3532,120 @@ describe("Issue 31 integrated synthetic portal", () => {
       ).toBe(404);
     },
   );
+  it.runIf(enabled)("previews only the chosen template version for the MFA-authorized template role", async () => {
+    const created = await request(template,"/api/templates","POST",{
+      name:"Pratonton latihan",category:"Surat kelulusan",content:"Pratonton Łukasz · Nguyễn.",
+    });
+    expect(created.statusCode,created.body).toBe(200);
+    const selected = await db.templateVersion.findFirstOrThrow({where:{templateId:created.json().id}});
+    const path = `/api/template-versions/${selected.id}/preview`;
+    const pdf = await request(template,path);
+    expect(pdf.statusCode,pdf.body).toBe(200);
+    expect(pdf.headers["cache-control"]).toContain("no-store");
+    expect(pdf.headers["content-digest"]).toBeDefined();
+    expect(pdf.rawPayload.subarray(0,5).toString()).toBe("%PDF-");
+    expect((await request(ict,path)).statusCode).toBe(403);
+    expect((await db.templateVersion.findUnique({where:{id:selected.id}}))?.status).toBe("DRAFT");
+  });
+
+  it.runIf(enabled)("aggregates more than 50 authorized submissions with date and category filters", async () => {
+    process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+    process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+    const category = "AGREGAT-" + randomUUID();
+    const rows = Array.from({length:53},(_,index)=>({
+      id:randomUUID(),draftId:randomUUID(),actorId:applicant.id,draftVersion:1,key:randomUUID(),
+      declarationVersion:"SYNTHETIC-K05-v1",policyVersion:"SYNTHETIC-K04-v1",
+      createdAt:new Date("2026-07-23T16:00:00.000Z"),
+      snapshot:{capacity:"INDIVIDUAL",companyId:null,districtId:index === 52 ? "SPT" : "SPU",buildingType:category},
+    }));
+    await db.applicationDraft.createMany({data:rows.map(({draftId})=>({
+      id:draftId,initiatedByUserId:applicant.id,capacity:"INDIVIDUAL",officialApplicantUserId:applicant.id,
+      applicantSnapshot:{},initiatorSnapshot:{},
+    }))});
+    await db.syntheticSubmission.createMany({data:rows});
+    const report = `${root}/reports/applications?category=${category}&from=2026-07-24&to=2026-07-24`;
+    const result = await request(pic,report);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json()).toMatchObject({district:"SPU",rows:[{status:"SUBMITTED",cases:52}]});
+    const csv = await request(ppsk,report+"&format=csv");
+    expect(csv.statusCode).toBe(200);
+    expect(csv.body).toContain("SPU,SUBMITTED,52,0,0,0,0,0");
+    expect(csv.body).not.toContain(rows[0].id);
+    expect((await request(pic,report+"&district=SPT")).statusCode).toBe(404);
+    expect((await request(applicant,report)).statusCode).toBe(403);
+    expect((await request(pic,`${root}/reports/applications?category=${category}&to=2026-07-23`)).json().rows).toEqual([]);
+  });
+
+  it.runIf(enabled)("deduplicates supervisor and scheduled reminders and retries only explicit temporary delivery failures", async () => {
+    process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+    process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+    const oldFlag = process.env.STAYLINK_SYNTHETIC_REMINDERS;
+    const { scheduleTrainingReminders, deliverTrainingReminders } = await import("../apps/api/src/training-reminders");
+    const monitor = `${root}/reminder-monitor`;
+    expect((await request(ppsk, `${root}/inactive-drafts`)).statusCode).toBe(404);
+    process.env.STAYLINK_SYNTHETIC_REMINDERS = "true";
+    try {
+      const owner = await actor("PEMOHON");
+      const draft = (await request(owner,"/api/application-drafts","POST",{capacity:"INDIVIDUAL"})).json();
+      const cross = (await request(owner,"/api/application-drafts","POST",{capacity:"INDIVIDUAL"})).json();
+      for (const [item,districtId] of [[draft,"SPU"],[cross,"SPT"]] as const) {
+        await db.applicationPremises.create({data:{draftId:item.id,districtId}});
+        await db.applicationDraft.update({where:{id:item.id},data:{updatedAt:new Date(Date.now()-61*86_400_000)}});
+      }
+      const queue = `${root}/inactive-drafts`;
+      const viewed = await request(ppsk,queue);
+      expect(viewed.statusCode,viewed.body).toBe(200);
+      expect(viewed.body).toContain(draft.id);
+      expect(viewed.body).not.toContain(cross.id);
+      expect((await request(pic,queue)).statusCode).toBe(403);
+      expect((await request(ppsk,`${queue}/${cross.id}/remind`,"POST",{version:cross.version})).statusCode).toBe(404);
+      const remind = () => request(ppsk,`${queue}/${draft.id}/remind`,"POST",{version:draft.version});
+      await db.$executeRaw`CREATE FUNCTION training_fixture_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.type = 'TRAINING_DRAFT_REMINDER' THEN RAISE EXCEPTION 'fixture rollback'; END IF;
+          RETURN NEW;
+        END $$`;
+      try {
+        await db.$executeRaw`CREATE TRIGGER training_fixture_abort BEFORE INSERT ON notifications
+          FOR EACH ROW EXECUTE FUNCTION training_fixture_abort()`;
+        try {
+          expect((await remind()).statusCode).toBe(500);
+          expect(await db.trainingReminderOutbox.count({where:{draftId:draft.id}})).toBe(0);
+        } finally {
+          await db.$executeRaw`DROP TRIGGER training_fixture_abort ON notifications`;
+        }
+      } finally {
+        await db.$executeRaw`DROP FUNCTION training_fixture_abort()`;
+      }
+      const [second,duplicate] = await Promise.all([remind(),remind()]);
+      expect([second.json().queued,duplicate.json().queued].sort()).toEqual([false,true]);
+      expect(await db.notification.count({where:{userId:owner.id,type:"TRAINING_DRAFT_REMINDER"}})).toBe(1);
+      expect(await scheduleTrainingReminders()).toBe(1);
+      expect(await scheduleTrainingReminders()).toBe(0);
+      expect((await request(ppsk,monitor)).statusCode).toBe(403);
+      expect((await request(ict,monitor)).statusCode).toBe(200);
+      await db.applicationDraft.update({where:{id:cross.id},data:{version:{increment:1}}});
+      let attempts = 0;
+      const send = async () => {
+        attempts++;
+        throw Object.assign(new Error("fixture refused"),{code:"ECONNREFUSED"});
+      };
+      await Promise.all([deliverTrainingReminders(send),deliverTrainingReminders(send)]);
+      expect(attempts).toBe(1);
+      const target = await db.trainingReminderOutbox.findFirstOrThrow({where:{draftId:draft.id}});
+      expect(target).toMatchObject({status:"FAILED",attempts:1,lastError:"SMTP_TEMPORARY"});
+      await db.trainingReminderOutbox.update({where:{id:target.id},data:{availableAt:new Date(0)}});
+      await deliverTrainingReminders(async()=>{attempts++;});
+      expect(attempts).toBe(2);
+      expect(await db.trainingReminderOutbox.findUnique({where:{id:target.id}})).toMatchObject({status:"SENT",attempts:2});
+      expect(await db.trainingReminderOutbox.findFirst({where:{draftId:cross.id}})).toMatchObject({status:"CANCELLED"});
+      expect((await request(owner,`/api/application-drafts/${draft.id}`)).statusCode).toBe(200);
+    } finally {
+      if (oldFlag === undefined) delete process.env.STAYLINK_SYNTHETIC_REMINDERS;
+      else process.env.STAYLINK_SYNTHETIC_REMINDERS=oldFlag;
+    }
+  });
+
 });
 
 it("keeps the same CSRF token across tabs and separates it from other sessions", async () => {
