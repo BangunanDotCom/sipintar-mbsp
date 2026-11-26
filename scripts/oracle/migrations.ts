@@ -180,7 +180,8 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
   ])
     baseline.expected.add(name);
   const delegation = await loadMigration(delegationVersion);
-  const migrations = [baseline, completion, delegation];
+  const core = await loadMigration("004-core-journals");
+  const migrations = [baseline, completion, delegation, core];
   const inventoryThrough = (count: number) =>
     new Set(
       migrations.slice(0, count).flatMap(({ expected }) => [...expected]),
@@ -204,7 +205,7 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
       CHECKSUM: string;
       STATE: string;
     }>(
-      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 4 ROWS ONLY",
+      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 5 ROWS ONLY",
       {},
       { outFormat: oracledb.OUT_FORMAT_OBJECT },
     ));

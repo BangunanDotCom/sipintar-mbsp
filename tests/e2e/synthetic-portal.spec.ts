@@ -178,9 +178,10 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
     await awaitDraftRequestBudget(applicant.request, 110);
     const session = await applicant.request.get("/api/auth/me");
     expect(session.ok()).toBe(true);
+    const applicantSession = await session.json();
     const headers = {
       Origin: baseURL!,
-      "X-CSRF-Token": (await session.json()).csrf,
+      "X-CSRF-Token": applicantSession.csrf,
     };
     const draft = await applicant.request.post("/api/application-drafts", {
       headers,
@@ -322,6 +323,17 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       name: `Serahan sintetik ${first.id}`,
     });
     await expect(firstCard.getByText(/Nasihat AI tiruan sahaja/)).toBeVisible();
+    await pic.getByText("Laporan semua serahan dalam skop",{exact:true}).click();
+    await pic.getByRole("button",{name:"Papar laporan"}).click();
+    await expect(pic.getByRole("link",{name:"Eksport laporan serahan CSV"})).toBeVisible();
+
+    await firstCard.getByRole("button", {name:"Sejarah semakan awal"}).click();
+    await firstCard.getByRole("button", {name:"Jalankan semakan awal latihan"}).click();
+    await expect(firstCard.getByText(/Semakan manual diperlukan|Peraturan latihan/)).toBeVisible();
+    await firstCard.getByLabel("Catatan semakan manual").fill("Semakan bukti dan premis latihan.");
+    await firstCard.getByRole("button", {name:"Rekod semakan manual"}).click();
+    await expect(firstCard.getByText("Semakan bukti dan premis latihan.")).toBeVisible();
+
     uiTimings.pic = Math.round(performance.now() - openPic);
     await pic.setViewportSize({ width: 390, height: 850 });
     const tasks = pic.getByRole("region", { name: "Tugasan semakan sintetik" });
@@ -415,8 +427,22 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       )
         billingReads++;
     });
+    const reminderDraft = process.env.STAYLINK_SYNTHETIC_REMINDERS === "true"
+      ? await db.applicationDraft.create({data:{
+          initiatedByUserId:applicantSession.user.id, officialApplicantUserId:applicantSession.user.id,
+          capacity:"INDIVIDUAL", initiatorSnapshot:{}, applicantSnapshot:{},
+          updatedAt:new Date(Date.now()-61*86_400_000), premises:{create:{districtId:"SPU"}},
+        }})
+      : null;
     const openPpsk = performance.now();
     await supervisor.goto("/dashboard");
+    if (reminderDraft) {
+      const item = supervisor.getByRole("article").filter({hasText:reminderDraft.id});
+      await item.getByRole("button",{name:"Ingatkan pemohon"}).click();
+      await expect(supervisor.getByText("Peringatan latihan ditambah pada baris gilir.")).toBeVisible();
+      await expect(item.getByRole("button",{name:"Ingatkan pemohon"})).toBeDisabled();
+    }
+
     const supervisorCard = supervisor.getByRole("article", {
       name: `Serahan sintetik ${second.id}`,
     });

@@ -15,10 +15,10 @@ export async function assertOracleCompletionMigration(pool: OraclePool) {
   await pool.use(async (connection) => {
     const [row] = await queryRows(
       connection,
-      `SELECT VERSION FROM ${history} WHERE VERSION='002-completion-audit' AND STATE='APPLIED'`,
+      `SELECT VERSION FROM ${history} WHERE VERSION='004-core-journals' AND STATE='APPLIED'`,
       {},
     );
-    if (!row) throw Error("Migrasi Oracle makmal 002 belum digunakan.");
+    if (!row) throw Error("Migrasi Oracle makmal 004 belum digunakan.");
   });
 }
 

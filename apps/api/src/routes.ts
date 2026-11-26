@@ -1,3 +1,9 @@
+import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
+import {
+  unicodeTrainingPdf,
+  trainingPdfDigest,
+  UnsupportedTrainingGlyph,
+} from "./synthetic-letter-pdf.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { origin, safeUser } from "./core.js";
@@ -22,6 +28,7 @@ export async function routes(
   app: FastifyInstance,
   repository = postgresAdmin,
   auth = postgresAuth,
+  trainingSandbox = () => Boolean(syntheticPortalDatabase()),
 ) {
   const { audit, notify, issueIdentity } = auth;
   const allow = (req: Parameters<typeof authorize>[0], action: string) =>
@@ -156,14 +163,20 @@ export async function routes(
       fail(400, "Julat tarikh tidak sah.");
     if (!(await repository.departmentExists(b.departmentId)))
       fail(400, "Jabatan tidak sah.");
-    const a = await repository.assignRole(userId, {
-      ...b,
-      districtId: b.districtId ?? null,
-      startsAt: new Date(b.startsAt),
-      endsAt: b.endsAt ? new Date(b.endsAt) : null,
-      authorizedBy: s.userId,
-    });
-    await audit(s.userId, s.activeRole, "ROLE_ASSIGNED", a.id);
+    const a = await repository.assignRole(
+      userId,
+      {
+        ...b,
+        districtId: b.districtId ?? null,
+        startsAt: new Date(b.startsAt),
+        endsAt: b.endsAt ? new Date(b.endsAt) : null,
+        authorizedBy: s.userId,
+      },
+      s.userId,
+      s.activeRole,
+      trainingSandbox() &&
+        process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS === "true",
+    );
     await notify(
       userId,
       "ROLE",
@@ -177,8 +190,8 @@ export async function routes(
     const a = await repository.appointment(id(req));
     if (a.userId === s.userId)
       fail(403, "Perubahan pelantikan sendiri tidak dibenarkan.");
-    await repository.revoke(a.id, a.userId);
-    await audit(s.userId, s.activeRole, "ROLE_REVOKED", a.id);
+    if (!(await repository.revoke(a.id, a.userId, s.userId, s.activeRole)))
+      return { ok: true };
     await notify(
       a.userId,
       "ROLE",
@@ -303,6 +316,43 @@ export async function routes(
     );
     await audit(s.userId, s.activeRole, "TEMPLATE_VERSION_CREATED", t.id);
     return t;
+  });
+  app.get("/api/template-versions/:id/preview", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
+    await allow(req, "templates.write");
+    if (!trainingSandbox()) fail(404, "Pratonton latihan tidak tersedia.");
+    const versionId = z.uuid().parse(id(req));
+    const version = await repository.templatePreview(versionId);
+    if (!version) fail(404, "Versi templat tidak ditemui.");
+    try {
+      const bytes = await unicodeTrainingPdf(
+        [
+          "STAYLink MBSP — PRATONTON LATIHAN",
+          `${version.template.name} · Versi ${version.version}`,
+          "",
+          version.content,
+        ].join("\n"),
+        version.createdAt.getTime(),
+        "SYNTHETIC-TEMPLATE-PREVIEW-v1",
+      );
+      return reply
+        .header(
+          "Content-Disposition",
+          `attachment; filename="staylink-templat-latihan-v${version.version}.pdf"`,
+        )
+        .header("Content-Digest", trainingPdfDigest(bytes))
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "sandbox")
+        .type("application/pdf")
+        .send(bytes);
+    } catch (error) {
+      if (error instanceof UnsupportedTrainingGlyph)
+        fail(
+          422,
+          "Aksara belum disokong dalam PDF latihan. Kandungan asal kekal tersedia.",
+        );
+      throw error;
+    }
   });
   app.post("/api/template-versions/:id/activate", async (req) => {
     const s = await allow(req, "templates.write");

@@ -58,16 +58,24 @@ it("preserves date-only, UTC, Boolean and optional text contracts", () => {
 });
 
 it("inventories all Prisma tables and all user-defined DDL names as STL", async () => {
-  const inventory: { type: string; name: string }[] = JSON.parse(
-    await readFile("database/oracle/001-inventory.json", "utf8"),
+  const inventories = await Promise.all(
+    ["001", "002", "003", "004"].map(
+      async (number) =>
+        JSON.parse(
+          await readFile(`database/oracle/${number}-inventory.json`, "utf8"),
+        ) as { type: string; name: string }[],
+    ),
   );
+  const inventory = inventories.flat();
   const prisma = await readFile("prisma/schema.prisma", "utf8");
   const tables = [...prisma.matchAll(/@@map\("([^"]+)"\)/g)].map(
     ([, name]) =>
       "STL_" +
       (name === "company_representation_invitations"
         ? "company_rep_invitations"
-        : name
+        : name === "synthetic_financial_entries"
+          ? "synth_financial_entries"
+          : name
       ).toUpperCase(),
   );
   expect(

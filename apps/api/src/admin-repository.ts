@@ -82,20 +82,72 @@ export const postgresAdmin = {
   async officer(id: string) {
     return db.user.findUniqueOrThrow({ where: { id }, select: { kind: true } });
   },
-  async assignRole(userId: string, data: Appointment) {
-    return db.userRoleAssignment.create({ data: { ...data, userId } });
+  async assignRole(
+    userId: string,
+    data: Appointment,
+    actorId: string,
+    activeRole: string | null,
+    guard: boolean,
+  ) {
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id=${userId} FOR UPDATE`;
+      if (
+        guard &&
+        (await tx.userRoleAssignment.findFirst({
+          where: {
+            userId,
+            roleId: data.roleId,
+            status: "ACTIVE",
+            ...(data.endsAt && { startsAt: { lt: data.endsAt } }),
+            AND: [
+              { OR: [{ endsAt: null }, { endsAt: { gt: data.startsAt } }] },
+              ...(data.districtId
+                ? [
+                    {
+                      OR: [
+                        { districtId: null },
+                        { districtId: data.districtId },
+                      ],
+                    },
+                  ]
+                : []),
+            ],
+          },
+          select: { id: true },
+        }))
+      )
+        fail(409, "Pelantikan latihan bertindih dalam skop yang sama.");
+      const role = await tx.userRoleAssignment.create({
+        data: { ...data, userId },
+      });
+      await tx.auditLog.create({
+        data: { actorId, activeRole, action: "ROLE_ASSIGNED", target: role.id },
+      });
+      return role;
+    });
   },
   async appointment(id: string) {
     return db.userRoleAssignment.findUniqueOrThrow({ where: { id } });
   },
-  async revoke(id: string, userId: string) {
-    await db.$transaction([
-      db.userRoleAssignment.update({
-        where: { id },
+  async revoke(
+    id: string,
+    userId: string,
+    actorId: string,
+    activeRole: string | null,
+  ) {
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id=${userId} FOR UPDATE`;
+      const result = await tx.userRoleAssignment.updateMany({
+        where: { id, userId, status: { not: "REVOKED" } },
         data: { status: "REVOKED", endsAt: new Date() },
-      }),
-      db.session.deleteMany({ where: { userId } }),
-    ]);
+      });
+      if (!result.count) return false;
+      await tx.session.deleteMany({ where: { userId } });
+      await tx.auditLog.create({
+        data: { actorId, activeRole, action: "ROLE_REVOKED", target: id },
+      });
+      return true;
+    });
   },
   async areas(districts?: string[]) {
     return db.area.findMany({
@@ -218,6 +270,17 @@ export const postgresAdmin = {
           createdBy,
         },
       });
+    });
+  },
+  async templatePreview(id: string) {
+    return db.templateVersion.findUnique({
+      where: { id },
+      select: {
+        version: true,
+        content: true,
+        createdAt: true,
+        template: { select: { name: true } },
+      },
     });
   },
   async activateTemplate(

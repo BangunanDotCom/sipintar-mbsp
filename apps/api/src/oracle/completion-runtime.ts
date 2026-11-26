@@ -1,3 +1,4 @@
+import { insertOracleReminder } from "./training-reminders.js";
 import type { Prisma } from "@prisma/client";
 import { completionEvent } from "../../../../packages/shared/src/synthetic-completion-contract.js";
 import type { CompletionRepository } from "../completion-repository.js";
@@ -31,6 +32,10 @@ export function createOracleCompletionRuntime(
           const review = reviews.onConnection(connection);
           return operation({
             ...review,
+            async enqueueReminders(entries) {
+              for (const entry of entries)
+                await insertOracleReminder(pool, connection, entry);
+            },
             events: (id) => journal.events(connection, id),
             appendCompletion: (entry) => journal.appendEvent(connection, entry),
             lockActor: (operator, role, district) =>
@@ -74,15 +79,20 @@ export function createOracleCompletionRuntime(
                 (await review.applicantSubmission(draftId, userId))?.id ?? null
               );
             },
-            queue: (district, excludedActorId) =>
+            queue: (district, excludedActorId, includeBkt) =>
               queryRows<{ id: string }>(
                 connection,
                 `SELECT S.ID AS "id" FROM ${submissions} S
                 WHERE ${districtFilter} AND S.ACTOR_ID<>:excludedActorId
                   AND NOT EXISTS (SELECT 1 FROM ${submissions} N WHERE N.DRAFT_ID=S.DRAFT_ID AND N.PREVIOUS_ID=S.ID)
-                  AND EXISTS (SELECT 1 FROM ${audit} A WHERE A.TARGET=S.ID AND A.ACTION=:event)
+                  AND EXISTS (SELECT 1 FROM ${audit} A WHERE A.TARGET=S.ID AND A.OUTCOME='SUCCESS' AND (A.ACTION=:event OR (:includeBkt=1 AND A.ACTION='SYNTHETIC_PORTAL_INVOICE_SETTLED')))
                 ORDER BY S.CREATED_AT DESC,S.ID FETCH FIRST 50 ROWS ONLY`,
-                { district, excludedActorId, event: completionEvent },
+                {
+                  district,
+                  excludedActorId,
+                  event: completionEvent,
+                  includeBkt: includeBkt ? 1 : 0,
+                },
               ),
           });
         });

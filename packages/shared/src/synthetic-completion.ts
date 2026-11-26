@@ -1,6 +1,8 @@
 import type { z } from "zod";
 import {
   canActOnCompletion,
+  trainingLetterTemplate,
+  type TrainingLetterVersion,
   departments,
   type TechnicalDepartment,
   type CompletionRole,
@@ -19,6 +21,17 @@ export type {
 
 export const completionDatabaseName =
   /^staylink_issue62_personal_completion[a-z0-9]{0,14}_test$/;
+
+export const completionHistoryLimit = 500;
+
+export function assertCompletionHistoryCount(count: number) {
+  if (
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    count > completionHistoryLimit
+  )
+    throw Error("Sejarah latihan melebihi had persediaan.");
+}
 
 type Determination = z.infer<typeof determination>;
 type Scope = Pick<Determination, "unitId" | "floorId">;
@@ -41,28 +54,47 @@ export function sixMonthLimit(timestamp: number) {
     .slice(0, 10);
 }
 
+type Paper = {
+  submittedVersion: number;
+  summary: string;
+  comments: {
+    department: TechnicalDepartment;
+    text: string;
+    details: Comment["details"];
+  }[];
+};
+
 export function completionState() {
   return {
     version: 0,
+    bkt: null as null | { receivedAt: number; note: string },
+    technicalHistory: [] as {
+      department: TechnicalDepartment;
+      version: number;
+      action: "SUBMITTED" | "RETURNED";
+      comment: Omit<Comment, "action"> | null;
+      reason: string | null;
+    }[],
     referral: null as null | {
       deadline: number;
+      version: number;
       paperSubmitted: boolean;
       departments: TechnicalDepartment[];
+      acknowledged: TechnicalDepartment[];
       comments: Partial<Record<TechnicalDepartment, Omit<Comment, "action">>>;
     },
-    papers: [] as {
-      summary: string;
-      comments: {
-        department: TechnicalDepartment;
-        text: string;
-        details: Comment["details"];
-      }[];
+    papers: [] as Paper[],
+    returnedPapers: [] as {
+      paper: Paper;
+      reason: string;
+      returnedVersion: number;
     }[],
     decisions: [] as (Determination & { firstConditionAt?: number })[],
     letters: [] as {
       number: number;
       decisions: Determination[];
       signedAt: number;
+      templateVersion: TrainingLetterVersion;
     }[],
     decisionSigned: false,
     decisionScope: [] as string[],
@@ -88,6 +120,7 @@ export function applyCompletion(
     now: number;
     scopes: Scope[];
     firstPaid: boolean;
+    letterTemplate?: TrainingLetterVersion;
     feeSen: number | null;
     invoiceId?: string;
   },
@@ -99,6 +132,7 @@ export function applyCompletion(
   if (action === "SETTLE_SECOND" && state.invoice?.settled)
     return { state, changed: false };
   if (state.closed) throw Error("Permohonan telah ditutup.");
+  assertCompletionHistoryCount(state.version + 1);
   const next = structuredClone(state);
   const { referral, response } = next;
   const pending = next.decisions.filter(
@@ -109,6 +143,44 @@ export function applyCompletion(
     new Set(items.map(key)).size === items.length &&
     items.every((item) => scopeKeys.has(key(item)));
   switch (command.action) {
+    case "RECEIVE_BKT":
+      if (next.bkt || referral || !context.firstPaid)
+        throw Error(
+          "Penerimaan BKT latihan memerlukan bayaran pertama dan kes yang belum dirujuk.",
+        );
+      next.bkt = { receivedAt: now, note: command.note };
+      break;
+    case "ACK_REFERRAL": {
+      const department = role as TechnicalDepartment;
+      if (
+        !next.bkt ||
+        !referral?.departments.includes(department) ||
+        referral.acknowledged.includes(department)
+      )
+        throw Error("Penerimaan rujukan tidak tersedia.");
+      referral.acknowledged.push(department);
+      break;
+    }
+    case "RETURN_COMMENT": {
+      if (
+        !next.bkt ||
+        !referral ||
+        referral.paperSubmitted ||
+        !referral.comments[command.department]
+      )
+        throw Error(
+          "Ulasan tiada atau telah dimasukkan dalam snapshot Kertas Pertimbangan.",
+        );
+      delete referral.comments[command.department];
+      next.technicalHistory.push({
+        department: command.department,
+        version: state.version + 1,
+        action: "RETURNED",
+        comment: null,
+        reason: command.reason,
+      });
+      break;
+    }
     case "REFER":
       if (
         !context.firstPaid ||
@@ -120,7 +192,9 @@ export function applyCompletion(
       next.referral = {
         departments: [...departments],
         comments: {},
+        acknowledged: [],
         deadline: now + 7 * day,
+        version: state.version + 1,
         paperSubmitted: false,
       };
       break;
@@ -140,7 +214,9 @@ export function applyCompletion(
       next.referral = {
         departments: command.departments,
         comments: {},
+        acknowledged: [],
         deadline: now + 7 * day,
+        version: state.version + 1,
         paperSubmitted: false,
       };
       break;
@@ -149,6 +225,7 @@ export function applyCompletion(
       if (
         !referral?.departments.includes(department) ||
         referral.comments[department] ||
+        (next.bkt && !referral.acknowledged.includes(department)) ||
         !uniqueValid(command.details)
       )
         throw Error("Ulasan atau skop rujukan tidak sah.");
@@ -156,6 +233,14 @@ export function applyCompletion(
         general: command.general,
         details: command.details,
       };
+      if (next.bkt)
+        next.technicalHistory.push({
+          department,
+          version: state.version + 1,
+          action: "SUBMITTED",
+          comment: referral.comments[department],
+          reason: null,
+        });
       break;
     }
     case "SUBMIT_PAPER":
@@ -169,6 +254,7 @@ export function applyCompletion(
         throw Error("Kertas Pertimbangan belum sedia diserah.");
       referral.paperSubmitted = true;
       next.papers.push({
+        submittedVersion: state.version + 1,
         summary: command.summary,
         comments: referral.departments.map((department) => ({
           department,
@@ -177,6 +263,22 @@ export function applyCompletion(
         })),
       });
       break;
+    case "RETURN_PAPER": {
+      if (
+        !referral?.paperSubmitted ||
+        next.papers.length !== next.letters.length + 1 ||
+        (next.decisions.length > 0 && !next.decisionSigned)
+      )
+        throw Error("Kertas Pertimbangan tiada atau keputusan telah direkod.");
+      const paper = next.papers.pop()!;
+      next.returnedPapers.push({
+        paper,
+        reason: command.reason,
+        returnedVersion: state.version + 1,
+      });
+      referral.paperSubmitted = false;
+      break;
+    }
     case "DECIDE": {
       const required = next.decisions.length ? pending : scopes;
       if (
@@ -246,6 +348,7 @@ export function applyCompletion(
           .filter((item) => next.decisionScope.includes(key(item)))
           .map(({ firstConditionAt: _, ...item }) => item),
         signedAt: now,
+        templateVersion: context.letterTemplate ?? trainingLetterTemplate,
       });
       next.decisionSigned = true;
       break;

@@ -42,10 +42,20 @@ export async function registerRepositoryRoutes(
     management,
     dashboard,
   }: DatabaseRepositories,
-  training?: () => { review: boolean; completion: boolean },
+  training?: () => { review: boolean; completion: boolean; reminders: boolean },
 ) {
   await authRoutes(app, auth);
-  await adminRoutes(app, admin, auth);
+  await adminRoutes(
+    app,
+    admin,
+    auth,
+    auth === postgresAuth
+      ? undefined
+      : () =>
+          process.env.NODE_ENV === "test" &&
+          process.env.STAYLINK_ORACLE_LAB_SYNTHETIC === "true" &&
+          process.env.STAYLINK_DEMO_HOST !== "true",
+  );
   dashboardRoutes(app, dashboard, applicants, auth, training);
   await applicantRoutes(app, applicants, auth, companyInvitations);
   if (auth === postgresAuth) {

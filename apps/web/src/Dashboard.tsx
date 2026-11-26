@@ -1,3 +1,8 @@
+import {
+  TrainingInactiveDrafts,
+  TrainingReminderMonitor,
+} from "./TrainingReminders";
+import { SyntheticCompletionQueue } from "./SyntheticCompletion";
 import { SyntheticOfficerPanel } from "./SyntheticOfficerPanel";
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -525,13 +530,36 @@ export default function Dashboard() {
                     </section>
                   </div>
                 )}
-                {["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
-                  <SyntheticOfficerPanel
-                    key={me.user.id + me.activeRole}
-                    userId={me.user.id}
-                    activeRole={me.activeRole}
-                  />
-                )}
+                {dash.data?.training?.review === true &&
+                  ["PIC_KAWASAN", "PPSK"].includes(me.activeRole) && (
+                    <SyntheticOfficerPanel
+                      key={me.user.id + me.activeRole}
+                      userId={me.user.id}
+                      activeRole={me.activeRole}
+                    />
+                  )}
+                {dash.data?.training?.reminders === true &&
+                  me.activeRole === "PPSK" && (
+                    <TrainingInactiveDrafts
+                      key={me.user.id}
+                      userId={me.user.id}
+                    />
+                  )}
+                {dash.data?.training?.completion === true &&
+                  [
+                    "PIC_KAWASAN",
+                    "PPSK",
+                    "PERANCANG_BANDAR",
+                    "KEJURUTERAAN",
+                    "URUS_SETIA_JK",
+                    "PEGAWAI_PENANDATANGAN",
+                  ].includes(me.activeRole) && (
+                    <SyntheticCompletionQueue
+                      key={me.user.id + me.activeRole}
+                      identity={me.user.id}
+                      role={me.activeRole}
+                    />
+                  )}
                 {me.activeRole === "PIC_KAWASAN" && (
                   <section className="panel">
                     <h3>Kawasan seliaan</h3>
@@ -735,7 +763,14 @@ export default function Dashboard() {
             {tab === "companies" && <Companies />}
             {tab === "users" && <UsersPanel />}
             {tab === "areas" && <Areas actions={actions} />}
-            {tab === "templates" && <Templates />}
+            {tab === "config" &&
+              dash.data?.training?.reminders === true &&
+              actions.includes("config.technical") && (
+                <TrainingReminderMonitor key={me.user.id} userId={me.user.id} />
+              )}
+            {tab === "templates" && (
+              <Templates training={dash.data?.training?.review === true} />
+            )}
             {tab === "config" && (
               <Config
                 scope={
@@ -1397,7 +1432,7 @@ function Areas({ actions }: { actions: string[] }) {
     </>
   );
 }
-function Templates() {
+function Templates({ training }: { training: boolean }) {
   const q = useResource("/templates"),
     refresh = useRefresh(),
     [error, setError] = React.useState("");
@@ -1425,6 +1460,13 @@ function Templates() {
                       Versi {v.version} · {v.status}
                     </span>
                     <pre>{v.content}</pre>
+                    {training && (
+                      <p>
+                        <a href={`/api/template-versions/${v.id}/preview`}>
+                          Pratonton PDF latihan
+                        </a>
+                      </p>
+                    )}
                     {v.status !== "ACTIVE" && (
                       <button
                         className="button small secondary"

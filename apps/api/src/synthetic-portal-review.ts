@@ -1,3 +1,9 @@
+import type { FinancialJournal } from "./synthetic-financial-journal.js";
+import {
+  configuredPrecheckProvider,
+  precheckResult,
+  runSyntheticPrecheck,
+} from "./synthetic-precheck.js";
 import {
   isPersonalDemoDatabase,
   personalDistrictAssignments,
@@ -461,6 +467,12 @@ export interface SyntheticReviewTransaction {
   ): Promise<Pick<Submission, "id" | "snapshot" | "actorId"> | null>;
   ledgerEvents(id: string, actions: readonly string[]): Promise<LedgerEvent[]>;
   audit(entry: AuditEntry): Promise<void>;
+  financial: FinancialJournal;
+  auditHistory(
+    id: string,
+    action: string,
+    take: number,
+  ): Promise<{ id: string; createdAt: Date; metadata: Prisma.JsonValue }[]>;
   notify(entry: NotificationData): Promise<void>;
 }
 
@@ -540,6 +552,37 @@ export function postgresSyntheticReviewTransaction(
         },
       });
     },
+    financial: {
+      entries: (submissionId) =>
+        tx.syntheticFinancialEntry.findMany({
+          where: { submissionId },
+          orderBy: [{ stage: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          select: {
+            stage: true,
+            event: true,
+            invoiceId: true,
+            amountSen: true,
+            createdAt: true,
+          },
+        }),
+      invoice: (submissionId, stage) =>
+        tx.syntheticFinancialEntry.findUnique({
+          where: {
+            submissionId_stage_event: { submissionId, stage, event: "INVOICE" },
+          },
+          select: { invoiceId: true, amountSen: true },
+        }),
+      async append(data) {
+        await tx.syntheticFinancialEntry.create({ data });
+      },
+    },
+    auditHistory: (id, action, take) =>
+      tx.auditLog.findMany({
+        where: { target: id, action, outcome: "SUCCESS" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take,
+        select: { id: true, createdAt: true, metadata: true },
+      }),
     async notify(entry) {
       await tx.notification.create({ data: entry });
     },
@@ -697,6 +740,82 @@ export async function syntheticReviewRoutes(
           .map(({ id, category, version }) => ({ id, category, version })),
       };
     }, true);
+  });
+
+  const precheckAction = "SYNTHETIC_PRECHECK_RECORDED";
+  const recordedPrecheck = z.strictObject({
+    version: z.number().int().positive(),
+    result: precheckResult,
+  });
+  const precheckInput = z.discriminatedUnion("mode", [
+    z.strictObject({
+      mode: z.literal("AUTO"),
+      version: z.number().int().positive(),
+    }),
+    z.strictObject({
+      mode: z.literal("MANUAL"),
+      version: z.number().int().positive(),
+      reason: z.string().trim().min(3).max(500),
+    }),
+  ]);
+  portal.get("/reviews/:id/precheck", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
+    const officer = await syntheticReviewOfficer(req, auth);
+    const { id } = params.parse(req.params);
+    return repository.transaction(async (tx) => {
+      await lockSyntheticReview(tx, id, officer, { forWrite: false });
+      const rows = await tx.auditHistory(id, precheckAction, 20);
+      return {
+        history: rows.map(({ id, createdAt, metadata }) => ({
+          id,
+          createdAt,
+          ...recordedPrecheck.parse(metadata),
+        })),
+      };
+    }, true);
+  });
+  portal.post("/reviews/:id/precheck", { bodyLimit: 2048 }, async (req) => {
+    const officer = await syntheticReviewOfficer(req, auth);
+    if (officer.role !== "PIC_KAWASAN")
+      fail(403, "Semakan awal memerlukan PIC.");
+    const { id } = params.parse(req.params);
+    const input = precheckInput.parse(req.body);
+    return repository.transaction(async (tx) => {
+      const { state, snapshot } = await lockSyntheticReview(tx, id, officer);
+      if (state.status !== "SUBMITTED" || state.version !== input.version)
+        fail(409, "Versi atau status semakan sudah berubah.");
+      const rows = await tx.evidenceRows(snapshot.evidence.map(({ id }) => id));
+      const current = new Map(rows.map((row) => [row.id, row]));
+      const eligible = eligibleEvidence(
+        state.caseId,
+        snapshot.evidence,
+        current,
+      );
+      const result =
+        input.mode === "MANUAL"
+          ? precheckResult.parse({
+              source: "MANUAL",
+              findings: [],
+              reason: input.reason,
+            })
+          : await runSyntheticPrecheck(configuredPrecheckProvider(), {
+              units: snapshot.units.length,
+              floors: snapshot.floors.length,
+              expectedEvidence: snapshot.evidence.length,
+              cleanEvidence: eligible.length,
+              unverifiedEvidence: eligible.filter(
+                (d) => current.get(d.id)?.verificationStatus === "UNVERIFIED",
+              ).length,
+            });
+      await tx.audit({
+        target: id,
+        actorId: officer.operator.userId,
+        activeRole: officer.role,
+        action: precheckAction,
+        metadata: { version: state.version, result },
+      });
+      return result;
+    });
   });
 
   portal.post("/reviews/:id", { bodyLimit: 4096 }, async (req) => {

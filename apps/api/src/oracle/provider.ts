@@ -1,3 +1,6 @@
+import { oracleTrainingRemindersEnabled } from "../training-reminders.js";
+import { createOracleSyntheticAnalytics } from "./synthetic-analytics.js";
+import { createOracleTrainingReminders } from "./training-reminders.js";
 import { companyInvitationRoutes } from "../company-invitations.js";
 import { oracleDelegationRoutes } from "./delegation-routes.js";
 import { completionConfig } from "../synthetic-portal-completion.js";
@@ -24,7 +27,7 @@ export type OracleLabRepositories = DatabaseRepositories & {
   registerDelegationLab(app: FastifyInstance): Promise<void>;
   registerSyntheticLab(app: FastifyInstance): Promise<void>;
   checkConnection(): Promise<void>;
-  training(): { review: boolean; completion: boolean };
+  training(): { review: boolean; completion: boolean; reminders: boolean };
 };
 
 export function createOracleRepositories(
@@ -55,6 +58,7 @@ export function createOracleRepositories(
       const review = policy?.config.review.enabled === true;
       return {
         review,
+        reminders: review && oracleTrainingRemindersEnabled(),
         completion:
           review &&
           policy?.config.billing.mode === "MOCK" &&
@@ -91,6 +95,10 @@ export function createOracleRepositories(
         config
           ? { config, repository: createOracleCompletionRuntime(pool) }
           : undefined,
+        {
+          analytics: createOracleSyntheticAnalytics(pool),
+          reminders: createOracleTrainingReminders(pool).repository,
+        },
       );
     },
   };

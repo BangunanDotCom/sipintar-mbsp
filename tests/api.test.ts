@@ -2372,6 +2372,21 @@ describe("K02 physical units and floor links", () => {
 
 });
 
+it("flags an inactive owned draft without mutating it or exposing it to other applicants", async () => {
+  const owner = await actor("PEMOHON");
+  const other = await actor("PEMOHON");
+  const response = await request(owner, "/api/application-drafts", "POST", {capacity:"INDIVIDUAL"});
+  expect(response.statusCode).toBe(201);
+  const {id, version} = response.json();
+  const updatedAt = new Date(Date.now() - 60 * 86_400_000 - 1000);
+  await db.applicationDraft.update({where:{id},data:{updatedAt}});
+  const own = await request(owner, "/api/application-drafts");
+  expect(own.json()).toContainEqual(expect.objectContaining({id,version,status:"DRAFT",inactivity:expect.objectContaining({reviewDue:true})}));
+  expect((await request(other, "/api/application-drafts")).body).not.toContain(id);
+  expect((await request(owner, `/api/application-drafts/${id}`)).statusCode).toBe(200);
+  expect(await db.applicationDraft.findUnique({where:{id}})).toMatchObject({version,updatedAt});
+});
+
 describe("Issue 24 synthetic document scopes and submissions", () => {
   const scopedDatabase = /\/staylink_issue24_[a-z0-9_]+_test$/.test(
     process.env.TEST_DATABASE_URL ?? "",
@@ -2741,6 +2756,28 @@ describe("Issue 31 integrated synthetic portal", () => {
       const first = responses[0].json().id as string;
       expect(responses[1].json().id).toBe(first);
       const firstPath = `${root}/reviews/${first}`;
+      const precheck = `${firstPath}/precheck`;
+      const auto = { mode: "AUTO", version: 1 };
+      expect((await request(outsider, precheck)).statusCode).toBe(404);
+      expect((await request({...pic, csrf:token()}, precheck, "POST", auto)).statusCode).toBe(403);
+      expect((await request(pic, precheck, "POST", {...auto, version:2})).statusCode).toBe(409);
+      const unavailable = await request(pic, precheck, "POST", auto);
+      expect(unavailable.statusCode).toBe(200);
+      expect(unavailable.json().source).toBe("MANUAL_REQUIRED");
+      const manual = await request(pic, precheck, "POST", {
+        mode:"MANUAL", version:1, reason:"Bukti latihan disemak mengikut skop.",
+      });
+      expect(manual.statusCode).toBe(200);
+      expect(manual.json().source).toBe("MANUAL");
+      expect((await request(pic, precheck)).json().history).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({version:1,result:expect.objectContaining({source:"MANUAL_REQUIRED"})}),
+          expect.objectContaining({version:1,result:expect.objectContaining({source:"MANUAL"})}),
+        ]),
+      );
+      const current = (await request(pic, `${root}/reviews`)).json().reviews.find((r: {id:string}) => r.id === first);
+      expect(current).toMatchObject({version:1,status:"SUBMITTED"});
+
       expect(
         (
           await request(ppsk, `${firstPath}/billing`, "POST", {
@@ -3496,6 +3533,152 @@ describe("Issue 31 integrated synthetic portal", () => {
       ).toBe(404);
     },
   );
+  it.runIf(enabled)("serializes appointment overlap checks and revokes existing sessions", async () => {
+    const oldFlag = process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS;
+    process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS = "true";
+    try {
+      const officer=await actor("PENTADBIR_TEMPLAT");
+      const path=`/api/admin/users/${officer.id}/roles`;
+      const requestBody={roleId:"PIC_KAWASAN",departmentId:"BANGUNAN",districtId:"SPU",
+        reference:"Penempatan sintetik",startsAt:new Date(Date.now()-1000).toISOString(),
+        endsAt:new Date(Date.now()+86_400_000).toISOString()};
+      const results=await Promise.all([request(ict,path,"POST",requestBody),request(ict,path,"POST",requestBody)]);
+      expect(results.map((response)=>response.statusCode).sort()).toEqual([200,409]);
+      const id=results.find((response)=>response.statusCode===200)!.json().id;
+      expect((await request(ict,path,"POST",{...requestBody,districtId:"SPT"})).statusCode).toBe(200);
+      expect((await request(ict,`/api/admin/appointments/${id}`,"DELETE")).statusCode).toBe(200);
+      expect((await request(officer,"/api/auth/me")).statusCode).toBe(401);
+      expect(await db.auditLog.count({where:{action:"ROLE_REVOKED",target:id}})).toBe(1);
+    } finally {
+      if (oldFlag===undefined) delete process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS;
+      else process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS=oldFlag;
+    }
+  });
+
+  it.runIf(enabled)("previews only the chosen template version for the MFA-authorized template role", async () => {
+    const created = await request(template,"/api/templates","POST",{
+      name:"Pratonton latihan",category:"Surat kelulusan",content:"Pratonton Łukasz · Nguyễn.",
+    });
+    expect(created.statusCode,created.body).toBe(200);
+    const selected = await db.templateVersion.findFirstOrThrow({where:{templateId:created.json().id}});
+    const path = `/api/template-versions/${selected.id}/preview`;
+    const pdf = await request(template,path);
+    expect(pdf.statusCode,pdf.body).toBe(200);
+    expect(pdf.headers["cache-control"]).toContain("no-store");
+    expect(pdf.headers["content-digest"]).toBeDefined();
+    expect(pdf.rawPayload.subarray(0,5).toString()).toBe("%PDF-");
+    expect((await request(ict,path)).statusCode).toBe(403);
+    expect((await db.templateVersion.findUnique({where:{id:selected.id}}))?.status).toBe("DRAFT");
+  });
+
+  it.runIf(enabled)("aggregates more than 50 authorized submissions with date and category filters", async () => {
+    process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+    process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+    const category = "AGREGAT-" + randomUUID();
+    const rows = Array.from({length:53},(_,index)=>({
+      id:randomUUID(),draftId:randomUUID(),actorId:applicant.id,draftVersion:1,key:randomUUID(),
+      declarationVersion:"SYNTHETIC-K05-v1",policyVersion:"SYNTHETIC-K04-v1",
+      createdAt:new Date("2026-07-23T16:00:00.000Z"),
+      snapshot:{capacity:"INDIVIDUAL",companyId:null,districtId:index === 52 ? "SPT" : "SPU",buildingType:category},
+    }));
+    await db.applicationDraft.createMany({data:rows.map(({draftId})=>({
+      id:draftId,initiatedByUserId:applicant.id,capacity:"INDIVIDUAL",officialApplicantUserId:applicant.id,
+      applicantSnapshot:{},initiatorSnapshot:{},
+    }))});
+    await db.syntheticSubmission.createMany({data:rows});
+    await db.auditLog.createMany({data:[0,1].map((index)=>({
+      target:rows[index].id, action:"SYNTHETIC_PORTAL_COMPLETION", activeRole:"PIC_KAWASAN",
+      actorId:pic.id,createdAt:new Date("2026-07-24T00:00:00Z"),
+      metadata:{version:1,command:{action:"REFER"}},
+    }))});
+    await db.auditLog.createMany({data:["PERANCANG_BANDAR","KEJURUTERAAN"].map((activeRole,index)=>({
+      target:rows[1].id,action:"SYNTHETIC_PORTAL_COMPLETION",activeRole,
+      actorId:pic.id,createdAt:new Date("2026-07-25T00:00:00Z"),
+      metadata:{version:2+index,command:{action:"COMMENT"}},
+    }))});
+    const report = `${root}/reports/applications?category=${category}&from=2026-07-24&to=2026-07-24`;
+    const result = await request(pic,report);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json()).toMatchObject({district:"SPU",rows:[{status:"SUBMITTED",cases:52,referred:2,overdue:1}]});
+    const csv = await request(ppsk,report+"&format=csv");
+    expect(csv.statusCode).toBe(200);
+    expect(csv.body).toContain("SPU,SUBMITTED,52,0,0,2,1,0");
+    expect(csv.body).not.toContain(rows[0].id);
+    expect((await request(pic,report+"&district=SPT")).statusCode).toBe(404);
+    expect((await request(applicant,report)).statusCode).toBe(403);
+    expect((await request(pic,`${root}/reports/applications?category=${category}&to=2026-07-23`)).json().rows).toEqual([]);
+  });
+
+  it.runIf(enabled)("deduplicates supervisor and scheduled reminders and retries only explicit temporary delivery failures", async () => {
+    process.env.STAYLINK_SYNTHETIC_PIC_ID = pic.id;
+    process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID = ppsk.id;
+    const oldFlag = process.env.STAYLINK_SYNTHETIC_REMINDERS;
+    const { scheduleTrainingReminders, deliverTrainingReminders } = await import("../apps/api/src/training-reminders");
+    const monitor = `${root}/reminder-monitor`;
+    expect((await request(ppsk, `${root}/inactive-drafts`)).statusCode).toBe(404);
+    process.env.STAYLINK_SYNTHETIC_REMINDERS = "true";
+    try {
+      const owner = await actor("PEMOHON");
+      const draft = (await request(owner,"/api/application-drafts","POST",{capacity:"INDIVIDUAL"})).json();
+      const cross = (await request(owner,"/api/application-drafts","POST",{capacity:"INDIVIDUAL"})).json();
+      for (const [item,districtId] of [[draft,"SPU"],[cross,"SPT"]] as const) {
+        await db.applicationPremises.create({data:{draftId:item.id,districtId}});
+        await db.applicationDraft.update({where:{id:item.id},data:{updatedAt:new Date(Date.now()-61*86_400_000)}});
+      }
+      const queue = `${root}/inactive-drafts`;
+      const viewed = await request(ppsk,queue);
+      expect(viewed.statusCode,viewed.body).toBe(200);
+      expect(viewed.body).toContain(draft.id);
+      expect(viewed.body).not.toContain(cross.id);
+      expect((await request(pic,queue)).statusCode).toBe(403);
+      expect((await request(ppsk,`${queue}/${cross.id}/remind`,"POST",{version:cross.version})).statusCode).toBe(404);
+      const remind = () => request(ppsk,`${queue}/${draft.id}/remind`,"POST",{version:draft.version});
+      await db.$executeRaw`CREATE FUNCTION training_fixture_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.type = 'TRAINING_DRAFT_REMINDER' THEN RAISE EXCEPTION 'fixture rollback'; END IF;
+          RETURN NEW;
+        END $$`;
+      try {
+        await db.$executeRaw`CREATE TRIGGER training_fixture_abort BEFORE INSERT ON notifications
+          FOR EACH ROW EXECUTE FUNCTION training_fixture_abort()`;
+        try {
+          expect((await remind()).statusCode).toBe(500);
+          expect(await db.trainingReminderOutbox.count({where:{draftId:draft.id}})).toBe(0);
+        } finally {
+          await db.$executeRaw`DROP TRIGGER training_fixture_abort ON notifications`;
+        }
+      } finally {
+        await db.$executeRaw`DROP FUNCTION training_fixture_abort()`;
+      }
+      const [second,duplicate] = await Promise.all([remind(),remind()]);
+      expect([second.json().queued,duplicate.json().queued].sort()).toEqual([false,true]);
+      expect(await db.notification.count({where:{userId:owner.id,type:"TRAINING_DRAFT_REMINDER"}})).toBe(1);
+      expect(await scheduleTrainingReminders()).toBe(1);
+      expect(await scheduleTrainingReminders()).toBe(0);
+      expect((await request(ppsk,monitor)).statusCode).toBe(403);
+      expect((await request(ict,monitor)).statusCode).toBe(200);
+      await db.applicationDraft.update({where:{id:cross.id},data:{version:{increment:1}}});
+      let attempts = 0;
+      const send = async () => {
+        attempts++;
+        throw Object.assign(new Error("fixture refused"),{code:"ECONNREFUSED"});
+      };
+      await Promise.all([deliverTrainingReminders(send),deliverTrainingReminders(send)]);
+      expect(attempts).toBe(1);
+      const target = await db.trainingReminderOutbox.findFirstOrThrow({where:{draftId:draft.id}});
+      expect(target).toMatchObject({status:"FAILED",attempts:1,lastError:"SMTP_TEMPORARY"});
+      await db.trainingReminderOutbox.update({where:{id:target.id},data:{availableAt:new Date(0)}});
+      await deliverTrainingReminders(async()=>{attempts++;});
+      expect(attempts).toBe(2);
+      expect(await db.trainingReminderOutbox.findUnique({where:{id:target.id}})).toMatchObject({status:"SENT",attempts:2});
+      expect(await db.trainingReminderOutbox.findFirst({where:{draftId:cross.id}})).toMatchObject({status:"CANCELLED"});
+      expect((await request(owner,`/api/application-drafts/${draft.id}`)).statusCode).toBe(200);
+    } finally {
+      if (oldFlag === undefined) delete process.env.STAYLINK_SYNTHETIC_REMINDERS;
+      else process.env.STAYLINK_SYNTHETIC_REMINDERS=oldFlag;
+    }
+  });
+
 });
 
 it("keeps the same CSRF token across tabs and separates it from other sessions", async () => {

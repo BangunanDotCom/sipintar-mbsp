@@ -30,6 +30,172 @@ const adviceMessages: Record<string, string> = {
   EVIDENCE_MISSING: "Bukti yang layak belum lengkap.",
 };
 
+function ApplicationReport({ userId, role }: { userId: string; role: string }) {
+  const [filters, setFilters] = useState({ from: "", to: "", category: "" });
+  const [query, setQuery] = useState<string | null>(null);
+  const report = useQuery<{
+    district: string;
+    rows: {
+      status: SyntheticReviewStatus;
+      cases: number;
+      firstPaid: number;
+      secondPaid: number;
+      referred: number;
+      overdue: number;
+      closed: number;
+    }[];
+  }>({
+    queryKey: ["synthetic-application-report", userId, role, query],
+    queryFn: () => api(`/synthetic-portal/reports/applications?${query}`),
+    enabled: query !== null,
+    retry: false,
+  });
+  return (
+    <details className="company-record">
+      <summary>Laporan semua serahan dalam skop</summary>
+      <form
+        className="synthetic-controls"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const params = new URLSearchParams();
+          for (const [key, value] of Object.entries(filters))
+            if (value.trim()) params.set(key, value.trim());
+          const next = params.toString();
+          if (query === next) void report.refetch();
+          else setQuery(next);
+        }}
+      >
+        <label>
+          Dari tarikh serahan
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+          />
+        </label>
+        <label>
+          Hingga tarikh serahan
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+          />
+        </label>
+        <label>
+          Jenis bangunan
+          <input
+            maxLength={160}
+            value={filters.category}
+            onChange={(e) =>
+              setFilters({ ...filters, category: e.target.value })
+            }
+          />
+        </label>
+        <button className="button small" disabled={report.isFetching}>
+          Papar laporan
+        </button>
+      </form>
+      {report.isFetching && <p role="status">Memuatkan laporan…</p>}
+      {report.isError && (
+        <p role="alert">{syntheticErrorMessage(report.error)}</p>
+      )}
+      {report.data && !report.isError && (
+        <>
+          <p>
+            {report.data.district} ·{" "}
+            {report.data.rows.reduce((total, row) => total + row.cases, 0)}{" "}
+            serahan
+          </p>
+          {report.data.rows.map((row) => (
+            <p key={row.status}>
+              {syntheticReviewStatus[row.status]} · {row.cases} kes · Bayaran 1{" "}
+              {row.firstPaid} · Bayaran 2 {row.secondPaid} · Dirujuk{" "}
+              {row.referred} · Lewat {row.overdue} · Ditutup {row.closed}
+            </p>
+          ))}
+          <a
+            href={`/api/synthetic-portal/reports/applications?format=csv${query ? "&" + query : ""}`}
+          >
+            Eksport laporan serahan CSV
+          </a>
+        </>
+      )}
+    </details>
+  );
+}
+
+function ApplicationArchive({
+  userId,
+  role,
+}: {
+  userId: string;
+  role: string;
+}) {
+  const [page, setPage] = useState(0);
+  const query = useQuery<{
+    district: string;
+    items: { id: string; closedAt: string }[];
+    nextPage: number | null;
+  }>({
+    queryKey: ["synthetic-archive", userId, role, page],
+    queryFn: () => api(`/synthetic-portal/reports/archive?page=${page}`),
+    enabled: page > 0,
+    retry: false,
+  });
+  return (
+    <details
+      className="company-record"
+      onToggle={(event) => {
+        if (event.currentTarget.open) setPage((previous) => previous || 1);
+      }}
+    >
+      <summary>Arkib kes latihan ditutup</summary>
+      {query.isFetching && <p role="status">Memuatkan arkib…</p>}
+      {query.isError && (
+        <p role="alert">{syntheticErrorMessage(query.error)}</p>
+      )}
+      {query.data && (
+        <p>
+          {query.data.district} · Halaman {page}
+        </p>
+      )}
+      {query.data?.items.length === 0 && (
+        <p>Tiada kes dalam skop halaman ini.</p>
+      )}
+      <ul>
+        {query.data?.items.map(({ id, closedAt }) => (
+          <li key={id}>
+            <code>{id}</code> ·{" "}
+            {new Date(closedAt).toLocaleString("ms-MY", {
+              timeZone: "Asia/Kuala_Lumpur",
+            })}
+          </li>
+        ))}
+      </ul>
+      {query.data && (
+        <div>
+          <button
+            className="button small secondary"
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Sebelumnya
+          </button>
+          <button
+            className="button small secondary"
+            type="button"
+            disabled={!query.data.nextPage}
+            onClick={() => query.data?.nextPage && setPage(query.data.nextPage)}
+          >
+            Seterusnya
+          </button>
+        </div>
+      )}
+    </details>
+  );
+}
+
 export function SyntheticOfficerPanel({
   userId,
   activeRole,
@@ -87,6 +253,8 @@ export function SyntheticOfficerPanel({
     >
       <span className="synthetic-status">LATIHAN / SINTETIK</span>
       <h3 id="synthetic-officer-title">Tugasan semakan sintetik</h3>
+      <ApplicationReport userId={userId} role={activeRole} />
+      <ApplicationArchive userId={userId} role={activeRole} />
       <p>
         Kawasan {district} · {role === "PPSK" ? "PPSK" : "PIC Kawasan"}
       </p>
@@ -98,7 +266,8 @@ export function SyntheticOfficerPanel({
           event.preventDefault();
           const value = searchInput.trim();
           const invalid = Boolean(
-            value && !/^(?:SYNTHETIC-)?[0-9a-f]{4}[0-9a-f-]{0,32}$/i.test(value),
+            value &&
+            !/^(?:SYNTHETIC-)?[0-9a-f]{4}[0-9a-f-]{0,32}$/i.test(value),
           );
           setSearchError(invalid);
           if (invalid) return;
@@ -218,6 +387,150 @@ export function SyntheticOfficerPanel({
   );
 }
 
+const findings: Record<string, { reason: string; suggestion: string }> = {
+  NO_UNITS: {
+    reason: "Tiada unit fizikal dalam serahan.",
+    suggestion: "Semak inventori unit.",
+  },
+  NO_FLOORS: {
+    reason: "Tiada tingkat dalam serahan.",
+    suggestion: "Semak inventori tingkat.",
+  },
+  EVIDENCE_INELIGIBLE: {
+    reason: "Bukti semasa tidak sepadan dengan serahan.",
+    suggestion: "Semak versi, skop dan status imbasan dokumen.",
+  },
+  EVIDENCE_UNVERIFIED: {
+    reason: "Bukti layak masih menunggu pengesahan manusia.",
+    suggestion: "Semak setiap bukti sebelum mengesahkan kelengkapan.",
+  },
+};
+
+function PrecheckHistory({
+  review,
+  userId,
+  role,
+  canRecord,
+}: {
+  review: Review;
+  userId: string;
+  role: string;
+  canRecord: boolean;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const path = `/synthetic-portal/reviews/${review.id}/precheck`;
+  const history = useQuery<{
+    history: {
+      id: string;
+      version: number;
+      createdAt: string;
+      result: { source: string; findings: string[]; reason: string | null };
+    }[];
+  }>({
+    queryKey: ["synthetic-precheck", userId, role, review.id],
+    queryFn: () => api(path),
+    retry: false,
+  });
+  async function record(mode: "AUTO" | "MANUAL") {
+    setError("");
+    setBusy(true);
+    try {
+      await api(path, "POST", {
+        mode,
+        version: review.version,
+        ...(mode === "MANUAL" && { reason }),
+      });
+      setReason("");
+      await history.refetch();
+    } catch (error) {
+      setError(syntheticErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <p>
+        Penemuan semakan awal ialah panduan. Pengesahan kelengkapan kekal di
+        bawah tanggungjawab PIC.
+      </p>
+      {canRecord && (
+        <>
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={busy}
+            onClick={() => void record("AUTO")}
+          >
+            Jalankan semakan awal latihan
+          </button>
+          <label>
+            Catatan semakan manual
+            <textarea
+              value={reason}
+              maxLength={500}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={busy || reason.trim().length < 3}
+            onClick={() => void record("MANUAL")}
+          >
+            Rekod semakan manual
+          </button>
+        </>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {history.isPending && <p role="status">Memuatkan sejarah semakan…</p>}
+      {history.isError && (
+        <SyntheticLoadError
+          title="Sejarah semakan awal"
+          error={history.error}
+          retry={() => void history.refetch()}
+        />
+      )}
+      {history.data?.history.length === 0 && <p>Belum ada rekod semakan.</p>}
+      <ol>
+        {history.data?.history.map(({ id, version, createdAt, result }) => (
+          <li key={id}>
+            <strong>
+              {result.source === "MANUAL"
+                ? "Manual"
+                : result.source === "MANUAL_REQUIRED"
+                  ? "Semakan manual diperlukan"
+                  : "Peraturan latihan"}{" "}
+              · v{version}
+            </strong>
+            {" · "}
+            <time dateTime={createdAt}>
+              {new Date(createdAt).toLocaleString("ms-MY", {
+                timeZone: "Asia/Kuala_Lumpur",
+              })}
+            </time>
+            {result.reason && <p>{result.reason}</p>}
+            {result.findings.length > 0 && (
+              <ul>
+                {result.findings.map((code) => (
+                  <li key={code}>
+                    {findings[code]?.reason} {findings[code]?.suggestion}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {result.source === "SYNTHETIC_RULES" && !result.findings.length && (
+              <p>Tiada penemuan daripada peraturan latihan.</p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
 function SyntheticReviewCard({
   review,
   role,
@@ -234,6 +547,7 @@ function SyntheticReviewCard({
   const [message, setMessage] = useState<ActionFeedback | null>(null);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [precheckOpen, setPrecheckOpen] = useState(false);
   const picCanReview = role === "PIC_KAWASAN" && review.status === "SUBMITTED";
   const supervisorCanRegister = role === "PPSK" && review.status === "COMPLETE";
   async function decide(action: string) {
@@ -305,6 +619,25 @@ function SyntheticReviewCard({
               .join(" ")
           : "Tiada amaran berdasarkan kiraan."}
       </p>
+      <button
+        type="button"
+        className="button secondary small"
+        aria-expanded={precheckOpen}
+        aria-controls={`precheck-${review.id}`}
+        onClick={() => setPrecheckOpen((open) => !open)}
+      >
+        Sejarah semakan awal
+      </button>
+      <section id={`precheck-${review.id}`} hidden={!precheckOpen}>
+        {precheckOpen && (
+          <PrecheckHistory
+            review={review}
+            userId={userId}
+            role={role}
+            canRecord={picCanReview}
+          />
+        )}
+      </section>
       <button
         type="button"
         className="button secondary small"

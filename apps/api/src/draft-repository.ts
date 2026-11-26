@@ -1,3 +1,4 @@
+import { draftInactivity } from "../../../packages/shared/src/draft-inactivity.js";
 import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import {
   Prisma,
@@ -254,7 +255,7 @@ export const postgresDraftRepository = {
     });
   },
   async list(userId: string, companyIds: string[]) {
-    return db.applicationDraft.findMany({
+    const drafts = await db.applicationDraft.findMany({
       where: {
         initiatedByUserId: userId,
         status: "DRAFT",
@@ -271,10 +272,18 @@ export const postgresDraftRepository = {
         version: true,
         createdAt: true,
         updatedAt: true,
+        syntheticSubmissions: { select: { id: true }, take: 1 },
       },
       orderBy: { updatedAt: "desc" },
       take: 50,
     });
+    const now = new Date();
+    return drafts.map(({ syntheticSubmissions, ...draft }) => ({
+      ...draft,
+      inactivity: syntheticSubmissions.length
+        ? null
+        : draftInactivity(draft.updatedAt, now),
+    }));
   },
   async ownsDraft(userId: string, id: string) {
     return !!(await db.applicationDraft.findFirst({

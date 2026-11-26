@@ -1,0 +1,178 @@
+[
+  {
+    "type": "TABLE",
+    "name": "STL_TRAINING_REMINDER_OUTBOX"
+  },
+  {
+    "type": "TABLE",
+    "name": "STL_SYNTH_FINANCIAL_ENTRIES"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_PK_TRAIN_REM"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_DRAFT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_VERSION"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_RECIPIENT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_SOURCE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_STATUS"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_ATTEMPTS"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_AVAILABLE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_CREATED"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_KIND"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_TR_DEDUPE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_UK_TR_DEDUPE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_FK_TR_DRAFT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_FK_TR_USER"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_VERSION"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_SOURCE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_STATUS"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_ATTEMPTS"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_KIND"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_CONTEXT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_TR_JSON"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_PK_SYN_FIN"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_SUBMISSION"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_INVOICE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_STAGE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_EVENT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_SEN"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_NN_SF_CREATED"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_FK_SF_SUBMISSION"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_UK_SF_STAGE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_UK_SF_INVOICE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_SF_STAGE"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_SF_EVENT"
+  },
+  {
+    "type": "CONSTRAINT",
+    "name": "STL_CK_SF_SEN"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_PK_TRAIN_REM"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_UK_TR_DEDUPE"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_IX_TR_DUE"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_PK_SYN_FIN"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_UK_SF_STAGE"
+  },
+  {
+    "type": "INDEX",
+    "name": "STL_UK_SF_INVOICE"
+  },
+  {
+    "type": "LOB",
+    "name": "STL_LOB_TR_CONTEXT"
+  },
+  {
+    "type": "TRIGGER",
+    "name": "STL_TR_SF_APPEND_ONLY"
+  }
+]

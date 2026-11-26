@@ -1,3 +1,5 @@
+import { createOracleTrainingReminders } from "../apps/api/src/oracle/training-reminders";
+import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
 import { readFile } from "node:fs/promises";
 import { createHmac, randomUUID } from "node:crypto";
 import { parse } from "dotenv";
@@ -100,6 +102,10 @@ for (const { name, enabled } of variants) {
             vi.stubEnv("STAYLINK_DEMO_HOST", "true");
           }
           vi.stubEnv("STAYLINK_SYNTHETIC_COMPLETION", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_BKT", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_RECORDS", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_REMINDERS", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_PORTAL", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_SECOND_UNIT_FEE_SEN", "1234");
           vi.stubEnv("STAYLINK_SYNTHETIC_DISTRICT", "SPU");
@@ -325,8 +331,9 @@ for (const { name, enabled } of variants) {
             expect(dashboard.json().training).toEqual({
               review: true,
               completion: true,
+              reminders: true,
             });
-            const premises = await put("/premises", {
+            const premisesInput = {
               version: 1,
               action: "CONTINUE",
               premises: {
@@ -347,8 +354,145 @@ for (const { name, enabled } of variants) {
                 proposedWorkers: 16,
                 certificateType: "NOT_APPLICABLE",
               },
-            });
+            };
+            const premises = await put("/premises", premisesInput);
             expect(premises.statusCode, premises.body).toBe(200);
+            if (capacity === "INDIVIDUAL") {
+              const stale = await app.inject({
+                method: "POST",
+                url: "/api/application-drafts",
+                headers: owner,
+                payload: { capacity },
+              });
+              expect(stale.statusCode, stale.body).toBe(201);
+              const staleId = stale.json().id;
+              const ready = await app.inject({
+                method: "PUT",
+                url: `/api/application-drafts/${staleId}/premises`,
+                headers: owner,
+                payload: premisesInput,
+              });
+              expect(ready.statusCode, ready.body).toBe(200);
+              const old = new Date(Date.now() - 61 * 86_400_000);
+              if (ownerPool)
+                await ownerPool.transaction((c) =>
+                  c.execute(
+                    "UPDATE STL_APPLICATION_DRAFTS SET UPDATED_AT=:old WHERE ID=:id",
+                    { old: timestamp(old), id: staleId },
+                  ),
+                );
+              else
+                await db.applicationDraft.update({
+                  where: { id: staleId },
+                  data: { updatedAt: old },
+                });
+              const staleList = await app.inject({
+                url: root + "/inactive-drafts",
+                headers: ppsk,
+              });
+              expect(staleList.statusCode, staleList.body).toBe(200);
+              const staleRow = staleList
+                .json()
+                .drafts.find((item: { id: string }) => item.id === staleId);
+              expect(staleRow).toBeDefined();
+              const remind = () =>
+                app.inject({
+                  method: "POST",
+                  url: `${root}/inactive-drafts/${staleId}/remind`,
+                  headers: ppsk,
+                  payload: { version: staleRow.version },
+                });
+              const requests = await Promise.all([remind(), remind()]);
+              expect(requests.map((r) => r.statusCode)).toEqual([200, 200]);
+              expect(requests.map((r) => r.json().queued).sort()).toEqual([
+                false,
+                true,
+              ]);
+              const denied = await app.inject({
+                method: "POST",
+                url: `${root}/inactive-drafts/${staleId}/remind`,
+                headers: pic,
+                payload: { version: staleRow.version },
+              });
+              expect(denied.statusCode).toBe(403);
+              const list = await app.inject({
+                url: "/api/application-drafts",
+                headers: owner,
+              });
+              expect(
+                list.json().find((item: { id: string }) => item.id === staleId)
+                  ?.inactivity?.reviewDue,
+              ).toBe(true);
+            }
+            if (capacity === "INDIVIDUAL") {
+              const editor = await actor("PENTADBIR_TEMPLAT", null);
+              const list = await app.inject({
+                url: "/api/templates",
+                headers: editor,
+              });
+              expect(list.statusCode, list.body).toBe(200);
+              const template = await app.inject({
+                method: "POST",
+                url: "/api/templates",
+                headers: editor,
+                payload: {
+                  name: "Pratonton sintetik konsolidasi",
+                  category: list.json()[0].category,
+                  content: "Templat latihan versi pertama",
+                },
+              });
+              expect(template.statusCode, template.body).toBe(200);
+              const listed = (
+                await app.inject({ url: "/api/templates", headers: editor })
+              )
+                .json()
+                .find((item: { id: string }) => item.id === template.json().id);
+              const preview = await app.inject({
+                url: `/api/template-versions/${listed.versions[0].id}/preview`,
+                headers: editor,
+              });
+              expect(preview.statusCode, preview.body.slice(0, 120)).toBe(200);
+              expect(preview.headers["content-digest"]).toMatch(/^sha-256=:/);
+              const ict = await actor("PENTADBIR_ICT", null);
+              const applicantActor = await actor("PIC_KAWASAN", "SPT");
+              const appointment = () =>
+                app.inject({
+                  method: "POST",
+                  url: `/api/admin/users/${applicantActor.userId}/roles`,
+                  headers: ict,
+                  payload: {
+                    roleId: "PIC_KAWASAN",
+                    departmentId: "BANGUNAN",
+                    districtId: "SPU",
+                    startsAt: new Date().toISOString(),
+                    reference: "Pelantikan latihan serentak",
+                  },
+                });
+              const updates = await Promise.all([appointment(), appointment()]);
+              expect(
+                updates.map((r) => r.statusCode).sort(),
+                updates.map((r) => r.body).join("\n"),
+              ).toEqual([200, 409]);
+              const roleId = updates
+                .find((r) => r.statusCode === 200)!
+                .json().id;
+              const revoke = () =>
+                app.inject({
+                  method: "DELETE",
+                  url: `/api/admin/appointments/${roleId}`,
+                  headers: ict,
+                });
+              expect((await revoke()).statusCode).toBe(200);
+              expect((await revoke()).statusCode).toBe(200);
+              expect(
+                (
+                  await app.inject({
+                    url: "/api/dashboard",
+                    headers: applicantActor,
+                  })
+                ).statusCode,
+              ).toBe(401);
+            }
             const floors = await put("/floors", {
               version: 2,
               floors: ["A", "B", "C", "D"].map((floorLabel) => ({
@@ -513,6 +657,7 @@ for (const { name, enabled } of variants) {
               headers: typeof owner,
               payload: object,
             ) => app.inject({ method: "POST", url, headers, payload });
+            let offset = 0;
             const command = (
               headers: typeof owner,
               version: number,
@@ -520,9 +665,34 @@ for (const { name, enabled } of variants) {
               other = {},
             ) =>
               post(completion, headers, {
-                version,
+                version: version + offset,
                 command: { action, ...other },
               });
+            const precheck = await post(review + "/precheck", pic, {
+              version: 1,
+              mode: "AUTO",
+            });
+            expect(precheck.statusCode, precheck.body).toBe(200);
+            const manual = await post(review + "/precheck", pic, {
+              version: 1,
+              mode: "MANUAL",
+              reason: "Semakan sendiri latihan",
+            });
+            expect(manual.statusCode, manual.body).toBe(200);
+            const precheckHistory = await app.inject({
+              url: review + "/precheck",
+              headers: ppsk,
+            });
+            expect(precheckHistory.statusCode, precheckHistory.body).toBe(200);
+            expect(precheckHistory.json().history).toHaveLength(2);
+            expect(
+              (
+                await post(review + "/precheck", ppsk, {
+                  version: 1,
+                  mode: "AUTO",
+                })
+              ).statusCode,
+            ).toBe(403);
             expect(
               (
                 await post(review, pic, {
@@ -553,6 +723,20 @@ for (const { name, enabled } of variants) {
                 })
               ).statusCode,
             ).toBe(200);
+            expect((await command(pic, 0, "REFER")).statusCode).toBe(409);
+            const readyBkt = await app.inject({
+              url: root + "/completion/queue",
+              headers: council,
+            });
+            expect(readyBkt.statusCode, readyBkt.body).toBe(200);
+            expect(readyBkt.json().cases).toEqual(
+              expect.arrayContaining([expect.objectContaining({ id })]),
+            );
+            const bkt = await command(council, 0, "RECEIVE_BKT", {
+              note: "Penerimaan BKT sintetik",
+            });
+            expect(bkt.statusCode, bkt.body).toBe(200);
+            offset++;
             expect((await command(spt, 0, "REFER")).statusCode).toBe(404);
             const configuredAssignments =
               process.env.STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS!;
@@ -571,7 +755,7 @@ for (const { name, enabled } of variants) {
                 method: "POST",
                 url: completion,
                 headers: pic,
-                payload: { version: 0, command: { action: "REFER" } },
+                payload: { version: offset, command: { action: "REFER" } },
               });
               expect(rejected.statusCode, rejected.body).toBe(500);
             } finally {
@@ -586,7 +770,7 @@ for (const { name, enabled } of variants) {
               headers: pic,
             });
             expect(afterRollback.json()).toMatchObject({
-              version: 0,
+              version: offset,
               referral: null,
             });
             const recipient = await app.inject({
@@ -650,6 +834,68 @@ for (const { name, enabled } of variants) {
               .json()
               .cases.find((item: { id: string }) => item.id === id)
               .referral.deadline;
+            if (
+              capacity === "INDIVIDUAL" &&
+              (!oracle || process.env.ORACLE_CONSOL_WORKER_ENV)
+            ) {
+              const key = `TECH_PRE_DUE:${id}:2:PERANCANG_BANDAR`;
+              if (ownerPool)
+                await ownerPool.transaction((c) =>
+                  c.execute(
+                    "UPDATE STL_TRAINING_REMINDER_OUTBOX SET AVAILABLE_AT=SYSTIMESTAMP-INTERVAL '1' MINUTE WHERE DEDUPE_KEY=:key",
+                    { key },
+                  ),
+                );
+              else
+                await db.trainingReminderOutbox.update({
+                  where: { dedupeKey: key },
+                  data: { availableAt: new Date(0) },
+                });
+              const mails: string[] = [];
+              const sender = async (email: {
+                to: string;
+                messageId: string;
+              }) => {
+                if (
+                  email.to ===
+                  planning.cookie.slice("staylink=".length) + "@example.test"
+                )
+                  mails.push(email.messageId);
+              };
+              if (ownerPool) {
+                const env = parse(
+                  await readFile(process.env.ORACLE_CONSOL_WORKER_ENV!),
+                );
+                const workerPool = await createOraclePool(
+                  oracleConfig(env, "runtime"),
+                );
+                try {
+                  const worker = createOracleTrainingReminders(workerPool);
+                  await Promise.all([
+                    worker.deliver(sender),
+                    worker.deliver(sender),
+                  ]);
+                } finally {
+                  await workerPool.close();
+                }
+              } else
+                await Promise.all([
+                  deliverTrainingReminders(sender),
+                  deliverTrainingReminders(sender),
+                ]);
+              expect(mails).toHaveLength(1);
+              const inbox = await app.inject({
+                url: "/api/dashboard",
+                headers: planning,
+              });
+              expect(inbox.json().notifications).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    type: "TRAINING_TECHNICAL_REMINDER",
+                  }),
+                ]),
+              );
+            }
             const now = Date.now();
             expect(slaDeadline - now).toBeGreaterThan(7 * 86_400_000 - 10_000);
             expect(slaDeadline - now).toBeLessThanOrEqual(7 * 86_400_000);
@@ -663,6 +909,11 @@ for (const { name, enabled } of variants) {
               expect(overdue.json().summary.overdue).toBeGreaterThanOrEqual(1);
             } finally {
               clock.mockRestore();
+            }
+            for (const department of [planning, engineering]) {
+              const ack = await command(department, 1, "ACK_REFERRAL");
+              expect(ack.statusCode, ack.body).toBe(200);
+              offset++;
             }
             const comments = [
               {
@@ -693,6 +944,20 @@ for (const { name, enabled } of variants) {
               (await command(actors[retry], 2, "COMMENT", comments[retry]))
                 .statusCode,
             ).toBe(200);
+            const returnedComment = await command(pic, 3, "RETURN_COMMENT", {
+              department: "PERANCANG_BANDAR",
+              reason: "Perlu maklumat tambahan latihan",
+            });
+            expect(returnedComment.statusCode, returnedComment.body).toBe(200);
+            offset++;
+            const resentComment = await command(
+              planning,
+              3,
+              "COMMENT",
+              comments[0],
+            );
+            expect(resentComment.statusCode, resentComment.body).toBe(200);
+            offset++;
             expect(
               (
                 await command(pic, 3, "SUBMIT_PAPER", {
@@ -700,6 +965,16 @@ for (const { name, enabled } of variants) {
                 })
               ).statusCode,
             ).toBe(200);
+            const returnPaper = await command(council, 4, "RETURN_PAPER", {
+              reason: "Pinda syor latihan",
+            });
+            expect(returnPaper.statusCode, returnPaper.body).toBe(200);
+            offset++;
+            const resendPaper = await command(pic, 4, "SUBMIT_PAPER", {
+              summary: "Kertas Pertimbangan semakan latihan",
+            });
+            expect(resendPaper.statusCode, resendPaper.body).toBe(200);
+            offset++;
             const outcomes = scopes.map(
               (
                 { unitId, floorId }: { unitId: string; floorId: string },
@@ -746,7 +1021,7 @@ for (const { name, enabled } of variants) {
             expect(
               (
                 await post(appUrl + "/completion", owner, {
-                  version: 6,
+                  version: 6 + offset,
                   command: {
                     action: "RESPOND",
                     note: "Bukti pindaan latihan tersedia",
@@ -775,6 +1050,9 @@ for (const { name, enabled } of variants) {
                 })
               ).statusCode,
             ).toBe(409);
+            const followupAck = await command(engineering, 10, "ACK_REFERRAL");
+            expect(followupAck.statusCode, followupAck.body).toBe(200);
+            offset++;
             expect(
               (
                 await command(engineering, 10, "COMMENT", {
@@ -878,6 +1156,109 @@ for (const { name, enabled } of variants) {
                 })
               ).json().closed,
             ).toBe(true);
+            const letter = await app.inject({
+              url: appUrl + "/completion/letters/1?format=pdf",
+              headers: owner,
+            });
+            expect(letter.statusCode, letter.body.slice(0, 100)).toBe(200);
+            expect(letter.headers["x-staylink-letter-template"]).toBe(
+              "SYNTHETIC-DECISION-LETTER-v2",
+            );
+            expect(letter.headers["content-digest"]).toMatch(/^sha-256=:/);
+            const ledger = await app.inject({
+              url: completion + "/financial-ledger",
+              headers: ppsk,
+            });
+            expect(ledger.statusCode, ledger.body).toBe(200);
+            expect(
+              ledger
+                .json()
+                .entries.map((entry: { stage: number; event: string }) => [
+                  entry.stage,
+                  entry.event,
+                ]),
+            ).toEqual([
+              [1, "INVOICE"],
+              [1, "RECEIPT"],
+              [2, "INVOICE"],
+              [2, "RECEIPT"],
+            ]);
+            if (ownerPool)
+              await expect(
+                ownerPool.transaction((c) =>
+                  c.execute(
+                    "UPDATE STL_SYNTH_FINANCIAL_ENTRIES SET AMOUNT_SEN=1 WHERE SUBMISSION_ID=:id",
+                    { id },
+                  ),
+                ),
+              ).rejects.toThrow(/ORA-20008/);
+            else
+              await expect(
+                db.$executeRaw`UPDATE synthetic_financial_entries SET "amountSen"=1 WHERE "submissionId"=${id}`,
+              ).rejects.toThrow();
+            expect(
+              (
+                await app.inject({
+                  url: completion + "/financial-ledger",
+                  headers: pic,
+                })
+              ).statusCode,
+            ).toBe(404);
+            for (const [version, action] of [
+              "PLACE_HOLD",
+              "RELEASE_HOLD",
+              "REQUEST_REOPEN",
+            ].entries()) {
+              const record = await post(completion + "/records", ppsk, {
+                version,
+                action,
+                reason: "Ujian semakan rekod",
+              });
+              expect(record.statusCode, record.body).toBe(200);
+            }
+            const overlay = await app.inject({
+              url: completion + "/records",
+              headers: ppsk,
+            });
+            expect(overlay.json()).toMatchObject({
+              version: 3,
+              reopenRequested: true,
+              reopenEnabled: false,
+              disposalEnabled: false,
+            });
+            const report = await app.inject({
+              url: root + "/reports/applications",
+              headers: ppsk,
+            });
+            expect(report.statusCode, report.body).toBe(200);
+            expect(
+              report
+                .json()
+                .rows.find(
+                  (item: { status: string }) => item.status === "REGISTERED",
+                ).closed,
+            ).toBeGreaterThanOrEqual(1);
+            const csv = await app.inject({
+              url: root + "/reports/applications?format=csv",
+              headers: ppsk,
+            });
+            expect(csv.body).toContain("bayaran_pertama,bayaran_kedua");
+            expect(
+              (
+                await app.inject({
+                  url: root + "/reports/applications?district=SPT",
+                  headers: ppsk,
+                })
+              ).statusCode,
+            ).toBe(404);
+            const archives = await app.inject({
+              url: root + "/reports/archive",
+              headers: ppsk,
+            });
+            expect(archives.statusCode, archives.body).toBe(200);
+            expect(archives.json().items).toEqual(
+              expect.arrayContaining([expect.objectContaining({ id })]),
+            );
             const aggregate = await app.inject({
               url: root + "/completion/queue",
               headers: ppsk,
@@ -969,7 +1350,7 @@ for (const { name, enabled } of variants) {
                     select: { actorId: true, activeRole: true },
                   })
                 ).map(({ actorId, activeRole }) => [actorId, activeRole]);
-            expect(events).toHaveLength(17);
+            expect(events).toHaveLength(17 + offset);
             expect(
               events.filter(([actorId]) => actorId === "SYNTHETIC_PROVIDER"),
             ).toEqual([["SYNTHETIC_PROVIDER", null]]);

@@ -46,7 +46,7 @@ export async function buildOracleLabApp(repositories: OracleLabRepositories) {
 async function buildWithRepositories(
   repositories: DatabaseRepositories,
   oracleLabHealth?: () => Promise<void>,
-  training?: () => { review: boolean; completion: boolean },
+  training?: () => { review: boolean; completion: boolean; reminders: boolean },
 ) {
   const app = Fastify({
     // Base64 JSON uploads up to 10 MiB require approximately 13.34 MiB.

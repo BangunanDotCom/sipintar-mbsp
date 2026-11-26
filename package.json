@@ -39,7 +39,9 @@
     "oracle:documents:scan": "tsx scripts/oracle/scan-documents.ts",
     "oracle:mail:retry": "tsx scripts/oracle/retry-email.ts",
     "oracle:serve:lab": "tsx scripts/oracle/serve-lab.ts",
-    "oracle:bootstrap": "tsx scripts/oracle/bootstrap.ts"
+    "oracle:bootstrap": "tsx scripts/oracle/bootstrap.ts",
+    "training:reminders": "tsx scripts/training-reminders.ts",
+    "oracle:training:reminders": "tsx scripts/oracle/training-reminders.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -66,7 +68,10 @@
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.65.0",
     "react-router-dom": "^7.9.0",
-    "zod": "^4.1.0"
+    "zod": "^4.1.0",
+    "@fontsource/noto-sans": "5.2.10",
+    "@pdf-lib/fontkit": "1.1.1",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
