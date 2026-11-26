@@ -1,3 +1,4 @@
+import { draftInactivity } from "../../../packages/shared/src/draft-inactivity.js";
 import { requireUnclosedTrainingDraft } from "./synthetic-completion-gate.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
@@ -143,7 +144,7 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
     reply.header("Pragma", "no-cache");
     const s = await applicant(req),
       companyIds = (await allowedCompanies(s.userId)).map((r) => r.companyId);
-    return db.applicationDraft.findMany({
+    const drafts = await db.applicationDraft.findMany({
       where: {
         initiatedByUserId: s.userId,
         status: "DRAFT",
@@ -160,10 +161,16 @@ export async function applicationDraftRoutes(app: FastifyInstance) {
         version: true,
         createdAt: true,
         updatedAt: true,
+        syntheticSubmissions: { select: { id: true }, take: 1 },
       },
       orderBy: { updatedAt: "desc" },
       take: 50,
     });
+    const now = new Date();
+    return drafts.map(({ syntheticSubmissions, ...draft }) => ({
+      ...draft,
+      inactivity: syntheticSubmissions.length ? null : draftInactivity(draft.updatedAt, now),
+    }));
   });
   app.post("/api/application-drafts", async (req, reply) => {
     const s = await applicant(req),

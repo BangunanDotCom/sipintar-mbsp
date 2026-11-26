@@ -1,3 +1,4 @@
+import { configuredPrecheckProvider, precheckResult, runSyntheticPrecheck } from "./synthetic-precheck.js";
 import { floorFacilitySchema } from "../../../packages/shared/src/floor-summary.js";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -581,6 +582,61 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
       },
       { isolationLevel: "RepeatableRead" },
     );
+  });
+
+  const precheckAction = "SYNTHETIC_PRECHECK_RECORDED";
+  const recordedPrecheck = z.strictObject({
+    version: z.number().int().positive(),
+    result: precheckResult,
+  });
+  const precheckInput = z.discriminatedUnion("mode", [
+    z.strictObject({ mode: z.literal("AUTO"), version: z.number().int().positive() }),
+    z.strictObject({
+      mode: z.literal("MANUAL"), version: z.number().int().positive(),
+      reason: z.string().trim().min(3).max(500),
+    }),
+  ]);
+  portal.get("/reviews/:id/precheck", async (req, reply) => {
+    reply.header("Cache-Control", "private, no-store");
+    const officer = await syntheticReviewOfficer(req);
+    const { id } = params.parse(req.params);
+    return db.$transaction(async (tx) => {
+      await lockSyntheticReview(tx, id, officer, { forWrite: false });
+      const rows = await tx.auditLog.findMany({
+        where: { target: id, action: precheckAction, outcome: "SUCCESS" },
+        select: { id: true, createdAt: true, metadata: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20,
+      });
+      return { history: rows.map(({ id, createdAt, metadata }) => ({
+        id, createdAt, ...recordedPrecheck.parse(metadata),
+      })) };
+    }, { isolationLevel: "RepeatableRead" });
+  });
+  portal.post("/reviews/:id/precheck", { bodyLimit: 2048 }, async (req) => {
+    const officer = await syntheticReviewOfficer(req);
+    if (officer.role !== "PIC_KAWASAN") fail(403, "Semakan awal memerlukan PIC.");
+    const { id } = params.parse(req.params);
+    const input = precheckInput.parse(req.body);
+    return db.$transaction(async (tx) => {
+      const { state, snapshot } = await lockSyntheticReview(tx, id, officer);
+      if (state.status !== "SUBMITTED" || state.version !== input.version)
+        fail(409, "Versi atau status semakan sudah berubah.");
+      const rows = await evidenceRows(tx, snapshot.evidence.map(({ id }) => id));
+      const current = new Map(rows.map((row) => [row.id, row]));
+      const eligible = eligibleEvidence(state.caseId, snapshot.evidence, current);
+      const result = input.mode === "MANUAL"
+        ? precheckResult.parse({ source: "MANUAL", findings: [], reason: input.reason })
+        : await runSyntheticPrecheck(configuredPrecheckProvider(), {
+            units: snapshot.units.length, floors: snapshot.floors.length,
+            expectedEvidence: snapshot.evidence.length, cleanEvidence: eligible.length,
+            unverifiedEvidence: eligible.filter((d) => current.get(d.id)?.verificationStatus === "UNVERIFIED").length,
+          });
+      await tx.auditLog.create({ data: {
+        target: id, actorId: officer.operator.userId, activeRole: officer.role,
+        action: precheckAction, metadata: { version: state.version, result },
+      }});
+      return result;
+    });
   });
 
   portal.post("/reviews/:id", { bodyLimit: 4096 }, async (req) => {

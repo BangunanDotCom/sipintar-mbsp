@@ -2371,6 +2371,21 @@ describe("K02 physical units and floor links", () => {
 
 });
 
+it("flags an inactive owned draft without mutating it or exposing it to other applicants", async () => {
+  const owner = await actor("PEMOHON");
+  const other = await actor("PEMOHON");
+  const response = await request(owner, "/api/application-drafts", "POST", {capacity:"INDIVIDUAL"});
+  expect(response.statusCode).toBe(201);
+  const {id, version} = response.json();
+  const updatedAt = new Date(Date.now() - 60 * 86_400_000 - 1000);
+  await db.applicationDraft.update({where:{id},data:{updatedAt}});
+  const own = await request(owner, "/api/application-drafts");
+  expect(own.json()).toContainEqual(expect.objectContaining({id,version,status:"DRAFT",inactivity:expect.objectContaining({reviewDue:true})}));
+  expect((await request(other, "/api/application-drafts")).body).not.toContain(id);
+  expect((await request(owner, `/api/application-drafts/${id}`)).statusCode).toBe(200);
+  expect(await db.applicationDraft.findUnique({where:{id}})).toMatchObject({version,updatedAt});
+});
+
 describe("Issue 24 synthetic document scopes and submissions", () => {
   const scopedDatabase = /\/staylink_issue24_[a-z0-9_]+_test$/.test(
     process.env.TEST_DATABASE_URL ?? "",
@@ -2740,6 +2755,28 @@ describe("Issue 31 integrated synthetic portal", () => {
       const first = responses[0].json().id as string;
       expect(responses[1].json().id).toBe(first);
       const firstPath = `${root}/reviews/${first}`;
+      const precheck = `${firstPath}/precheck`;
+      const auto = { mode: "AUTO", version: 1 };
+      expect((await request(outsider, precheck)).statusCode).toBe(404);
+      expect((await request({...pic, csrf:token()}, precheck, "POST", auto)).statusCode).toBe(403);
+      expect((await request(pic, precheck, "POST", {...auto, version:2})).statusCode).toBe(409);
+      const unavailable = await request(pic, precheck, "POST", auto);
+      expect(unavailable.statusCode).toBe(200);
+      expect(unavailable.json().source).toBe("MANUAL_REQUIRED");
+      const manual = await request(pic, precheck, "POST", {
+        mode:"MANUAL", version:1, reason:"Bukti latihan disemak mengikut skop.",
+      });
+      expect(manual.statusCode).toBe(200);
+      expect(manual.json().source).toBe("MANUAL");
+      expect((await request(pic, precheck)).json().history).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({version:1,result:expect.objectContaining({source:"MANUAL_REQUIRED"})}),
+          expect.objectContaining({version:1,result:expect.objectContaining({source:"MANUAL"})}),
+        ]),
+      );
+      const current = (await request(pic, `${root}/reviews`)).json().reviews.find((r: {id:string}) => r.id === first);
+      expect(current).toMatchObject({version:1,status:"SUBMITTED"});
+
       expect(
         (
           await request(ppsk, `${firstPath}/billing`, "POST", {
