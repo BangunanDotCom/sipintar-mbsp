@@ -3532,6 +3532,28 @@ describe("Issue 31 integrated synthetic portal", () => {
       ).toBe(404);
     },
   );
+  it.runIf(enabled)("serializes appointment overlap checks and revokes existing sessions", async () => {
+    const oldFlag = process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS;
+    process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS = "true";
+    try {
+      const officer=await actor("PENTADBIR_TEMPLAT");
+      const path=`/api/admin/users/${officer.id}/roles`;
+      const requestBody={roleId:"PIC_KAWASAN",departmentId:"BANGUNAN",districtId:"SPU",
+        reference:"Penempatan sintetik",startsAt:new Date(Date.now()-1000).toISOString(),
+        endsAt:new Date(Date.now()+86_400_000).toISOString()};
+      const results=await Promise.all([request(ict,path,"POST",requestBody),request(ict,path,"POST",requestBody)]);
+      expect(results.map((response)=>response.statusCode).sort()).toEqual([200,409]);
+      const id=results.find((response)=>response.statusCode===200)!.json().id;
+      expect((await request(ict,path,"POST",{...requestBody,districtId:"SPT"})).statusCode).toBe(200);
+      expect((await request(ict,`/api/admin/appointments/${id}`,"DELETE")).statusCode).toBe(200);
+      expect((await request(officer,"/api/auth/me")).statusCode).toBe(401);
+      expect(await db.auditLog.count({where:{action:"ROLE_REVOKED",target:id}})).toBe(1);
+    } finally {
+      if (oldFlag===undefined) delete process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS;
+      else process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS=oldFlag;
+    }
+  });
+
   it.runIf(enabled)("previews only the chosen template version for the MFA-authorized template role", async () => {
     const created = await request(template,"/api/templates","POST",{
       name:"Pratonton latihan",category:"Surat kelulusan",content:"Pratonton Łukasz · Nguyễn.",

@@ -52,3 +52,11 @@ if [[ $(sql "$source_db" "SELECT to_regclass('training_reminder_outbox') IS NOT 
   [[ $(sql "$source_db" "$reminder_proof") == "$(sql "$restore_db" "$reminder_proof")" ]]
   echo "Training reminder rows and delivery states match."
 fi
+
+if [[ $(sql "$source_db" "SELECT to_regclass('synthetic_financial_entries') IS NOT NULL") == t ]]; then
+  journal_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(e)::text, chr(10) ORDER BY e.id), ''), 'UTF8')), 'hex') FROM synthetic_financial_entries e"
+  [[ $(sql "$source_db" "$journal_proof") == "$(sql "$restore_db" "$journal_proof")" ]]
+  archive_proof="SELECT count(*), encode(sha256(convert_to(COALESCE(string_agg(to_jsonb(a)::text, chr(10) ORDER BY a.id), ''), 'UTF8')), 'hex') FROM audit_logs a WHERE action = 'SYNTHETIC_ARCHIVE_CONTROL'"
+  [[ $(sql "$source_db" "$archive_proof") == "$(sql "$restore_db" "$archive_proof")" ]]
+  echo "Synthetic financial journal and archive control events match."
+fi

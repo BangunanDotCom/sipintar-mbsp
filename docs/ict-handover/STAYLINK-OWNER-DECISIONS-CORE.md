@@ -1,0 +1,30 @@
+# Daftar keputusan pemilik STAYLink MBSP
+
+Status setiap baris ialah **TERSEKAT** bagi operasi rasmi sehingga keputusan berkuasa, versi SOP, tarikh kuat kuasa dan bukti penerimaan direkodkan. Skop terbuka ini menggabungkan MBSP-01–08, Issue #68 dan penemuan audit. Gerbang makmal yang disebut di bawah memerlukan opt-in pada PostgreSQL sintetik. [Keputusan pemilik terdahulu](OWNER-DECISION-PACK.md) · [Matriks sistem](STAYLINK-DEVELOPMENT-STATUS.md) · [Issue #68](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68)
+
+| Keputusan yang perlu direkodkan | Pemilik | Peraturan dan penerimaan yang masih diperlukan |
+| --- | --- | --- |
+| Bukti, premis, wakil dan akuan | Jabatan Bangunan, JTIK, Unit Rekod | Kategori dokumen, alternatif, pengesahan GIS/daerah, kesan luput/penarikan surat kepada pembetulan, aturan rekod warisan, teks akuan, dan ujian P0 bebas pada calon sama. |
+| Kuasa pegawai dan draf tidak aktif | Jabatan Bangunan, JTIK | Pemberi kuasa, had daerah, pemangku, konflik yang perlu ditolak, penyerahan kes, pengagihan semula, tahap data penyelia dan kesan 60 hari. Gerbang konflik latihan tidak menentukan pemilik kes rasmi. |
+| BKT, rujukan dan KP | Jabatan Bangunan, Urus Setia JK, Perancang, Kejuruteraan | Pegawai penerima sah, klasifikasi BKT/lampiran, aturan pengembalian selepas snapshot, tarikh konsolidasi, SLA tujuh hari, tahap eskalasi, keputusan BKT dan kes lewat. |
+| Notifikasi | Jabatan Bangunan, JTIK | Jadual, penerima, versi templat, kelulusan kandungan, syarat batal, polisi percubaan semula bagi hasil SMTP tidak pasti, kelayakan hos dan saluran insiden. |
+| Nombor rujukan, AI dan prestasi | Jabatan Bangunan, JTIK | Siri/reset, tujuan serta sempadan data penyedia, fallback, kaedah metrik individu dan audit akses. |
+| Fi, refund/dispute dan pelarasan | Kewangan, JTIK, Jabatan Bangunan | Asas unit unik, kadar kedua/pengecualian, akaun lejar, padanan resit, pemisahan pemohon/pegawai/pelulus, catatan pembetulan, reversal, refund/dispute dan kontrak MBSPPay sandbox. |
+| Arkib, legal hold, retensi dan buka semula | Unit Rekod, Jabatan Bangunan, JTIK | Klasifikasi, jadual retensi, kuasa letak/lepas hold, proses kelulusan bebas, versi baharu selepas buka semula, kunci/pemulihan fail, pembatalan hak yang luput dan syarat pelupusan. |
+| Surat, identiti dan integrasi | Jabatan Bangunan, JTIK | Kuasa lulus templat, jadual unit/tingkat, semakan fon/script, tandatangan dan revokasi sijil, GIS/SSO, SMTP/AI, secrets dan kontrak timeout/retry setiap penyedia. |
+| Pekerja dan majikan | Jabatan Bangunan, JTK, Unit Rekod | Medan majikan pilihan, tujuan sah, had capaian dan retensi, kapasiti JK dan frasa surat. |
+| Oracle, penerimaan dan operasi | Team 2, Team 3, JTIK, pemilik proses | Kesetaraan API dan skema pada Oracle 19.30 SE2, kuota dan skop `STL_`, bukti restore, proksi, stor, pengimbas, UAT dan kelulusan operasi. |
+
+## Fon Han dan Jawi
+
+Noto Sans CJK dan Noto Naskh Arabic mempunyai fail lesen OFL. Sebelum memilih subset atau mengedar pakej, semak syarat lesen fon dan nama rizab. Untuk Han, pilih variasi aksara yang dikehendaki dan uji nama/alamat berbilang skrip serta jadual merentas halaman. Untuk Jawi, uji set aksara khusus Jawi, pembentukan huruf, kedudukan diakritik dan teks bidirectional yang bercampur angka, mata wang serta nama jalan Latin. Semak paparan dan salinan teks pada Chromium serta pembaca PDF lain. PDF latihan v1/v2 kekal menggunakan laluan sedia ada dengan alternatif UTF-8. [Lesen Noto CJK](https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE) · [Lesen Noto Naskh Arabic](https://github.com/google/fonts/blob/main/ofl/notonaskharabic/OFL.txt)
+
+## Kontrak penyedia yang memerlukan penerimaan
+
+| Sempadan | Input dan keputusan minimum | Kegagalan yang perlu ditangani |
+| --- | --- | --- |
+| MBSPPay | Rujukan invois bertandatangan, jumlah sen MYR, idempotency key, status/provenans, padanan settlement dan identiti pelulus | Timeout memerlukan semakan status sebelum retry, event ID ulangan mesti sepadan, callback luar skop ditolak, pelarasan melalui catatan baharu. |
+| AI Pre-Check | Tujuan, metadata minimum, versi penyedia dan kod penemuan yang disahkan | Tamat masa dan respons tidak sah mengarah kepada semakan manusia tanpa kelulusan automatik. |
+| Tandatangan | Hash dokumen, versi keputusan/templat, identiti penandatangan, sijil dan timestamp | Semak identiti, skop, integriti dan status sijil sebelum penerbitan. |
+| SMTP | Penerima yang diluluskan, klasifikasi, ID deduplikasi dan respons penyampaian | Auto-retry hanya bagi penolakan sementara yang diketahui. Hasil tidak pasti masuk kuarantin operasi. |
+| GIS dan identiti/SSO | Versi sempadan, provenance, audience/issuer dan skop aplikasi | Respons hilang atau tidak sah mengekalkan semakan manual atau akses tertutup. |
