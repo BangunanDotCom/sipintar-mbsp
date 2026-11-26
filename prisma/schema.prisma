@@ -451,3 +451,21 @@ model SyntheticSubmission {
  @@unique([draftId, draftVersion], map: "synthetic_submissions_version_unique")
  @@map("synthetic_submissions")
 }
+
+model TrainingReminderOutbox {
+ id String @id @default(uuid())
+ draftId String
+ draftVersion Int
+ recipientId String
+ source String
+ status String @default("PENDING")
+ attempts Int @default(0)
+ availableAt DateTime @default(now())
+ leaseUntil DateTime?
+ lastError String?
+ createdAt DateTime @default(now())
+ sentAt DateTime?
+ @@unique([draftId,draftVersion])
+ @@index([status,availableAt], map: "training_reminder_due_idx")
+ @@map("training_reminder_outbox")
+}

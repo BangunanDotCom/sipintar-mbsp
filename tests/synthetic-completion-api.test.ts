@@ -1,6 +1,6 @@
 import { afterAll, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { buildApp } from "../apps/api/src/app";
 import { totp } from "../apps/api/src/auth";
 import { db } from "../apps/api/src/core";
@@ -316,7 +316,10 @@ it.runIf(Boolean(kitFile))(
       const firstPdf = await app.inject({url:pdfUrl, headers:owner});
       expect(firstPdf.statusCode).toBe(200);
       expect(firstPdf.headers["content-type"]).toContain("application/pdf");
-      expect(firstPdf.headers["x-staylink-letter-template"]).toBe("SYNTHETIC-DECISION-LETTER-v1");
+      expect(firstPdf.headers["x-staylink-letter-template"]).toBe("SYNTHETIC-DECISION-LETTER-v2");
+      expect(firstPdf.headers["content-digest"]).toBe(
+        `sha-256=:${createHash("sha256").update(firstPdf.rawPayload).digest("base64")}:`,
+      );
       expect(firstPdf.rawPayload.subarray(0, 5).toString()).toBe("%PDF-");
       expect((await app.inject({url:pdfUrl, headers:other})).statusCode).toBe(404);
 
@@ -440,6 +443,12 @@ it.runIf(Boolean(kitFile))(
           await app.inject({ url: appUrl + "/completion", headers: owner })
         ).json().closed,
       ).toBe(true);
+      const archivePath = root + "/reports/archive";
+      const archive = await app.inject({url:archivePath,headers:ppsk});
+      expect(archive.statusCode,archive.body).toBe(200);
+      expect(archive.json()).toMatchObject({district:"SPU",items:[{id}],nextPage:null});
+      expect((await app.inject({url:archivePath,headers:owner})).statusCode).toBe(403);
+      expect((await app.inject({url:archivePath+"?page=2",headers:ppsk})).json().items).toEqual([]);
       const aggregate = await app.inject({
         url: root + "/completion/queue",
         headers: ppsk,

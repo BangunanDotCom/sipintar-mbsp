@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { trainingLetterTemplate } from "../../../packages/shared/src/synthetic-completion-contract.js";
@@ -50,4 +54,117 @@ export async function trainingLetterPdf(text: string, signedAt: number) {
     draw(line);
   }
   return Buffer.from(await pdf.save());
+}
+
+const resolveFont = createRequire(import.meta.url).resolve;
+const subsets = [
+  "latin",
+  "latin-ext",
+  "vietnamese",
+  "greek",
+  "cyrillic",
+  "devanagari",
+];
+let fontFiles: Promise<Buffer[]> | undefined;
+
+export class UnsupportedTrainingGlyph extends Error {}
+
+export async function unicodeTrainingPdf(
+  text: string,
+  timestamp: number,
+  template: string,
+) {
+  const pdf = await PDFDocument.create({ updateMetadata: false });
+  pdf.registerFontkit(fontkit);
+  pdf.setTitle("STAYLink MBSP - Dokumen latihan");
+  pdf.setSubject(template);
+  pdf.setCreationDate(new Date(timestamp));
+  pdf.setModificationDate(new Date(timestamp));
+  const fonts = await Promise.all(
+    (
+      await (fontFiles ??= Promise.all(
+        subsets.map((subset) =>
+          readFile(
+            resolveFont(
+              `@fontsource/noto-sans/files/noto-sans-${subset}-400-normal.woff`,
+            ),
+          ),
+        ),
+      ))
+    ).map((file) => pdf.embedFont(file, { subset: true })),
+  );
+  const coverage = fonts.map((font) => new Set(font.getCharacterSet()));
+  const segmenter = new Intl.Segmenter("ms", { granularity: "grapheme" });
+  const size = 10;
+  const margin = 45;
+  let page = pdf.addPage();
+  let y = page.getHeight() - margin;
+  const availableWidth = page.getWidth() - 2 * margin;
+
+  for (const paragraph of text.trimEnd().split(/\r?\n/)) {
+    let x = margin;
+    let line: { text: string; font: (typeof fonts)[number]; width: number }[] =
+      [];
+    let width = 0;
+    const flush = () => {
+      if (y < margin) {
+        page = pdf.addPage();
+        y = page.getHeight() - margin;
+      }
+      for (const run of line) {
+        page.drawText(run.text, {
+          x,
+          y,
+          size,
+          font: run.font,
+          color: rgb(0.08, 0.14, 0.25),
+        });
+        x += run.width;
+      }
+      y -= 15;
+      x = margin;
+      width = 0;
+      line = [];
+    };
+    for (const { segment } of segmenter.segment(
+      paragraph.normalize("NFC").replaceAll("\t", " "),
+    )) {
+      const characters = [...segment].map((c) => c.codePointAt(0)!);
+      const index = coverage.findIndex((set) =>
+        characters.every((c) => set.has(c)),
+      );
+      if (index < 0)
+        throw new UnsupportedTrainingGlyph(
+          "Aksara di luar sokongan fon PDF latihan.",
+        );
+      const font = fonts[index];
+      let run = line.at(-1);
+      let runWidth = font.widthOfTextAtSize(
+        run?.font === font ? run.text + segment : segment,
+        size,
+      );
+      if (
+        width + runWidth - (run?.font === font ? run.width : 0) >
+        availableWidth
+      ) {
+        flush();
+        run = undefined;
+        runWidth = font.widthOfTextAtSize(segment, size);
+      }
+      if (run?.font === font) {
+        width += runWidth - run.width;
+        run.text += segment;
+        run.width = runWidth;
+      } else {
+        line.push({ text: segment, font, width: runWidth });
+        width += runWidth;
+      }
+    }
+    flush();
+  }
+  return Buffer.from(await pdf.save());
+}
+
+export function trainingPdfDigest(bytes: Buffer) {
+  return `sha-256=:${createHash("sha256").update(bytes).digest("base64")}:`;
 }

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import {
   canActOnCompletion,
   trainingLetterTemplate,
+  type TrainingLetterVersion,
   departments,
   type TechnicalDepartment,
   type CompletionRole,
@@ -75,7 +76,7 @@ export function completionState() {
       number: number;
       decisions: Determination[];
       signedAt: number;
-      templateVersion: typeof trainingLetterTemplate;
+      templateVersion: TrainingLetterVersion;
     }[],
     decisionSigned: false,
     decisionScope: [] as string[],
@@ -101,7 +102,7 @@ export function applyCompletion(
     now: number;
     scopes: Scope[];
     firstPaid: boolean;
-    letterTemplate?: typeof trainingLetterTemplate;
+    letterTemplate?: TrainingLetterVersion;
     feeSen: number | null;
     invoiceId?: string;
   },

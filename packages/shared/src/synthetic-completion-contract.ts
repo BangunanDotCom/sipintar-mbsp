@@ -76,13 +76,16 @@ export function canActOnCompletion(
 export const completionEvent = "SYNTHETIC_PORTAL_COMPLETION";
 export const completionProvider = "SYNTHETIC_PROVIDER";
 export const trainingLetterTemplate = "SYNTHETIC-DECISION-LETTER-v1";
+export const unicodeLetterTemplate = "SYNTHETIC-DECISION-LETTER-v2";
+export const trainingLetterVersion = z.enum([trainingLetterTemplate, unicodeLetterTemplate]);
+export type TrainingLetterVersion = z.infer<typeof trainingLetterVersion>;
 export const completionStoredMetadata = z.strictObject({
   version: z.number().int().positive(),
   timestamp: z.number().int().nonnegative(),
   firstPaid: z.boolean(),
   feeSen: z.number().int().nonnegative().nullable(),
   invoiceId: z.uuid().optional(),
-  letterTemplate: z.literal(trainingLetterTemplate).optional(),
+  letterTemplate: trainingLetterVersion.optional(),
   command: completionCommand,
 });
 

@@ -89,4 +89,7 @@ test("PPSK filters and downloads the district summary via HTTPS", async ({ page 
   const download = page.waitForEvent("download");
   await queue.getByRole("link", {name:"Muat turun ringkasan daerah CSV"}).click();
   expect((await download).suggestedFilename()).toBe("staylink-latihan-SPU-closed.csv");
+  await page.getByText("Arkib kes latihan ditutup",{exact:true}).click();
+  await expect(page.getByText("SPU · Halaman 1",{exact:true})).toBeVisible();
+
 });
