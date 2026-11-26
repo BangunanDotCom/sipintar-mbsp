@@ -28,3 +28,5 @@ Noto Sans CJK dan Noto Naskh Arabic mempunyai fail lesen OFL. Sebelum memilih su
 | Tandatangan | Hash dokumen, versi keputusan/templat, identiti penandatangan, sijil dan timestamp | Semak identiti, skop, integriti dan status sijil sebelum penerbitan. |
 | SMTP | Penerima yang diluluskan, klasifikasi, ID deduplikasi dan respons penyampaian | Auto-retry hanya bagi penolakan sementara yang diketahui. Hasil tidak pasti masuk kuarantin operasi. |
 | GIS dan identiti/SSO | Versi sempadan, provenance, audience/issuer dan skop aplikasi | Respons hilang atau tidak sah mengekalkan semakan manual atau akses tertutup. |
+
+Pada prototaip makmal berasingan, kedua-dua fon menemui glyph untuk sampel Han dan Jawi yang dipilih. Ekstraksi Han menghasilkan teks yang dijangka, sementara pembaca PDF melaporkan amaran embedding fon. Ekstraksi Jawi bercampur Latin menyusun aksara RTL secara berbeza daripada input, dan satu aksara sampel bertukar pada ekstraksi. Sokongan Han/Jawi kekal belum diterima. Jadual berbilang skrip, pemisahan halaman, bentuk visual dan round-trip teks merentas pembaca perlu dibuktikan sebelum renderer v3 dipilih.
