@@ -314,16 +314,31 @@ export async function routes(app: FastifyInstance) {
       fail(400, "Julat tarikh tidak sah.");
     if (!(await db.department.findUnique({ where: { id: b.departmentId } })))
       fail(400, "Jabatan tidak sah.");
-    const a = await db.userRoleAssignment.create({
-      data: {
-        ...b,
-        userId,
-        startsAt: new Date(b.startsAt),
-        endsAt: b.endsAt ? new Date(b.endsAt) : null,
-        authorizedBy: s.userId,
-      },
+    const startsAt=new Date(b.startsAt);
+    const endsAt=b.endsAt?new Date(b.endsAt):null;
+    const a = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      if (syntheticPortalDatabase() && process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS==="true") {
+        const overlap=await tx.userRoleAssignment.findFirst({
+          where:{
+            userId,roleId:b.roleId,status:"ACTIVE",
+            ...(endsAt && {startsAt:{lt:endsAt}}),
+            AND:[
+              {OR:[{endsAt:null},{endsAt:{gt:startsAt}}]},
+              ...(b.districtId ? [{OR:[{districtId:null},{districtId:b.districtId}]}] : []),
+            ],
+          },select:{id:true},
+        });
+        if (overlap) fail(409,"Pelantikan latihan bertindih dalam skop yang sama.");
+      }
+      const appointment=await tx.userRoleAssignment.create({
+        data:{...b,userId,startsAt,endsAt,authorizedBy:s.userId},
+      });
+      await tx.auditLog.create({data:{
+        actorId:s.userId,activeRole:s.activeRole,action:"ROLE_ASSIGNED",target:appointment.id,
+      }});
+      return appointment;
     });
-    await audit(s.userId, s.activeRole, "ROLE_ASSIGNED", a.id);
     await notify(
       userId,
       "ROLE",
@@ -339,14 +354,20 @@ export async function routes(app: FastifyInstance) {
     });
     if (a.userId === s.userId)
       fail(403, "Perubahan pelantikan sendiri tidak dibenarkan.");
-    await db.$transaction([
-      db.userRoleAssignment.update({
-        where: { id: a.id },
-        data: { status: "REVOKED", endsAt: new Date() },
-      }),
-      db.session.deleteMany({ where: { userId: a.userId } }),
-    ]);
-    await audit(s.userId, s.activeRole, "ROLE_REVOKED", a.id);
+    const changed = await db.$transaction(async (tx)=>{
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${a.userId} FOR UPDATE`;
+      const revoked=await tx.userRoleAssignment.updateMany({
+        where:{id:a.id,status:{not:"REVOKED"}},
+        data:{status:"REVOKED",endsAt:new Date()},
+      });
+      if (!revoked.count) return false;
+      await tx.session.deleteMany({where:{userId:a.userId}});
+      await tx.auditLog.create({data:{
+        actorId:s.userId,activeRole:s.activeRole,action:"ROLE_REVOKED",target:a.id,
+      }});
+      return true;
+    });
+    if (!changed) return {ok:true};
     await notify(
       a.userId,
       "ROLE",

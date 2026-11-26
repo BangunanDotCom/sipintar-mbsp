@@ -1,3 +1,4 @@
+import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { createHmac, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
@@ -131,6 +132,9 @@ async function storeReconciliation(
     fail(409, "Padanan atau tempoh invois sintetik tidak sah.");
   if (result.status === "SETTLED") {
     const receipt = result.ledger.settlements[0];
+    await recordSyntheticFinancialEntry(tx, {
+      submissionId:id, invoiceId:receipt.invoiceId, stage:1, event:"RECEIPT", amountSen:receipt.amountSen,
+    });
     await tx.auditLog.create({
       data: {
         actorId,
@@ -211,6 +215,9 @@ export async function syntheticBillingRoutes(
         if (output.status !== "ISSUED" && output.status !== "REPLAY")
           fail(409, "Invois sintetik tidak dapat dijana.");
         if (output.status === "ISSUED") {
+          await recordSyntheticFinancialEntry(tx, {
+            submissionId:id, invoiceId:output.invoice.id, stage:1, event:"INVOICE", amountSen:output.invoice.amountSen,
+          });
           await tx.auditLog.create({
             data: {
               actorId: officer.operator.userId,

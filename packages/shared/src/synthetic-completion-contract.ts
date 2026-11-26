@@ -26,6 +26,10 @@ export const determination = z.strictObject({
 });
 export const completionCommand = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("REFER") }),
+  z.strictObject({ action: z.literal("RECEIVE_BKT"), note: notes }),
+  z.strictObject({ action: z.literal("ACK_REFERRAL") }),
+  z.strictObject({ action: z.literal("RETURN_COMMENT"), department: z.enum(departments), reason: notes }),
+
   z.strictObject({
     action: z.literal("REREFER"),
     departments: z.array(z.enum(departments)).min(1).max(2),
@@ -52,6 +56,9 @@ export const completionCommand = z.discriminatedUnion("action", [
 export type CompletionCommand = z.infer<typeof completionCommand>;
 const commandRoles: Record<CompletionCommand["action"], CompletionRole[]> = {
   REFER: ["PIC_KAWASAN"],
+  RECEIVE_BKT: ["URUS_SETIA_JK"],
+  ACK_REFERRAL: [...departments],
+  RETURN_COMMENT: ["PIC_KAWASAN"],
   REREFER: ["PIC_KAWASAN"],
   COMMENT: [...departments],
   SUBMIT_PAPER: ["PIC_KAWASAN"],

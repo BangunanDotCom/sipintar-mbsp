@@ -91,5 +91,13 @@ test("PPSK filters and downloads the district summary via HTTPS", async ({ page 
   expect((await download).suggestedFilename()).toBe("staylink-latihan-SPU-closed.csv");
   await page.getByText("Arkib kes latihan ditutup",{exact:true}).click();
   await expect(page.getByText("SPU · Halaman 1",{exact:true})).toBeVisible();
+  await page.getByText("Lejar kewangan latihan",{exact:true}).click();
+  await expect(page.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
+  if (process.env.STAYLINK_SYNTHETIC_RECORDS === "true") {
+    await page.getByText("Daftar kawalan rekod latihan",{exact:true}).click();
+    await expect(page.getByText("Rekod ditahan",{exact:true})).toBeVisible();
+    await expect(page.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup.")).toBeVisible();
+  }
+
 
 });

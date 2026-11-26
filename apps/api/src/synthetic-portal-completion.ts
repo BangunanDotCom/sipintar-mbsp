@@ -1,9 +1,12 @@
+import { syntheticRecordOverlay, recordAction } from "./synthetic-record-overlay.js";
+import { trainingRemindersEnabled } from "./training-reminders.js";
+import { enqueueTechnicalReminders } from "./training-technical-reminders.js";
+import { stateFor } from "./synthetic-completion-journal.js";
+import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { trainingLetterPdf, unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
 import {
   completionEvent as eventName,
-  completionEventRole,
   completionProvider as provider,
-  completionStoredMetadata,
   unicodeLetterTemplate,
 } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
@@ -13,12 +16,9 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   applyCompletion,
-  completionHistoryLimit,
-  assertCompletionHistoryCount,
   canActOnCompletion,
   completionCommand,
   completionRoles,
-  completionState,
   type CompletionRole,
 } from "../../../packages/shared/src/synthetic-completion.js";
 import { applicant } from "./application-drafts.js";
@@ -74,48 +74,6 @@ function inventory(
   };
 }
 
-async function stateFor(tx: Tx, id: string, scopes: Scope[]) {
-  const events = await tx.auditLog.findMany({
-    where: { target: id, action: eventName, outcome: "SUCCESS" },
-    select: { actorId: true, activeRole: true, metadata: true },
-    take: completionHistoryLimit + 1,
-  });
-  try {
-    assertCompletionHistoryCount(events.length);
-  } catch {
-    fail(409, "Sejarah latihan melebihi had persediaan.");
-  }
-  const values = events
-    .map(({ actorId, activeRole, metadata }) => {
-      const parsed = completionStoredMetadata.safeParse(metadata);
-      if (!parsed.success || !actorId) fail(409, "Sejarah latihan tidak sah.");
-      const role = completionEventRole(
-        actorId,
-        activeRole,
-        parsed.data.command.action,
-      );
-      if (!role) fail(409, "Pelaku sejarah latihan tidak sah.");
-      return { actorId, role, ...parsed.data };
-    })
-    .sort((a, b) => a.version - b.version);
-  let state = completionState();
-  for (const value of values) {
-    if (value.version !== state.version + 1)
-      fail(409, "Versi sejarah latihan tidak konsisten.");
-    try {
-      const applied = applyCompletion(state, value.command, {
-        ...value,
-        now: value.timestamp,
-        scopes,
-      });
-      if (!applied.changed) fail(409, "Peralihan sejarah diduplikasi.");
-      state = applied.state;
-    } catch {
-      fail(409, "Sejarah peralihan latihan tidak konsisten.");
-    }
-  }
-  return state;
-}
 
 export function completionConfig(env = process.env) {
   if (
@@ -172,6 +130,8 @@ export async function syntheticCompletionRoutes(portal: FastifyInstance) {
 
 function registerCompletion(api: FastifyInstance, config: Config) {
   const { assignments, district, feeSen, secret } = config;
+  const bktEnabled = process.env.STAYLINK_SYNTHETIC_BKT === "true";
+  const recordsEnabled = process.env.STAYLINK_SYNTHETIC_RECORDS === "true";
   async function assigned(req: FastifyRequest) {
     const officer = await authorize(req, "profile");
     const role = z.enum(completionRoles).safeParse(officer.activeRole);
@@ -227,7 +187,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       fail(403, "Peranan tidak dibenarkan untuk tindakan ini.");
     const timestamp = Date.now();
     const firstPaid =
-      command.action === "REFER" && (await firstPaymentSettled(tx, id));
+      ["REFER", "RECEIVE_BKT"].includes(command.action) && (await firstPaymentSettled(tx, id));
     const invoiceId =
       command.action === "ISSUE_SECOND" ? randomUUID() : undefined;
     let result: ReturnType<typeof applyCompletion>;
@@ -248,6 +208,14 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       );
     }
     if (result.changed) {
+      if ((command.action === "ISSUE_SECOND" || command.action === "SETTLE_SECOND") && result.state.invoice) {
+        const invoice = result.state.invoice;
+        await recordSyntheticFinancialEntry(tx, {
+          submissionId:id, invoiceId:invoice.id, stage:2,
+          event:command.action === "ISSUE_SECOND" ? "INVOICE" : "RECEIPT",
+          amountSen:invoice.amountSen,
+        });
+      }
       await tx.auditLog.create({
         data: {
           target: id,
@@ -302,10 +270,14 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         version: state.version,
         closed: state.closed,
         scopes,
+        bktEnabled,
+        technicalHistory: state.technicalHistory.filter((item)=>item.department===role),
         referral: state.referral && {
           deadline: state.referral.deadline,
           assigned: state.referral.departments.includes(role),
           comment: state.referral.comments[role] ?? null,
+          acknowledged: state.referral.acknowledged.includes(role),
+          acknowledgementRequired: Boolean(state.bkt),
         },
       };
     }
@@ -316,6 +288,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       response: state.response,
       papers: state.papers,
       returnedPapers: state.returnedPapers,
+      bktEnabled, bkt:state.bkt, technicalHistory:state.technicalHistory, recordsEnabled:recordsEnabled && role === "PPSK",
       referral: state.referral,
       overdue: Boolean(
         state.referral &&
@@ -348,7 +321,13 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         >`SELECT s.id FROM synthetic_submissions s
         WHERE s.snapshot->>'districtId' = ${district} AND s."actorId" <> ${officer.userId}
           AND NOT EXISTS (SELECT 1 FROM synthetic_submissions child WHERE child."previousId" = s.id)
-          AND EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${eventName})
+          AND (
+            EXISTS (SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.action = ${eventName} AND a.outcome = 'SUCCESS')
+            OR (${bktEnabled && role === "URUS_SETIA_JK"} AND EXISTS (
+              SELECT 1 FROM audit_logs a WHERE a.target = s.id AND a.outcome = 'SUCCESS'
+                AND a.action = 'SYNTHETIC_PORTAL_INVOICE_SETTLED'
+            ))
+          )
         ORDER BY s."createdAt" DESC, s.id LIMIT 50`;
         const cases = [];
         const summary = {
@@ -431,13 +410,82 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     );
   });
 
+  api.get("/completion/:id/financial-ledger", async (req, reply) => {
+    const { id } = idParam.parse(req.params);
+    const { format } = z.strictObject({ format:z.enum(["json","csv"]).default("json") }).parse(req.query);
+    const officer = await syntheticReviewOfficer(req);
+    if (officer.role !== "PPSK" || officer.district !== district)
+      fail(404, "Lejar latihan tidak tersedia.");
+    const entries = await db.$transaction(async (tx) => {
+      await lockSyntheticReview(tx, id, officer, { forWrite:false });
+      return tx.syntheticFinancialEntry.findMany({
+        where:{submissionId:id},orderBy:[{stage:"asc"},{createdAt:"asc"},{id:"asc"}],
+        select:{stage:true,event:true,invoiceId:true,amountSen:true,createdAt:true},
+      });
+    }, {isolationLevel:"RepeatableRead"});
+    if (format === "json") return {entries};
+    return reply.header("Content-Disposition", 'attachment; filename="staylink-lejar-latihan.csv"')
+      .type("text/csv; charset=utf-8")
+      .send(["peringkat,acara,nilai_sen,waktu_utc",
+        ...entries.map(({stage,event,amountSen,createdAt})=>[stage,event,amountSen,createdAt.toISOString()].join(",")),
+        ""].join("\r\n"));
+  });
+
+  async function recordsOfficer(req:FastifyRequest) {
+    if (!recordsEnabled) fail(404, "Daftar rekod latihan tidak tersedia.");
+    const officer = await syntheticReviewOfficer(req);
+    if (officer.role !== "PPSK" || officer.district !== district)
+      fail(404, "Daftar rekod latihan tidak tersedia.");
+    return officer;
+  }
+  async function closedRecord(tx:Tx, id:string, officer:Awaited<ReturnType<typeof recordsOfficer>>, forWrite:boolean) {
+    const {snapshot} = await lockSyntheticReview(tx,id,officer,{forWrite});
+    const {scopes} = inventory(snapshot);
+    if (!(await stateFor(tx,id,scopes)).closed)
+      fail(409, "Daftar rekod hanya tersedia selepas penutupan latihan.");
+    return syntheticRecordOverlay(tx,id);
+  }
+  api.get("/completion/:id/records", async (req) => {
+    const officer = await recordsOfficer(req);
+    const {id} = idParam.parse(req.params);
+    return db.$transaction(async (tx) => {
+      const overlay = await closedRecord(tx,id,officer,false);
+      await tx.auditLog.create({data:{
+        actorId:officer.operator.userId,activeRole:officer.role,
+        action:"SYNTHETIC_ARCHIVE_ACCESSED",target:id,
+      }});
+      return overlay;
+    },{isolationLevel:"RepeatableRead"});
+  });
+  api.post("/completion/:id/records", {bodyLimit:4096}, async (req) => {
+    const officer = await recordsOfficer(req);
+    const {id} = idParam.parse(req.params);
+    const input = recordAction.parse(req.body);
+    return db.$transaction(async (tx) => {
+      const current = await closedRecord(tx,id,officer,true);
+      if (input.version !== current.version || current.version >= 100)
+        fail(409, "Versi daftar rekod latihan tidak tersedia.");
+      if ((input.action === "PLACE_HOLD" && current.legalHold) ||
+          (input.action === "RELEASE_HOLD" && !current.legalHold) ||
+          (input.action === "REQUEST_REOPEN" && current.reopenRequested))
+        fail(409, "Tindakan rekod telah direkodkan atau tidak sah.");
+      await tx.auditLog.create({data:{
+        actorId:officer.operator.userId,activeRole:officer.role,target:id,
+        action:"SYNTHETIC_ARCHIVE_CONTROL",metadata:{...input,version:current.version+1},
+      }});
+      return syntheticRecordOverlay(tx,id);
+    });
+  });
+
   api.post("/completion/:id", { bodyLimit: 390_000 }, async (req) => {
     const { id } = idParam.parse(req.params);
     const input = edit.parse(req.body);
-    const managing = !["COMMENT", "DECIDE", "SIGN", "RETURN_PAPER"].includes(
+    const managing = !["COMMENT", "DECIDE", "SIGN", "RETURN_PAPER", "RECEIVE_BKT", "ACK_REFERRAL"].includes(
       input.command.action,
     );
     const manager = managing ? await syntheticReviewOfficer(req) : null;
+    if (!bktEnabled && ["RECEIVE_BKT","ACK_REFERRAL","RETURN_COMMENT"].includes(input.command.action))
+      fail(404, "Aliran BKT latihan tidak diaktifkan.");
     if (manager && manager.district !== district)
       fail(404, "Tiada pelantikan latihan dalam skop ini.");
     return db.$transaction(async (tx) => {
@@ -457,6 +505,8 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           })()
         : await assignedCase(tx, req, id);
       const state = await stateFor(tx, id, record.scopes);
+      if (bktEnabled && input.command.action === "REFER" && !state.bkt)
+        fail(409, "Rekod penerimaan BKT latihan dahulu.");
       if (state.version !== input.version)
         fail(409, "Versi aliran latihan sudah berubah.");
       const next = await mutate(
@@ -470,6 +520,10 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       const command = input.command;
       if (command.action === "REFER" || command.action === "REREFER") {
         const referred = next.referral?.departments ?? [];
+        if (next.referral && trainingRemindersEnabled()) {
+          await enqueueTechnicalReminders(tx,id,district,next.referral,assignments,process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID);
+        }
+
         await tx.notification.createMany({
           data: referred.map((department) => ({
             userId: assignments[department],

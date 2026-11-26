@@ -458,6 +458,10 @@ model TrainingReminderOutbox {
  draftVersion Int
  recipientId String
  source String
+ kind String @default("DRAFT_INACTIVE")
+ context Json?
+ dedupeKey String @unique(map: "training_reminder_dedupe_key")
+ notifiedAt DateTime?
  status String @default("PENDING")
  attempts Int @default(0)
  availableAt DateTime @default(now())
@@ -465,7 +469,19 @@ model TrainingReminderOutbox {
  lastError String?
  createdAt DateTime @default(now())
  sentAt DateTime?
- @@unique([draftId,draftVersion])
  @@index([status,availableAt], map: "training_reminder_due_idx")
  @@map("training_reminder_outbox")
+}
+
+model SyntheticFinancialEntry {
+ id String @id @default(uuid())
+ submissionId String
+ invoiceId String
+ stage Int
+ event String
+ amountSen Int
+ createdAt DateTime @default(now())
+ @@unique([submissionId,stage,event])
+ @@unique([invoiceId,event])
+ @@map("synthetic_financial_entries")
 }

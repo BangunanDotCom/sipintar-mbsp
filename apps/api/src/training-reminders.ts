@@ -1,3 +1,4 @@
+import { eligibleTechnicalRecipient } from "./training-technical-reminders.js";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -64,6 +65,7 @@ async function enqueue(
       draftId: draft.id,
       draftVersion: draft.version,
       recipientId: draft.initiatedByUserId,
+      dedupeKey: `draft:${draft.id}:${draft.version}`,
       source,
     },
     skipDuplicates: true,
@@ -106,7 +108,7 @@ export async function scheduleTrainingReminders() {
       JOIN application_premises p ON p."draftId" = d.id
       JOIN users u ON u.id = d."initiatedByUserId"
       WHERE ${eligibleDraft} AND NOT EXISTS (
-        SELECT 1 FROM training_reminder_outbox o WHERE o."draftId" = d.id AND o."draftVersion" = d.version
+        SELECT 1 FROM training_reminder_outbox o WHERE o."draftId" = d.id AND o."draftVersion" = d.version AND o.kind = 'DRAFT_INACTIVE'
       )
       ORDER BY d."updatedAt", d.id LIMIT 25 FOR UPDATE OF d SKIP LOCKED
     `;
@@ -121,6 +123,15 @@ export async function scheduleTrainingReminders() {
     for (const draft of due) if (await enqueue(tx, draft, "SCHEDULE")) queued++;
     return queued;
   });
+}
+
+function reminderCopy(kind:string) {
+  switch(kind) {
+    case "TECH_PRE_DUE": return {subject:"Rujukan latihan menghampiri SLA",text:"Semak rujukan teknikal latihan yang masih terbuka dalam dashboard."};
+    case "TECH_OVERDUE": return {subject:"Rujukan latihan melepasi SLA",text:"Rekod ulasan atau semak status tugasan dalam dashboard latihan."};
+    case "TECH_ESCALATE": return {subject:"Eskalasi rujukan latihan",text:"Semak rujukan teknikal yang masih menunggu ulasan dalam dashboard latihan."};
+    default: return {subject:title,text:message};
+  }
 }
 
 export type TrainingMailSender = (email: {
@@ -164,22 +175,19 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
       const row = await tx.trainingReminderOutbox.findUniqueOrThrow({
         where: { id },
       });
-      const [draft] = await readEligible(
-        tx,
-        Prisma.sql`d.id = ${row.draftId} AND d.version = ${row.draftVersion}`,
-        1,
-      );
-      const recipient =
-        draft &&
-        (await tx.user.findUnique({
-          where: { id: row.recipientId },
-          select: { email: true },
-        }));
-      if (
-        !draft ||
-        draft.initiatedByUserId !== row.recipientId ||
-        !recipient?.email.toLowerCase().endsWith("@example.test")
-      ) {
+      let email: string | null = null;
+      if (row.kind === "DRAFT_INACTIVE") {
+        const [draft] = await readEligible(
+          tx, Prisma.sql`d.id = ${row.draftId} AND d.version = ${row.draftVersion}`, 1,
+        );
+        if (draft?.initiatedByUserId === row.recipientId) {
+          const account = await tx.user.findUnique({where:{id:row.recipientId},select:{email:true}});
+          email = account?.email ?? null;
+        }
+      } else {
+        email = await eligibleTechnicalRecipient(tx, row);
+      }
+      if (!email?.toLowerCase().endsWith("@example.test")) {
         await tx.trainingReminderOutbox.update({
           where: { id },
           data: {
@@ -190,15 +198,21 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         });
         return null;
       }
-      return { ...row, email: recipient.email };
+      const copy = reminderCopy(row.kind);
+      if (row.kind !== "DRAFT_INACTIVE" && !row.notifiedAt) {
+        await tx.notification.create({data:{
+          userId:row.recipientId,type:"TRAINING_TECHNICAL_REMINDER",title:copy.subject,message:copy.text,
+        }});
+        await tx.trainingReminderOutbox.update({where:{id},data:{notifiedAt:new Date()}});
+      }
+      return { ...row, email, copy };
     });
     if (!row) continue;
     const claim = { id, status: "SENDING", leaseUntil };
     try {
       await send({
         to: row.email,
-        subject: title,
-        text: message,
+        ...row.copy,
         messageId: `<staylink-training-${id}@example.test>`,
       });
       await db.trainingReminderOutbox.updateMany({
@@ -257,7 +271,7 @@ export async function trainingReminderRoutes(portal: FastifyInstance) {
           50,
         );
         const reminders = await tx.trainingReminderOutbox.findMany({
-          where: { draftId: { in: rows.map(({ id }) => id) } },
+          where: { kind: "DRAFT_INACTIVE", draftId: { in: rows.map(({ id }) => id) } },
           take: 200,
           orderBy: { createdAt: "desc" },
           select: {
@@ -321,7 +335,12 @@ export async function trainingReminderRoutes(portal: FastifyInstance) {
       _count: { _all: true },
       orderBy: { status: "asc" },
     });
+    const recent=await db.auditLog.findMany({
+      where:{action:"SYNTHETIC_REMINDER_RUN"},
+      select:{createdAt:true,outcome:true},orderBy:{createdAt:"desc"},take:10,
+    });
     return {
+      recent,
       counts: rows.map(({ status, _count }) => ({
         status,
         count: _count._all,

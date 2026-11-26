@@ -1,3 +1,4 @@
+import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
 import { afterAll, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -34,6 +35,9 @@ it.runIf(Boolean(kitFile))(
       accounts: Credentials[];
       scenarios: { id: string; draftPath: string }[];
     };
+    const flags = ["STAYLINK_SYNTHETIC_BKT","STAYLINK_SYNTHETIC_RECORDS","STAYLINK_SYNTHETIC_REMINDERS"] as const;
+    const originalFlags = flags.map((key)=>process.env[key]);
+    for (const key of flags) process.env[key]="true";
     const app = await buildApp();
     try {
       expect(kit.accounts).toHaveLength(11);
@@ -146,13 +150,14 @@ it.runIf(Boolean(kitFile))(
       const completion = root + "/completion/" + id;
       const post = (url: string, headers: typeof owner, payload: object) =>
         app.inject({ method: "POST", url, headers, payload });
+      let phaseOffset=0;
       const command = (
         headers: typeof owner,
         version: number,
         action: string,
         other = {},
       ) =>
-        post(completion, headers, { version, command: { action, ...other } });
+        post(completion, headers, { version:version+phaseOffset, command: { action, ...other } });
       expect(
         (
           await post(review, pic, {
@@ -175,6 +180,23 @@ it.runIf(Boolean(kitFile))(
       expect(
         (await post(review + "/billing", ppsk, { action: "ISSUE" })).statusCode,
       ).toBe(200);
+      await db.$executeRaw`CREATE FUNCTION finance_fixture_abort() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.event = 'RECEIPT' THEN RAISE EXCEPTION 'synthetic receipt failure'; END IF;
+        RETURN NEW; END $$`;
+      try {
+        await db.$executeRaw`CREATE TRIGGER finance_fixture_abort BEFORE INSERT ON synthetic_financial_entries
+          FOR EACH ROW EXECUTE FUNCTION finance_fixture_abort()`;
+        try {
+          const failed=await post(review+"/billing",ppsk,{action:"SIMULATE_SETTLEMENT"});
+          expect(failed.statusCode).toBe(500);
+          expect(await db.syntheticFinancialEntry.count({where:{submissionId:id}})).toBe(1);
+          expect(await db.auditLog.count({where:{target:id,action:"SYNTHETIC_PORTAL_INVOICE_SETTLED"}})).toBe(0);
+        } finally {
+          await db.$executeRaw`DROP TRIGGER finance_fixture_abort ON synthetic_financial_entries`;
+        }
+      } finally {
+        await db.$executeRaw`DROP FUNCTION finance_fixture_abort()`;
+      }
       expect(
         (
           await post(review + "/billing", ppsk, {
@@ -183,7 +205,21 @@ it.runIf(Boolean(kitFile))(
         ).statusCode,
       ).toBe(200);
       expect((await command(spt, 0, "REFER")).statusCode).toBe(404);
+      expect((await command(pic,0,"REFER")).statusCode).toBe(409);
+      const intake=await app.inject({url:root+"/completion/queue",headers:council});
+      expect(intake.json().cases).toContainEqual(expect.objectContaining({id,version:0,bkt:null}));
+
+      expect((await command(council,0,"RECEIVE_BKT",{note:"Penerimaan BKT latihan."})).statusCode).toBe(200);
+      phaseOffset++;
       expect((await command(pic, 0, "REFER")).statusCode).toBe(200);
+      const reminders = await db.trainingReminderOutbox.findMany({where:{draftId:draft,kind:{startsWith:"TECH_"}}});
+      expect(reminders).toHaveLength(5);
+      const pre = reminders.find((entry)=>entry.kind==="TECH_PRE_DUE")!;
+      await db.trainingReminderOutbox.update({where:{id:pre.id},data:{availableAt:new Date(0)}});
+      const deliveries:string[]=[];
+      await Promise.all([deliverTrainingReminders(async (mail)=>{deliveries.push(mail.messageId);}),
+        deliverTrainingReminders(async (mail)=>{deliveries.push(mail.messageId);})]);
+      expect(deliveries).toHaveLength(1);
       const queue = await app.inject({
         url: root + "/completion/queue",
         headers: planning,
@@ -221,6 +257,10 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(409);
+      expect((await command(planning,1,"ACK_REFERRAL")).statusCode).toBe(200);
+      phaseOffset++;
+      expect((await command(engineering,1,"ACK_REFERRAL")).statusCode).toBe(200);
+      phaseOffset++;
       expect(
         (
           await command(planning, 1, "COMMENT", {
@@ -229,6 +269,14 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
+      expect((await command(pic,2,"RETURN_COMMENT",{
+        department:"PERANCANG_BANDAR",reason:"Ulasan latihan dipulangkan.",
+      })).statusCode).toBe(200);
+      phaseOffset++;
+      expect((await command(planning,2,"COMMENT",{
+        general:"Semakan perancang dipinda",details:[],
+      })).statusCode).toBe(200);
+      phaseOffset++;
       expect(
         (
           await command(engineering, 2, "COMMENT", {
@@ -247,10 +295,11 @@ it.runIf(Boolean(kitFile))(
       const eventWhere = { target:id, action:"SYNTHETIC_PORTAL_COMPLETION" };
       const originalEvents = await db.auditLog.findMany({where:eventWhere,select:{id:true}});
       const keep = originalEvents.map(({id})=>id);
-      expect(keep).toHaveLength(4);
+      const baseVersion=4+phaseOffset;
+      expect(keep).toHaveLength(baseVersion);
       const timestamp = Date.now();
       const extraEvent = (version: number) => {
-        const returned = version % 2 === 1;
+        const returned = (version-baseVersion) % 2 === 1;
         const subject = kit.accounts.find(({label}) => label === (returned ? "urus-setia" : "pic-spu"))!;
         return {
           ...eventWhere, actorId:subject.id, activeRole:subject.role,
@@ -263,12 +312,12 @@ it.runIf(Boolean(kitFile))(
         };
       };
       try {
-        await db.auditLog.createMany({data:Array.from({length:495},(_,i)=>extraEvent(i+5))});
+        await db.auditLog.createMany({data:Array.from({length:499-baseVersion},(_,i)=>extraEvent(i+baseVersion+1))});
         const read = () => app.inject({url:completion,headers:pic});
         expect((await read()).json().version).toBe(499);
-        expect((await command(pic,499,"SUBMIT_PAPER",{summary:"Versi ke-500"})).statusCode).toBe(200);
+        expect((await command(council,499-phaseOffset,"RETURN_PAPER",{reason:"Versi ke-500"})).statusCode).toBe(200);
         expect((await read()).json().version).toBe(500);
-        expect((await command(council,500,"RETURN_PAPER",{reason:"Versi ke-501"})).statusCode).toBe(409);
+        expect((await command(pic,500-phaseOffset,"SUBMIT_PAPER",{summary:"Versi ke-501"})).statusCode).toBe(409);
         expect(await db.auditLog.count({where:eventWhere})).toBe(500);
         await db.auditLog.create({data:extraEvent(501)});
         expect((await read()).statusCode).toBe(409);
@@ -280,10 +329,12 @@ it.runIf(Boolean(kitFile))(
       expect((await command(council,4,"RETURN_PAPER",{reason:"Revisi lapuk."})).statusCode).toBe(409);
       expect((await command(pic,5,"SUBMIT_PAPER",{summary:"Kertas Pertimbangan dipinda"})).statusCode).toBe(200);
       const papers = (await app.inject({url:completion,headers:pic})).json();
+      expect(papers.technicalHistory.filter((event:{department:string}) => event.department==="PERANCANG_BANDAR")
+        .map((event:{action:string})=>event.action)).toEqual(["SUBMITTED","RETURNED","SUBMITTED"]);
       expect(papers.papers[0].summary).toBe("Kertas Pertimbangan dipinda");
       expect(papers.returnedPapers[0]).toMatchObject({
         reason:"Pinda ringkasan latihan.",
-        paper:{summary:"Kertas Pertimbangan latihan",submittedVersion:4},
+        paper:{summary:"Kertas Pertimbangan latihan",submittedVersion:4+phaseOffset},
       });
       const outcomes = scopes.map(
         (
@@ -335,7 +386,7 @@ it.runIf(Boolean(kitFile))(
       expect(
         (
           await post(appUrl + "/completion", owner, {
-            version: 8,
+            version: 8 + phaseOffset,
             command: {
               action: "RESPOND",
               note: "Bukti pindaan latihan tersedia",
@@ -359,6 +410,8 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(409);
+      expect((await command(engineering,12,"ACK_REFERRAL")).statusCode).toBe(200);
+      phaseOffset++;
       expect(
         (
           await command(engineering, 12, "COMMENT", {
@@ -443,6 +496,30 @@ it.runIf(Boolean(kitFile))(
           await app.inject({ url: appUrl + "/completion", headers: owner })
         ).json().closed,
       ).toBe(true);
+      await db.trainingReminderOutbox.updateMany({where:{draftId:draft,status:"PENDING"},data:{availableAt:new Date(0)}});
+      await deliverTrainingReminders(async ()=>{throw new Error("A closed case must not send.");});
+      expect(await db.trainingReminderOutbox.count({where:{draftId:draft,status:"CANCELLED"}})).toBe(7);
+
+      const ledgerPath=completion+"/financial-ledger";
+      const financial=await app.inject({url:ledgerPath,headers:ppsk});
+      expect(financial.statusCode).toBe(200);
+      expect(financial.json().entries.map(({stage,event,amountSen}:{stage:number;event:string;amountSen:number})=>
+        [stage,event,amountSen].join(":")).sort()).toEqual([
+          "1:INVOICE:5000","1:RECEIPT:5000","2:INVOICE:1234","2:RECEIPT:1234",
+      ]);
+      expect((await app.inject({url:ledgerPath,headers:pic})).statusCode).toBe(404);
+      expect((await app.inject({url:ledgerPath+"?format=csv",headers:ppsk})).body).toContain("2,RECEIPT,1234,");
+      await expect(db.syntheticFinancialEntry.updateMany({where:{submissionId:id},data:{amountSen:9}})).rejects.toThrow();
+      await expect(db.syntheticFinancialEntry.deleteMany({where:{submissionId:id}})).rejects.toThrow();
+
+      const records=completion+"/records";
+      expect((await post(records, spt, {version:0,action:"PLACE_HOLD",reason:"Semak fail latihan"})).statusCode).toBe(404);
+      const hold=await post(records,ppsk,{version:0,action:"PLACE_HOLD",reason:"Semak fail latihan"});
+      expect(hold.json()).toMatchObject({legalHold:true,disposalEnabled:false});
+      expect((await post(records,ppsk,{version:0,action:"REQUEST_REOPEN",reason:"Permintaan lapuk"})).statusCode).toBe(409);
+      const reopen=await post(records,ppsk,{version:1,action:"REQUEST_REOPEN",reason:"Rujukan permohonan latihan"});
+      expect(reopen.json()).toMatchObject({legalHold:true,reopenRequested:true,reopenEnabled:false});
+      expect((await app.inject({url:appUrl+"/completion",headers:owner})).json().closed).toBe(true);
       const archivePath = root + "/reports/archive";
       const archive = await app.inject({url:archivePath,headers:ppsk});
       expect(archive.statusCode,archive.body).toBe(200);
@@ -500,9 +577,13 @@ it.runIf(Boolean(kitFile))(
         await db.auditLog.count({
           where: { target: id, action: "SYNTHETIC_PORTAL_COMPLETION" },
         }),
-      ).toBe(19);
+      ).toBe(19+phaseOffset);
     } finally {
       await app.close();
+      flags.forEach((key,index)=>{
+        if (originalFlags[index]===undefined) delete process.env[key];
+        else process.env[key]=originalFlags[index];
+      });
     }
   },
   90_000,
