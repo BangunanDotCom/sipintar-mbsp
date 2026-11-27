@@ -1,3 +1,6 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import { openPremisesDraft, registerApplicant } from "./applicant-fixtures";
+import { awaitDraftRequestBudget } from "./request-budget";
 import { test, expect } from "@playwright/test";
 // Network fixtures prove rendering/fallback mechanics only. They are never saved as review screenshots.
 const pixel = Buffer.from(
@@ -155,56 +158,14 @@ test("map failure: both providers fail truthfully, no loop and explicit retry ca
 test("portal fallback preserves click, drag, zoom, coordinates and real draft save", async ({
   page,
 }) => {
-  const { randomUUID, randomBytes } = await import("node:crypto"),
-    { db, token, hash } = await import("../../apps/api/src/core"),
-    { protectIdentification } = await import("../../apps/api/src/identity");
-  const user = await db.user.create({
-    data: {
-      name: "DATA UJIAN Peta",
-      email: `map-${randomUUID()}@example.test`,
-      phone: "0000000000",
-      kind: "APPLICANT",
-      emailVerified: true,
-      ...protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`),
-      roles: { create: { roleId: "PEMOHON", reference: "DATA UJIAN Peta" } },
-    },
-  });
-  const profile = {
-    userId: user.id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    identificationMasked: user.identificationMasked,
-  };
-  const draft = await db.applicationDraft.create({
-    data: {
-      initiatedByUserId: user.id,
-      officialApplicantUserId: user.id,
-      capacity: "INDIVIDUAL",
-      initiatorSnapshot: profile,
-      applicantSnapshot: profile,
-    },
-  });
-  const raw = token();
-  await db.session.create({
-    data: {
-      id: hash(raw),
-      userId: user.id,
-      csrfHash: hash(token()),
-      activeRole: "PEMOHON",
-      mfaVerified: true,
-      expiresAt: new Date(Date.now() + 3600000),
-    },
-  });
-  await page.context().addCookies([
-    {
-      name: "staylink",
-      value: raw,
-      url: "http://localhost:5173",
-      httpOnly: true,
-      sameSite: "Strict",
-    },
-  ]);
+  test.setTimeout(120000);
+  await awaitDraftRequestBudget(page.request);
+  await registerApplicant(
+    page,
+    `map-${randomUUID()}@example.test`,
+    "DATA UJIAN Peta",
+    `Aa1!${randomBytes(24).toString("hex")}`,
+  );
   await page.route("https://tile.openstreetmap.org/**", (route) =>
     route.fulfill({ status: 403, body: "Controlled test failure" }),
   );
@@ -216,7 +177,7 @@ test("portal fallback preserves click, drag, zoom, coordinates and real draft sa
     }),
   );
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto(`/permohonan/draf/${draft.id}/premis`);
+  const { id } = await openPremisesDraft(page);
   await expect(page.locator(".map-status")).toHaveAttribute(
     "data-basemap-status",
     "ready",
@@ -252,9 +213,9 @@ test("portal fallback preserves click, drag, zoom, coordinates and real draft sa
       .getByRole("status")
       .filter({ hasText: "Maklumat premis berjaya disimpan" }),
   ).toBeVisible();
-  const stored = await db.applicationPremises.findUniqueOrThrow({
-    where: { draftId: draft.id },
-  });
+  const saved = await page.request.get(`/api/application-drafts/${id}/premises`);
+  expect(saved.ok()).toBeTruthy();
+  const { premises: stored } = await saved.json();
   expect(stored.latitude).toBe(Number(latitude));
   expect(stored.longitude).toBe(Number(longitude));
   await page.reload();
@@ -269,7 +230,6 @@ test("portal fallback preserves click, drag, zoom, coordinates and real draft sa
     "ready",
     { timeout: 20000 },
   );
-  await db.$disconnect();
 });
 
 test("unsupported WebGL fails gracefully and retry/zoom still work", async ({

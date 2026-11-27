@@ -9,9 +9,11 @@ Status **PASS** di bawah merujuk kepada larian Team 2 pada PostgreSQL dan Oracle
 | Fungsi | PostgreSQL | Oracle Free | Bukti dan baki |
 | --- | --- | --- | --- |
 | Outbox pembetulan pemohon | PASS | PASS | Tindakan PIC menambah rekod pada transaksi semakan. Worker menyemak serahan terkini dan status CORRECTION_REQUESTED. Satu peringatan dihantar sebelum pembetulan dan satu dibatalkan selepas serahan semula pada kedua-dua enjin. |
-| Bayaran pertama dan kedua | PASS | PASS | Invois menjadualkan peringatan dengan rujukan tepat. Ujian penyelesaian membatalkan kedua-dua peringatan tertunggak. Dua callback menghasilkan satu penyelesaian. |
+| Bayaran pertama tertunggak | PASS | PASS | Penjanaan invois menjadualkan peringatan dengan rujukan invois pertama. Bayaran membatalkan peringatan tertunggak. |
+| Bayaran kedua tertunggak | PASS | PASS | Penjanaan invois menjadualkan peringatan dengan rujukan invois kedua. Bayaran membatalkan peringatan tertunggak. Dua callback bagi invois yang sama menghasilkan satu penyelesaian. |
 | Tamat SKB | PASS | PASS | Peringatan dijadualkan pada tengah malam MYT selepas tarikh tamat. Ujian membatalkan peringatan lapuk selepas keputusan susulan dan kes ditutup. Ujian kelayakan menggunakan jurnal DB sebenar sebelum, tepat dan selepas tengah malam. Penghantaran SMTP sebenar pada detik sempadan masih BLOCKED. |
-| Surat keputusan dan penutupan | PASS | PASS | Dua surat sah dan satu penutupan dihantar sekali apabila dua worker bersaing. Mesej generik tidak mengandungi ID kes dan portal tidak mengulangi notifikasi yang telah dikeluarkan. |
+| Surat keputusan dan susulan | PASS | PASS | Dua surat sah dihantar sekali apabila dua worker bersaing. Notifikasi portal kekal unik per versi surat. |
+| Penutupan | PASS | PASS | Dua worker bersaing untuk satu peristiwa dan hanya satu penghantaran dikomit. Mesej generik tidak mengandungi ID kes. |
 | Kelayakan akhir pegawai | PASS | PASS | Semakan, pra-semakan, bayaran dan Completion mengesahkan semula peranan sebelum komit. Ujian BKT menahan sisipan audit sehingga pelantikan luput pada jam DB, mendapat 403, kemudian menerima ulangan selepas pelantikan dipulihkan. |
 | SLA P1 selepas RETURN_COMMENT | PASS | PASS | Sebelum, tepat dan selepas sempadan tujuh hari diuji menggunakan masa yang sama pada butiran, dashboard, laporan JSON dan CSV. Ulasan dipulangkan menjadi tertunggak dalam rujukan semasa. Rujukan semula memulakan epoch sendiri. Laporan lama tanpa cap masa peristiwa menggunakan masa audit asal. |
 | Semakan retensi | PASS | PASS | Hanya PPSK dalam skop boleh menyemak calon. Tahanan aktif dan permohonan buka semula mengecualikan rekod. Tapisan dijalankan sebelum kiraan 20 item halaman. Akses beraudit. Pelupusan tidak diaktifkan. |
@@ -20,10 +22,17 @@ Status **PASS** di bawah merujuk kepada larian Team 2 pada PostgreSQL dan Oracle
 | Naik taraf dan ulangan | PASS | PASS | PostgreSQL menggunakan migrasi PR #82 serta fungsi kunci scoped worker. Oracle 006 menambah constraint baharu dan menggantikan constraint jenis lama. 007 meluaskan KIND untuk nama acara penuh. Inventori dan checksum 001–005 kekal. Latihan Oracle undur ke 005 memadankan checksum bagi 33 jadual daripada titik sebelum naik taraf. |
 | Pemulihan, hash dan MFA | PASS sebagai sumber import | PASS | Oracle Free memulihkan 33 jadual, 106 baris lejar dan 222 baris outbox. 156 PDF sepadan dengan SHA-256 dan tujuh ketidakpadanan LEGACY kekal dikuarantin. Kunci makmal menyahsulit faktor MFA yang dipulihkan. Import PostgreSQL ke Oracle turut memuatkan 33 jadual, 17 PDF dengan hash sepadan, 116 catatan lejar dan 282 item outbox. Pemulihan fizikal masih BLOCKED. |
 | Pelayar dengan kit 11 akaun | PASS | PASS | BKT, rujukan, pengesahan dua jabatan, pemulangan dan serahan ulasan, KP, keputusan, tandatangan, rekonsiliasi kedua, penutupan dan muat turun PDF melalui klik UI. PostgreSQL melalui HTTPS loopback dan Oracle melalui HTTP loopback. Pembetulan dan serahan semula pemohon diuji melalui API. |
-| Pemangku, serah tugas, lampiran BKT | BLOCKED | BLOCKED | Kontrak dan keputusan pemilik proses belum stabil. |
-| Refund, dispute, pelarasan lejar dan buka semula | BLOCKED | BLOCKED | Menunggu kelulusan kontrak, kuasa bebas dan polisi operasi. |
+| Pemangku | BLOCKED | BLOCKED | Menunggu keputusan pemilik proses tentang skop dan tempoh kuasa. |
+| Serah tugas | BLOCKED | BLOCKED | Menunggu kontrak serah tugas dan audit pemindahan kuasa. |
+| Lampiran BKT | BLOCKED | BLOCKED | Menunggu kontrak versi lampiran dan dasar imbasan. |
+| Refund | BLOCKED | BLOCKED | Menunggu kontrak transaksi pulangan dan polisi operasi. |
+| Dispute | BLOCKED | BLOCKED | Menunggu kontrak peristiwa pertikaian serta status yang dibenarkan. |
+| Pelarasan lejar | BLOCKED | BLOCKED | Menunggu kontrak jurnal dan kelulusan berasingan. |
+| Kelulusan buka semula | BLOCKED | BLOCKED | Penapisan retensi mengecualikan permohonan buka semula. Aliran kelulusan masih menunggu kontrak kuasa berasingan. |
 | Kontrak adapter luar talian PR #83 | PASS | PASS | Fixture bersama untuk MBSPPay, pra-semakan AI, tandatangan, SMTP, GIS dan SSO. Tiada laluan operasi. |
-| Jurnal melebihi 500 acara, notifikasi penugasan dan adapter rasmi | BLOCKED | BLOCKED | Menunggu kontrak replay, deduplikasi dan penerimaan JTIK. |
+| Jurnal melebihi 500 acara | BLOCKED | BLOCKED | Menunggu kontrak replay dan keadaan bagi jurnal panjang. |
+| Notifikasi penugasan | BLOCKED | BLOCKED | Menunggu kontrak penerima, masa penghantaran dan deduplikasi. |
+| Adapter rasmi | BLOCKED | BLOCKED | Menunggu konfigurasi, kredensial staging dan penerimaan JTIK. |
 
 ## Prestasi laporan makmal
 

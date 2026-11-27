@@ -1,20 +1,9 @@
+import { withOracleBrowserFixture } from "./oracle-fixtures";
+import { activationLink, openPremisesDraft, registerApplicant } from "./applicant-fixtures";
 import { awaitDraftRequestBudget } from "./request-budget";
 import { test, expect } from "@playwright/test";
 import { randomUUID, randomBytes } from "node:crypto";
 import { totp } from "../../apps/api/src/auth";
-async function activationLink(email: string) {
-  const list: any = await fetch(
-    "http://localhost:8025/api/v1/messages?limit=200",
-  ).then((r) => r.json());
-  const message = list.messages.find((m: any) =>
-    m.To.some((x: any) => x.Address === email),
-  );
-  expect(message).toBeTruthy();
-  const detail: any = await fetch(
-    `http://localhost:8025/api/v1/message/${message.ID}`,
-  ).then((r) => r.json());
-  return detail.Text.trim();
-}
 // Exercise form/auth/draft behavior without fetching community map tiles in automation.
 // Provider rendering is covered by maps.spec.ts fixtures; review captures use a separate real-network run.
 test.beforeEach(async ({ page }) => {
@@ -163,28 +152,49 @@ test("officer invite, password activation, QR enrollment and MFA verification", 
   const { db, hash, token } = await import("../../apps/api/src/core");
   const raw = token(),
     csrf = token();
-  const admin = await db.user.create({
-    data: {
-      name: "DATA UJIAN Admin E2E",
-      email: `admin-e2e-${randomUUID()}@example.test`,
-      phone: "0123456789",
-      kind: "OFFICER",
-      emailVerified: true,
-      roles: {
-        create: { roleId: "PENTADBIR_ICT", reference: "DATA UJIAN E2E" },
+  if (process.env.STAYLINK_ORACLE_LAB_HTTP === "true") {
+    await withOracleBrowserFixture(async (connection) => {
+      const userId = randomUUID();
+      await connection.execute(
+        `INSERT INTO STL_USERS (ID,NAME,EMAIL,PHONE,KIND,EMAIL_VERIFIED,UPDATED_AT)
+         VALUES (:userId,'DATA UJIAN Admin E2E',:email,'0123456789','OFFICER',1,SYSTIMESTAMP)`,
+        { userId, email: `admin-e2e-${userId}@example.test` },
+      );
+      await connection.execute(
+        `INSERT INTO STL_USER_ROLE_ASSIGNMENTS (ID,USER_ID,ROLE_ID,REFERENCE)
+         VALUES (:id,:userId,'PENTADBIR_ICT','DATA UJIAN E2E')`,
+        { id: randomUUID(), userId },
+      );
+      await connection.execute(
+        `INSERT INTO STL_SESSIONS (ID,USER_ID,ACTIVE_ROLE,CSRF_HASH,MFA_VERIFIED,EXPIRES_AT)
+         VALUES (:id,:userId,'PENTADBIR_ICT',:csrfHash,1,SYSTIMESTAMP + INTERVAL '5' MINUTE)`,
+        { id: hash(raw), userId, csrfHash: hash(csrf) },
+      );
+    });
+  } else {
+    const admin = await db.user.create({
+      data: {
+        name: "DATA UJIAN Admin E2E",
+        email: `admin-e2e-${randomUUID()}@example.test`,
+        phone: "0123456789",
+        kind: "OFFICER",
+        emailVerified: true,
+        roles: {
+          create: { roleId: "PENTADBIR_ICT", reference: "DATA UJIAN E2E" },
+        },
       },
-    },
-  });
-  await db.session.create({
-    data: {
-      id: hash(raw),
-      userId: admin.id,
-      activeRole: "PENTADBIR_ICT",
-      mfaVerified: true,
-      csrfHash: hash(csrf),
-      expiresAt: new Date(Date.now() + 300000),
-    },
-  });
+    });
+    await db.session.create({
+      data: {
+        id: hash(raw),
+        userId: admin.id,
+        activeRole: "PENTADBIR_ICT",
+        mfaVerified: true,
+        csrfHash: hash(csrf),
+        expiresAt: new Date(Date.now() + 300000),
+      },
+    });
+  }
   const email = `officer-e2e-${randomUUID()}@example.test`;
   const password = `Aa1!${randomBytes(24).toString("hex")}`;
   const invited = await request.post("/api/admin/officers", {
@@ -236,37 +246,6 @@ test("officer invite, password activation, QR enrollment and MFA verification", 
   await db.$disconnect();
 });
 
-async function registerApplicant(
-  page: any,
-  email: string,
-  name: string,
-  password: string,
-) {
-  await page.goto("/daftar");
-  await page.getByLabel("Nama penuh", { exact: true }).fill(name);
-  await page
-    .getByLabel("Nombor pengenalan (MyKad / pasport)", { exact: true })
-    .fill(`UJIAN${randomBytes(6).toString("hex")}`);
-  await page.getByLabel("Nombor telefon", { exact: true }).fill("0000000000");
-  await page.getByLabel("E-mel", { exact: true }).fill(email);
-  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Daftar Akaun" }).click();
-  await expect(page.getByRole("status")).toContainText("Akaun didaftarkan");
-  await page.goto(await activationLink(email));
-  await page.getByRole("button", { name: "Sahkan Akaun" }).click();
-  await expect(page.getByRole("status")).toContainText("Berjaya");
-  await page.goto("/log-masuk");
-  await page.getByLabel("E-mel", { exact: true }).fill(email);
-  await page.getByLabel("Kata laluan", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Log Masuk", exact: true }).click();
-  await page
-    .getByLabel("Peranan aktif", { exact: true })
-    .selectOption("PEMOHON");
-  await expect(
-    page.getByRole("heading", { name: "Profil pemohon", exact: true }),
-  ).toBeVisible();
-}
 async function addCompany(page: any, name: string) {
   const panel = page.locator("section.panel").filter({
     has: page.getByRole("heading", {
@@ -548,39 +527,15 @@ test("Phase 2A: applicant can recover access through a real test email and log i
 // request budget instead of sending the final draft flows into an expected 429.
 // Synthetic fixture avoids exhausting per-IP login limits in an eight-flow browser suite.
 // Email verification itself is exercised through Mailpit in the Phase 2A flows above.
-async function draftApplicantFixture() {
-  const { db } = await import("../../apps/api/src/core"),
-    { protectIdentification } = await import("../../apps/api/src/identity"),
-    argon2 = (await import("argon2")).default;
-  const email = `p2b1-${randomUUID()}@example.test`,
-    password = `Aa1!${randomBytes(24).toString("hex")}`;
-  const user = await db.user.create({
-    data: {
-      name: "DATA UJIAN Pemohon Draf",
-      email,
-      phone: "0000000000",
-      kind: "APPLICANT",
-      emailVerified: true,
-      consentAt: new Date(),
-      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
-      ...protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`),
-      roles: {
-        create: {
-          roleId: "PEMOHON",
-          reference: "DATA UJIAN Pelayar Fasa 2B.1",
-        },
-      },
-    },
-  });
-  return { user, email, password };
-}
-
-test("Phase 2B.1: login return, individual autofill, PostgreSQL save and dashboard resume", async ({
+test("Phase 2B.1: login return, individual autofill, persistent save and dashboard resume", async ({
   page,
 }) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { email, password } = await draftApplicantFixture();
+  const email = `individual-draft-${randomUUID()}@example.test`;
+  const password = `Aa1!${randomBytes(24).toString("hex")}`;
+  await registerApplicant(page, email, "DATA UJIAN Pemohon Draf", password);
+  await page.getByRole("button", { name: "Log keluar" }).click();
   await page.goto("/");
   await page
     .locator(".hero-actions")
@@ -619,8 +574,9 @@ test("Phase 2B.1: login return, individual autofill, PostgreSQL save and dashboa
   await expect(
     page.getByRole("status").filter({ hasText: "Draf berjaya disimpan" }),
   ).toBeVisible();
-  const { db } = await import("../../apps/api/src/core");
-  const stored = await db.applicationDraft.findUniqueOrThrow({ where: { id } });
+  const savedDraft = await page.request.get(`/api/application-drafts/${id}`);
+  expect(savedDraft.ok()).toBeTruthy();
+  const stored = await savedDraft.json();
   expect(stored.notes).toBe("DATA UJIAN nota individu dikemas kini");
   expect(stored.status).toBe("DRAFT");
   expect(stored.version).toBe(2);
@@ -646,7 +602,6 @@ test("Phase 2B.1: login return, individual autofill, PostgreSQL save and dashboa
   await expect(
     page.getByLabel("Catatan draf (pilihan)", { exact: false }),
   ).toHaveValue("DATA UJIAN nota individu dikemas kini");
-  await db.$disconnect();
 });
 
 test("Phase 2B.1: company autofill, separate initiator, responsive screenshots and revoked access", async ({
@@ -654,36 +609,12 @@ test("Phase 2B.1: company autofill, separate initiator, responsive screenshots a
 }) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { user } = await draftApplicantFixture();
-  const {
-    db: fixtureDb,
-    hash,
-    token,
-  } = await import("../../apps/api/src/core");
-  await fixtureDb.user.update({
-    where: { id: user.id },
-    data: { name: "DATA UJIAN Wakil Draf" },
-  });
-  const raw = token();
-  await fixtureDb.session.create({
-    data: {
-      id: hash(raw),
-      userId: user.id,
-      csrfHash: hash(token()),
-      activeRole: "PEMOHON",
-      mfaVerified: true,
-      expiresAt: new Date(Date.now() + 3600000),
-    },
-  });
-  await page.context().addCookies([
-    {
-      name: "staylink",
-      value: raw,
-      url: "http://localhost:5173",
-      httpOnly: true,
-      sameSite: "Strict",
-    },
-  ]);
+  await registerApplicant(
+    page,
+    `company-draft-${randomUUID()}@example.test`,
+    "DATA UJIAN Wakil Draf",
+    `Aa1!${randomBytes(24).toString("hex")}`,
+  );
   await page.goto("/dashboard");
   await page
     .getByRole("button", { name: "Syarikat & wakil", exact: true })
@@ -714,9 +645,10 @@ test("Phase 2B.1: company autofill, separate initiator, responsive screenshots a
   await expect(
     page.getByRole("heading", { name: "Sambung Draf PPTT" }),
   ).toBeVisible();
-  const id = page.url().split("/").pop()!,
-    { db } = await import("../../apps/api/src/core");
-  const stored = await db.applicationDraft.findUniqueOrThrow({ where: { id } });
+  const id = page.url().split("/").pop()!;
+  const savedDraft = await page.request.get(`/api/application-drafts/${id}`);
+  expect(savedDraft.ok()).toBeTruthy();
+  const stored = await savedDraft.json();
   expect(stored.companyId).toBe(companyId);
   expect(stored.officialApplicantUserId).toBeNull();
   expect((stored.initiatorSnapshot as any).name).toBe("DATA UJIAN Wakil Draf");
@@ -748,15 +680,28 @@ test("Phase 2B.1: company autofill, separate initiator, responsive screenshots a
       });
   }
   expect(errors).toEqual([]);
-  await db.companyRepresentative.update({
-    where: {
-      userId_companyId: {
-        userId: stored.initiatedByUserId,
-        companyId: companyId!,
+  if (process.env.STAYLINK_ORACLE_LAB_HTTP === "true") {
+    await withOracleBrowserFixture(async (connection) => {
+      const result = await connection.execute(
+        `UPDATE STL_COMPANY_REPRESENTATIVES SET STATUS='REVOKED'
+         WHERE USER_ID=:userId AND COMPANY_ID=:companyId`,
+        { userId: stored.initiatedByUserId, companyId: companyId! },
+      );
+      expect(result.rowsAffected).toBe(1);
+    });
+  } else {
+    const { db } = await import("../../apps/api/src/core");
+    await db.companyRepresentative.update({
+      where: {
+        userId_companyId: {
+          userId: stored.initiatedByUserId,
+          companyId: companyId!,
+        },
       },
-    },
-    data: { status: "REVOKED" },
-  });
+      data: { status: "REVOKED" },
+    });
+    await db.$disconnect();
+  }
   await page.reload();
   await expect(page.getByRole("alert")).toContainText(
     "Draf atau kebenaran syarikat tidak ditemui",
@@ -764,61 +709,13 @@ test("Phase 2B.1: company autofill, separate initiator, responsive screenshots a
   await expect(
     page.getByRole("button", { name: "Simpan Draf", exact: true }),
   ).toHaveCount(0);
-  await db.$disconnect();
 });
 
-async function premisesSession(page: any) {
-  const { user, email, password } = await draftApplicantFixture();
-  const { db, hash, token } = await import("../../apps/api/src/core"),
-    raw = token();
-  await db.session.create({
-    data: {
-      id: hash(raw),
-      userId: user.id,
-      csrfHash: hash(token()),
-      activeRole: "PEMOHON",
-      mfaVerified: true,
-      expiresAt: new Date(Date.now() + 3600000),
-    },
-  });
-  await page.context().addCookies([
-    {
-      name: "staylink",
-      value: raw,
-      url: "http://localhost:5173",
-      httpOnly: true,
-      sameSite: "Strict",
-    },
-  ]);
-  const { id } = await openPremisesDraft(page);
-  return { user, email, password, id };
-}
-
-async function openPremisesDraft(page: import("@playwright/test").Page) {
-  await page.goto("/permohonan/baharu");
-  await page
-    .getByRole("radio", { name: "Individu atas kapasiti sendiri" })
-    .check();
-  await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
-  await expect(
-    page.getByRole("heading", {
-      name: "Maklumat Premis Penginapan Pekerja Tempoh Terhad",
-      exact: true,
-    }),
-  ).toBeVisible();
-  return { id: page.url().split("/").at(-2)! };
-}
-async function inventorySession(page: import("@playwright/test").Page) {
-  if (process.env.STAYLINK_ORACLE_LAB_HTTP !== "true")
-    return premisesSession(page);
-  const email = `inventory-${randomUUID()}@example.test`;
-  await registerApplicant(
-    page,
-    email,
-    "DATA UJIAN Inventori",
-    `Aa1!${randomBytes(24).toString("hex")}`,
-  );
-  return openPremisesDraft(page);
+async function premisesSession(page: import("@playwright/test").Page) {
+  const email = `premises-${randomUUID()}@example.test`;
+  const password = `Aa1!${randomBytes(24).toString("hex")}`;
+  await registerApplicant(page, email, "DATA UJIAN Premis", password);
+  return { ...(await openPremisesDraft(page)), email, password };
 }
 
 test("Phase 2B.2: partial/full premises save, actual map pin, review and responsive screenshots", async ({
@@ -829,13 +726,13 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const { id } = await premisesSession(page),
-    { db } = await import("../../apps/api/src/core");
+  const { id } = await premisesSession(page);
+  const premisesUrl = `/api/application-drafts/${id}/premises`;
   await page.getByRole("button", { name: "Seterusnya", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Semak medan");
-  expect(await db.applicationPremises.count({ where: { draftId: id } })).toBe(
-    0,
-  );
+  const initial = await page.request.get(premisesUrl);
+  expect(initial.ok()).toBeTruthy();
+  expect((await initial.json()).updatedAt).toBeNull();
   await page
     .getByLabel("Alamat penuh premis", { exact: true })
     .fill("DATA UJIAN Alamat Premis Penginapan sahaja");
@@ -959,17 +856,15 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
       exact: true,
     }),
   ).toBeDisabled();
-  const stored = await db.applicationPremises.findUniqueOrThrow({
-    where: { draftId: id },
-  });
+  const saved = await page.request.get(premisesUrl);
+  expect(saved.ok()).toBeTruthy();
+  const { premises: stored, boundaryStatus, status } = await saved.json();
   expect(stored.latitude).toBe(latitude);
   expect(stored.longitude).toBe(longitude);
   expect(stored.totalRooms).toBe(12);
   expect(Number(stored.floorAreaSqm)).toBe(250.75);
-  expect(stored.boundaryStatus).toBe("UNVERIFIED");
-  expect(
-    (await db.applicationDraft.findUniqueOrThrow({ where: { id } })).status,
-  ).toBe("DRAFT");
+  expect(boundaryStatus).toBe("UNVERIFIED");
+  expect(status).toBe("DRAFT");
   await page.getByRole("link", { name: "Sebelumnya", exact: true }).click();
   await expect(
     page.getByLabel("Bilangan bilik keseluruhan", { exact: true }),
@@ -995,7 +890,6 @@ test("Phase 2B.2: partial/full premises save, actual map pin, review and respons
     }
   }
   expect(errors).toEqual([]);
-  await db.$disconnect();
 });
 test("Phase 2B.2: keyboard pin, previous autosave, resume and premises login return", async ({
   page,
@@ -1039,7 +933,7 @@ test("Phase 2B.2: keyboard pin, previous autosave, resume and premises login ret
 test("floor UUID survives an editor rename and reload", async ({ page }) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { id } = await inventorySession(page);
+  const { id } = await premisesSession(page);
   await page.goto(`/permohonan/draf/${id}/tingkat`);
   const label = page.getByLabel("Nama tingkat", { exact: true });
   const save = async () => {
@@ -1074,7 +968,7 @@ test("K02 records one physical unit across two floors and keeps its UUID", async
 }) => {
   test.setTimeout(120000);
   await awaitDraftRequestBudget(page.request);
-  const { id } = await inventorySession(page);
+  const { id } = await premisesSession(page);
   const root = `/api/application-drafts/${id}`;
   const session = await page.request.get("/api/auth/me");
   const headers = {
