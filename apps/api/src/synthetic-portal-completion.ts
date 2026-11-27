@@ -518,11 +518,8 @@ function registerCompletion(
     tx: Tx,
     id: string,
     officer: Awaited<ReturnType<typeof recordsOfficer>>,
-    forWrite: boolean,
   ) {
-    const { snapshot } = await lockSyntheticReview(tx, id, officer, {
-      forWrite,
-    });
+    const { snapshot } = await lockSyntheticReview(tx, id, officer);
     const { scopes } = inventory(snapshot);
     if (!(await stateFor(tx, id, scopes)).closed)
       fail(409, "Daftar rekod hanya tersedia selepas penutupan latihan.");
@@ -532,7 +529,7 @@ function registerCompletion(
     const officer = await recordsOfficer(req);
     const { id } = idParam.parse(req.params);
     return repository.transaction(async (tx) => {
-      const overlay = await closedRecord(tx, id, officer, false);
+      const overlay = await closedRecord(tx, id, officer);
       await tx.audit({
         actorId: officer.operator.userId,
         activeRole: officer.role,
@@ -540,14 +537,14 @@ function registerCompletion(
         target: id,
       });
       return overlay;
-    }, true);
+    });
   });
   api.post("/completion/:id/records", { bodyLimit: 4096 }, async (req) => {
     const officer = await recordsOfficer(req);
     const { id } = idParam.parse(req.params);
     const input = recordAction.parse(req.body);
     return repository.transaction(async (tx) => {
-      const current = await closedRecord(tx, id, officer, true);
+      const current = await closedRecord(tx, id, officer);
       if (input.version !== current.version || current.version >= 100)
         fail(409, "Versi daftar rekod latihan tidak tersedia.");
       if (

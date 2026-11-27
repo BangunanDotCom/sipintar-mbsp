@@ -1508,6 +1508,7 @@ for (const { name, enabled } of variants) {
               url: completion + "/records",
               headers: ppsk,
             });
+            expect(overlay.statusCode, overlay.body).toBe(200);
             expect(overlay.json()).toMatchObject({
               version: 3,
               reopenRequested: true,
