@@ -1,4 +1,6 @@
 import { technicalReminderEntries } from "./training-technical-reminders.js";
+import { reconcileSyntheticLedger } from "./synthetic-financial-reconciliation.js";
+import { technicalConsolidation } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
 import { stateFor } from "./synthetic-completion-journal.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import {
@@ -299,6 +301,7 @@ function registerCompletion(
     }
     return {
       ...stats,
+      consolidation: technicalConsolidation(state, Date.now()),
       decisions: state.decisions,
       decisionSigned: state.decisionSigned,
       response: state.response,
@@ -457,6 +460,52 @@ function registerCompletion(
         ].join("\r\n"),
       );
   });
+
+  async function reconcileLedger(req: FastifyRequest, apply: boolean) {
+    const officer = await syntheticReviewOfficer(req, auth);
+    if (
+      officer.role !== "PPSK" ||
+      officer.district !== district ||
+      (apply && process.env.STAYLINK_SYNTHETIC_LEDGER_BACKFILL !== "true")
+    )
+      fail(404, "Padanan lejar latihan tidak tersedia.");
+    const { id } = idParam.parse(req.params);
+    return repository.transaction(async (tx) => {
+      const { state, snapshot } = await lockSyntheticReview(tx, id, officer, {
+        forWrite: apply,
+      });
+      const report = await reconcileSyntheticLedger(
+        tx,
+        id,
+        state.caseId,
+        snapshot.units.map(({ id }) => id),
+        inventory(snapshot).scopes,
+        apply,
+      );
+      if (report.added > 0) {
+        await tx.audit({
+          actorId: officer.operator.userId,
+          activeRole: officer.role,
+          target: id,
+          action: "SYNTHETIC_LEDGER_BACKFILLED",
+          metadata: { slots: report.missing },
+        });
+      }
+      return report;
+    }, !apply);
+  }
+
+  api.get("/completion/:id/financial-ledger/reconciliation", async (req) =>
+    reconcileLedger(req, false),
+  );
+  api.post(
+    "/completion/:id/financial-ledger/reconciliation",
+    { bodyLimit: 512 },
+    async (req) => {
+      z.strictObject({ confirm: z.literal(true) }).parse(req.body);
+      return reconcileLedger(req, true);
+    },
+  );
 
   async function recordsOfficer(req: FastifyRequest) {
     if (!recordsEnabled) fail(404, "Daftar rekod latihan tidak tersedia.");

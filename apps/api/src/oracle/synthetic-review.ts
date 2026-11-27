@@ -20,14 +20,23 @@ import {
 import { assertSnapshotAuthority } from "../synthetic-submissions.js";
 import { createOracleDraftRepository } from "./drafts.js";
 import type { OraclePool } from "./pool.js";
-import { clob, oracleInList, oracleTable, queryRows } from "./query.js";
+import {
+  clob,
+  oracleInList,
+  oracleTable,
+  queryRows,
+  timestamp,
+} from "./query.js";
 import { oracleSyntheticSession } from "./synthetic-session.js";
 import { createOracleSyntheticSubmissions } from "./synthetic-submissions.js";
 
 type SubmissionRow = Omit<SyntheticSubmission, "snapshot"> & {
   snapshot: string;
 };
-type EventRow = Omit<ReviewEvent, "metadata"> & { metadata: string | null };
+type EventRow = Omit<ReviewEvent, "metadata"> & {
+  metadata: string | null;
+  createdAt: Date;
+};
 type EvidenceRow = Omit<CurrentEvidence, "scope"> & {
   documentId: string | null;
   unitId: string | null;
@@ -72,14 +81,19 @@ export function createOracleSyntheticReviewRepository(
   function onConnection(connection: Connection): SyntheticReviewTransaction {
     const draftTx = draftRepository.onConnection(connection);
     const submissionTx = submissionRepository.onConnection(connection);
-    const events = async (ids: string[], actions: readonly string[]) => {
+    const events = async (
+      ids: string[],
+      actions: readonly string[],
+      ledger = false,
+    ) => {
       const targets = oracleInList("TARGET", ids, "IN", "target_");
       const kinds = oracleInList("ACTION", actions, "IN", "action_");
       return (
         await queryRows<EventRow>(
           connection,
-          `SELECT TARGET AS "target", ACTION AS "action", ACTOR_ID AS "actorId", METADATA AS "metadata"
-         FROM ${audit} WHERE OUTCOME='SUCCESS' AND ${targets.sql} AND ${kinds.sql}`,
+          `SELECT TARGET AS "target", ACTION AS "action", ACTOR_ID AS "actorId", METADATA AS "metadata", CREATED_AT AS "createdAt"
+         FROM ${audit} WHERE OUTCOME='SUCCESS' AND ${targets.sql} AND ${kinds.sql}
+         ${ledger ? "FETCH FIRST 3 ROWS ONLY" : ""}`,
           { ...targets.binds, ...kinds.binds },
         )
       ).map((row) => ({ ...row, metadata: json(row.metadata) }));
@@ -215,9 +229,22 @@ export function createOracleSyntheticReviewRepository(
           await draftTx.companyAuthority(userId, draft.companyId);
         return first(`S.DRAFT_ID=:draftId AND ${live}`, { draftId });
       },
-      ledgerEvents: (id, actions) => events([id], actions),
+      ledgerEvents: (id, actions) => events([id], actions, true),
       audit: draftTx.audit,
       financial: {
+        referencesElsewhere: (id, references) => {
+          const ids = oracleInList(
+            "INVOICE_ID",
+            [...new Set(references.map(({ invoiceId }) => invoiceId))],
+            "IN",
+          );
+          return queryRows<Pick<FinancialView, "invoiceId" | "event">>(
+            connection,
+            `SELECT INVOICE_ID AS "invoiceId", EVENT AS "event" FROM ${finance}
+              WHERE SUBMISSION_ID<>:id AND ${ids.sql}`,
+            { id, ...ids.binds },
+          );
+        },
         entries: (id) =>
           queryRows<FinancialView>(
             connection,
@@ -236,9 +263,13 @@ export function createOracleSyntheticReviewRepository(
           )[0] ?? null,
         async append(data) {
           await connection.execute(
-            `INSERT INTO ${finance} (ID,SUBMISSION_ID,INVOICE_ID,STAGE,EVENT,AMOUNT_SEN)
-            VALUES (:id,:submissionId,:invoiceId,:stage,:event,:amountSen)`,
-            { id: randomUUID(), ...data },
+            `INSERT INTO ${finance} (ID,SUBMISSION_ID,INVOICE_ID,STAGE,EVENT,AMOUNT_SEN,CREATED_AT)
+            VALUES (:id,:submissionId,:invoiceId,:stage,:event,:amountSen,COALESCE(:createdAt,SYSTIMESTAMP))`,
+            {
+              ...data,
+              id: randomUUID(),
+              createdAt: timestamp(data.createdAt ?? null),
+            },
           );
         },
       },

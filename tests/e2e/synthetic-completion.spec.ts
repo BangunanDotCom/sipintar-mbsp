@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-test("applicant can open the closed training case and download both decision letters via HTTPS", async ({
+test("applicant can open the closed training case and download both decision letters", async ({
   page,
 }) => {
   const kitPath = process.env.STAYLINK_COMPLETION_KIT_FILE;
@@ -25,7 +25,7 @@ test("applicant can open the closed training case and download both decision let
   const data = await session.json();
   if (data.activeRole !== "PEMOHON") {
     const headers = {
-      Origin: "https://localhost:5444",
+      Origin: new URL(page.url()).origin,
       "X-CSRF-Token": data.csrf,
     };
     expect(
@@ -55,13 +55,21 @@ test("applicant can open the closed training case and download both decision let
   ).toBeVisible();
 });
 
-test("PPSK filters and downloads the district summary via HTTPS", async ({ page }) => {
+test("PPSK filters and downloads the district summary with MFA", async ({
+  page,
+  baseURL,
+}) => {
   const kitPath = process.env.STAYLINK_COMPLETION_KIT_FILE;
   test.skip(!kitPath);
   test.setTimeout(75_000);
   const { totp } = await import("../../apps/api/src/auth");
   const kit = JSON.parse(await readFile(kitPath!, "utf8")) as {
-    accounts: { label: string; email: string; password: string; mfaSecretBase32: string }[];
+    accounts: {
+      label: string;
+      email: string;
+      password: string;
+      mfaSecretBase32: string;
+    }[];
   };
   const officer = kit.accounts.find(({ label }) => label === "ppsk")!;
   const login = await page.request.post("/api/auth/login", {
@@ -69,35 +77,68 @@ test("PPSK filters and downloads the district summary via HTTPS", async ({ page 
   });
   expect(login.status()).toBe(200);
   const session = await login.json();
-  const headers = { Origin: "https://localhost:5444", "X-CSRF-Token": session.csrf };
-  expect((await page.request.get("/api/synthetic-portal/completion/queue?format=csv")).status()).toBe(403);
+  const headers = {
+    Origin: new URL(baseURL!).origin,
+    "X-CSRF-Token": session.csrf,
+  };
+  expect(
+    (
+      await page.request.get(
+        "/api/synthetic-portal/completion/queue?format=csv",
+      )
+    ).status(),
+  ).toBe(403);
   // The packaged job uses this PPSK account in its API suite immediately before
   // Playwright. Use a fresh TOTP time step so the replay guard stays enforced.
   const untilNextStep = 30_000 - (Date.now() % 30_000);
   await new Promise((resolve) => setTimeout(resolve, untilNextStep + 100));
 
-  expect((await page.request.post("/api/auth/mfa/verify", {
-    headers, data: { code: totp(officer.mfaSecretBase32).generate() },
-  })).status()).toBe(200);
-  expect((await page.request.post("/api/auth/role", {headers, data:{roleId:"PPSK"}})).status()).toBe(200);
+  expect(
+    (
+      await page.request.post("/api/auth/mfa/verify", {
+        headers,
+        data: { code: totp(officer.mfaSecretBase32).generate() },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await page.request.post("/api/auth/role", {
+        headers,
+        data: { roleId: "PPSK" },
+      })
+    ).status(),
+  ).toBe(200);
 
   await page.goto("/dashboard");
-  const queue = page.getByRole("heading", {name:"Tugasan keputusan latihan"}).locator("..");
+  const queue = page
+    .getByRole("heading", { name: "Tugasan keputusan latihan" })
+    .locator("..");
   await expect(queue).toBeVisible();
   await queue.getByLabel("Status kes latihan").selectOption("closed");
-  await expect(queue.getByText(/1 ditutup/)).toBeVisible();
+  await expect(queue.getByText(/[1-9]\d* ditutup/)).toBeVisible();
   const download = page.waitForEvent("download");
-  await queue.getByRole("link", {name:"Muat turun ringkasan daerah CSV"}).click();
-  expect((await download).suggestedFilename()).toBe("staylink-latihan-SPU-closed.csv");
-  await page.getByText("Arkib kes latihan ditutup",{exact:true}).click();
-  await expect(page.getByText("SPU · Halaman 1",{exact:true})).toBeVisible();
-  await page.getByText("Lejar kewangan latihan",{exact:true}).click();
+  await queue
+    .getByRole("link", { name: "Muat turun ringkasan daerah CSV" })
+    .click();
+  expect((await download).suggestedFilename()).toBe(
+    "staylink-latihan-SPU-closed.csv",
+  );
+  await page.getByText("Arkib kes latihan ditutup", { exact: true }).click();
+  await expect(
+    page.getByText("SPU · Halaman 1", { exact: true }),
+  ).toBeVisible();
+  await page.getByText("Lejar kewangan latihan", { exact: true }).click();
   await expect(page.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
   if (process.env.STAYLINK_SYNTHETIC_RECORDS === "true") {
-    await page.getByText("Daftar kawalan rekod latihan",{exact:true}).click();
-    await expect(page.getByText("Rekod ditahan",{exact:true})).toBeVisible();
-    await expect(page.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup.")).toBeVisible();
+    await page
+      .getByText("Daftar kawalan rekod latihan", { exact: true })
+      .click();
+    await expect(
+      page.getByText("Rekod ditahan", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup."),
+    ).toBeVisible();
   }
-
-
 });

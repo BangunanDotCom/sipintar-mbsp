@@ -1,14 +1,17 @@
 import { createOracleTrainingReminders } from "../apps/api/src/oracle/training-reminders";
 import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import argon2 from "argon2";
 import { createHmac, randomUUID } from "node:crypto";
 import { parse } from "dotenv";
 import { scanDelegationDocument } from "../apps/api/src/delegation-scan-worker";
 import { createOracleDelegationScanner } from "../apps/api/src/oracle/delegation-scan";
+import * as financialJournal from "../apps/api/src/synthetic-financial-journal";
 import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildOracleLabApp } from "../apps/api/src/app";
 import { postgresAuth } from "../apps/api/src/auth-repository";
-import { db, hash, origin } from "../apps/api/src/core";
+import { db, encrypt, hash, origin } from "../apps/api/src/core";
 import { queryRows, timestamp } from "../apps/api/src/oracle/query";
 import { oracleConfig } from "../apps/api/src/oracle/config";
 import { createOraclePool } from "../apps/api/src/oracle/pool";
@@ -102,6 +105,7 @@ for (const { name, enabled } of variants) {
             vi.stubEnv("STAYLINK_DEMO_HOST", "true");
           }
           vi.stubEnv("STAYLINK_SYNTHETIC_COMPLETION", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_LEDGER_BACKFILL", "false");
           vi.stubEnv("STAYLINK_SYNTHETIC_BKT", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_RECORDS", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS", "true");
@@ -114,19 +118,35 @@ for (const { name, enabled } of variants) {
           const auth = oracleRepositories
             ? oracleRepositories.auth
             : postgresAuth;
+          const kitDirectory =
+            capacity === "INDIVIDUAL"
+              ? process.env.STAYLINK_COMPLETION_PARITY_KIT_DIR
+              : undefined;
+          const browserAccounts: {
+            label: string;
+            email: string;
+            password: string;
+            mfaSecretBase32?: string;
+          }[] = [];
           const actor = async (
             role: string,
             districtId: string | null = "SPU",
           ) => {
             const raw = randomUUID();
+            const email = `${raw}@example.test`;
+            const password = kitDirectory
+              ? randomUUID() + "!Stl"
+              : "unused-fixture";
             const user = await auth.register({
-              email: `${raw}@example.test`,
+              email,
               name: "Akaun Sintetik Penyelesaian",
               phone: "0100000000",
               identificationHash: hash(raw),
               identificationEncrypted: "fixture-encrypted",
               identificationMasked: "1234",
-              passwordHash: "unused-fixture",
+              passwordHash: kitDirectory
+                ? await argon2.hash(password)
+                : password,
               consentAt: new Date(),
             });
             const officer = role !== "PEMOHON";
@@ -159,6 +179,25 @@ for (const { name, enabled } of variants) {
                     },
                   }),
                 },
+              });
+            }
+            if (kitDirectory) {
+              // Base32 test secret with 128 bits of entropy held only in the local kit.
+              const mfaSecretBase32 = officer
+                ? new (await import("otpauth")).Secret({ size: 16 }).base32
+                : undefined;
+              if (mfaSecretBase32)
+                await auth.setFactor(user.id, encrypt(mfaSecretBase32));
+              browserAccounts.push({
+                label:
+                  role === "PEMOHON"
+                    ? "pemohon"
+                    : role === "PPSK"
+                      ? "ppsk"
+                      : role,
+                email,
+                password,
+                mfaSecretBase32,
               });
             }
             const csrf = randomUUID();
@@ -712,17 +751,29 @@ for (const { name, enabled } of variants) {
               ).statusCode,
             ).toBe(200);
             expect((await command(pic, 0, "REFER")).statusCode).toBe(409);
-            expect(
-              (await post(review + "/billing", ppsk, { action: "ISSUE" }))
-                .statusCode,
-            ).toBe(200);
-            expect(
-              (
-                await post(review + "/billing", ppsk, {
-                  action: "SIMULATE_SETTLEMENT",
-                })
-              ).statusCode,
-            ).toBe(200);
+            // Legacy data already has invoice/receipt audit events, before the
+            // append-only financial table was introduced.
+            const legacyWrites =
+              capacity === "COMPANY"
+                ? vi
+                    .spyOn(financialJournal, "recordSyntheticFinancialEntry")
+                    .mockResolvedValue(undefined)
+                : undefined;
+            try {
+              expect(
+                (await post(review + "/billing", ppsk, { action: "ISSUE" }))
+                  .statusCode,
+              ).toBe(200);
+              expect(
+                (
+                  await post(review + "/billing", ppsk, {
+                    action: "SIMULATE_SETTLEMENT",
+                  })
+                ).statusCode,
+              ).toBe(200);
+            } finally {
+              legacyWrites?.mockRestore();
+            }
             expect((await command(pic, 0, "REFER")).statusCode).toBe(409);
             const readyBkt = await app.inject({
               url: root + "/completion/queue",
@@ -907,6 +958,14 @@ for (const { name, enabled } of variants) {
               });
               expect(overdue.statusCode, overdue.body).toBe(200);
               expect(overdue.json().summary.overdue).toBeGreaterThanOrEqual(1);
+              const details = await app.inject({
+                url: completion,
+                headers: pic,
+              });
+              expect(details.json().consolidation).toMatchObject({
+                deadline: slaDeadline,
+                departments: [{ status: "OVERDUE" }, { status: "OVERDUE" }],
+              });
             } finally {
               clock.mockRestore();
             }
@@ -944,6 +1003,31 @@ for (const { name, enabled } of variants) {
               (await command(actors[retry], 2, "COMMENT", comments[retry]))
                 .statusCode,
             ).toBe(200);
+            const reconciliation =
+              completion + "/financial-ledger/reconciliation";
+            const consolidation = async () => {
+              const response = await app.inject({
+                url: completion,
+                headers: pic,
+              });
+              expect(response.statusCode, response.body).toBe(200);
+              return response.json().consolidation;
+            };
+            expect(await consolidation()).toMatchObject({
+              submittedPaperVersion: null,
+              departments: [
+                {
+                  department: "PERANCANG_BANDAR",
+                  status: "RECEIVED",
+                  current: comments[0],
+                },
+                {
+                  department: "KEJURUTERAAN",
+                  status: "RECEIVED",
+                  current: comments[1],
+                },
+              ],
+            });
             const returnedComment = await command(pic, 3, "RETURN_COMMENT", {
               department: "PERANCANG_BANDAR",
               reason: "Perlu maklumat tambahan latihan",
@@ -970,10 +1054,23 @@ for (const { name, enabled } of variants) {
             });
             expect(returnPaper.statusCode, returnPaper.body).toBe(200);
             offset++;
+            expect(await consolidation()).toMatchObject({
+              submittedPaperVersion: null,
+              departments: [
+                {
+                  previous: { comment: comments[0] },
+                  returnReason: "Perlu maklumat tambahan latihan",
+                },
+                { current: comments[1] },
+              ],
+            });
             const resendPaper = await command(pic, 4, "SUBMIT_PAPER", {
               summary: "Kertas Pertimbangan semakan latihan",
             });
             expect(resendPaper.statusCode, resendPaper.body).toBe(200);
+            expect((await consolidation()).submittedPaperVersion).toEqual(
+              expect.any(Number),
+            );
             offset++;
             const outcomes = scopes.map(
               (
@@ -1156,6 +1253,40 @@ for (const { name, enabled } of variants) {
                 })
               ).json().closed,
             ).toBe(true);
+            if (kitDirectory) {
+              const kit = {
+                accounts: browserAccounts,
+                scenarios: [
+                  {
+                    id: "single-unit",
+                    submissionId: id,
+                    draftPath: `/permohonan/draf/${draft}/premis`,
+                  },
+                ],
+              };
+              const config = [
+                "STAYLINK_SYNTHETIC_PORTAL=true",
+                "STAYLINK_SYNTHETIC_COMPLETION=true",
+                "STAYLINK_SYNTHETIC_BKT=true",
+                "STAYLINK_SYNTHETIC_RECORDS=true",
+                "STAYLINK_SYNTHETIC_SECOND_UNIT_FEE_SEN=1234",
+                "STAYLINK_SYNTHETIC_DISTRICT=SPU",
+                `STAYLINK_SYNTHETIC_PIC_ID=${pic.userId}`,
+                `STAYLINK_SYNTHETIC_SUPERVISOR_ID=${ppsk.userId}`,
+                `STAYLINK_PERSONAL_PIC_SPT_ID=${spt.userId}`,
+                `STAYLINK_PERSONAL_PIC_SPS_ID=${process.env.STAYLINK_PERSONAL_PIC_SPS_ID}`,
+                `STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS=${process.env.STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS}`,
+              ];
+              const prefix = join(kitDirectory, name.toLowerCase());
+              await writeFile(prefix + ".json", JSON.stringify(kit), {
+                mode: 0o600,
+                flag: "wx",
+              });
+              await writeFile(prefix + ".env", config.join("\n") + "\n", {
+                mode: 0o600,
+                flag: "wx",
+              });
+            }
             const letter = await app.inject({
               url: appUrl + "/completion/letters/1?format=pdf",
               headers: owner,
@@ -1165,6 +1296,104 @@ for (const { name, enabled } of variants) {
               "SYNTHETIC-DECISION-LETTER-v2",
             );
             expect(letter.headers["content-digest"]).toMatch(/^sha-256=:/);
+            const reconcile = (headers = ppsk) =>
+              app.inject({ url: reconciliation, headers });
+            const dryRun = await reconcile();
+            expect(dryRun.statusCode, dryRun.body).toBe(200);
+            const missing =
+              capacity === "COMPANY"
+                ? [
+                    { stage: 1, event: "INVOICE" },
+                    { stage: 1, event: "RECEIPT" },
+                  ]
+                : [];
+            expect(dryRun.json()).toMatchObject({
+              missing,
+              conflicts: [],
+              added: 0,
+              source: { outstandingSen: 0 },
+              ledger: { outstandingSen: 0 },
+            });
+            expect((await reconcile(pic)).statusCode).toBe(404);
+            expect((await reconcile(spt)).statusCode).toBe(404);
+            expect(
+              (await post(reconciliation, ppsk, { confirm: true })).statusCode,
+            ).toBe(404);
+            vi.stubEnv("STAYLINK_SYNTHETIC_LEDGER_BACKFILL", "true");
+            expect(
+              (await post(reconciliation, ppsk, { confirm: false })).statusCode,
+            ).toBe(400);
+            if (capacity === "COMPANY") {
+              // Force the audit write to fail after the ledger inserts. A retry
+              // must still see the original dry-run result on both engines.
+              if (ownerPool) {
+                await ownerPool.use((c) =>
+                  c.execute(`CREATE OR REPLACE TRIGGER STL_TEST_BACKFILL_AUDIT
+                  BEFORE INSERT ON STL_AUDIT_LOGS FOR EACH ROW
+                  WHEN (NEW.ACTION = 'SYNTHETIC_LEDGER_BACKFILLED')
+                  BEGIN RAISE_APPLICATION_ERROR(-20981, 'synthetic audit failure'); END;`),
+                );
+              } else {
+                await db.$executeRaw`CREATE FUNCTION stl_test_backfill_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+                  BEGIN IF NEW.action = 'SYNTHETIC_LEDGER_BACKFILLED' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$`;
+                await db.$executeRaw`CREATE TRIGGER stl_test_backfill_audit BEFORE INSERT ON audit_logs
+                  FOR EACH ROW EXECUTE FUNCTION stl_test_backfill_audit()`;
+              }
+              try {
+                expect(
+                  (await post(reconciliation, ppsk, { confirm: true }))
+                    .statusCode,
+                ).toBe(500);
+                expect((await reconcile()).json()).toEqual(dryRun.json());
+              } finally {
+                if (ownerPool)
+                  await ownerPool.use((c) =>
+                    c.execute("DROP TRIGGER STL_TEST_BACKFILL_AUDIT"),
+                  );
+                else {
+                  await db.$executeRaw`DROP TRIGGER stl_test_backfill_audit ON audit_logs`;
+                  await db.$executeRaw`DROP FUNCTION stl_test_backfill_audit()`;
+                }
+              }
+            }
+            const apply = () => post(reconciliation, ppsk, { confirm: true });
+            const [firstBackfill, concurrentBackfill] = await Promise.all([
+              apply(),
+              apply(),
+            ]);
+            expect(firstBackfill.statusCode, firstBackfill.body).toBe(200);
+            expect(concurrentBackfill.statusCode, concurrentBackfill.body).toBe(
+              200,
+            );
+            expect(
+              [
+                firstBackfill.json().added,
+                concurrentBackfill.json().added,
+              ].sort(),
+            ).toEqual([0, missing.length]);
+            const reconciled = (await reconcile()).json();
+            expect(reconciled).toMatchObject({
+              added: 0,
+              missing: [],
+              conflicts: [],
+            });
+            expect(reconciled.ledger).toEqual(reconciled.source);
+            const backfills = ownerPool
+              ? await ownerPool
+                  .use((c) =>
+                    queryRows<{ count: number }>(
+                      c,
+                      `SELECT COUNT(*) AS "count" FROM STL_AUDIT_LOGS
+                  WHERE TARGET=:id AND ACTION='SYNTHETIC_LEDGER_BACKFILLED'`,
+                      { id },
+                    ),
+                  )
+                  .then(([row]) => row.count)
+              : await db.auditLog.count({
+                  where: { target: id, action: "SYNTHETIC_LEDGER_BACKFILLED" },
+                });
+            expect(backfills).toBe(capacity === "COMPANY" ? 1 : 0);
+
             const ledger = await app.inject({
               url: completion + "/financial-ledger",
               headers: ppsk,

@@ -13,6 +13,8 @@ import {
   type ActionFeedback,
 } from "./synthetic-portal-ui";
 
+import type { technicalConsolidation } from "../../../packages/shared/src/synthetic-technical-consolidation";
+
 type Scope = {
   unitId: string;
   floorId: string;
@@ -45,8 +47,9 @@ type View = Pick<CompletionState, "version" | "closed"> & {
   decisionSigned?: boolean;
   invoice?: CompletionState["invoice"];
   overdue?: boolean;
+  consolidation?: ReturnType<typeof technicalConsolidation>;
 };
-const scopeKey = ({ unitId, floorId }: Scope) => unitId + "/" + floorId;
+const scopeKey = ({ unitId, floorId }: Pick<Scope, "unitId" | "floorId">) => unitId + "/" + floorId;
 const terminal = (choice?: string) => choice === "SK" || choice === "TOLAK";
 const base = "/synthetic-portal/completion";
 const departmentLabels = {
@@ -332,23 +335,39 @@ function CompletionForm({
           </ul>
         </details>
       ))}
-      {view.referral?.comments && (
+      {view.consolidation && (
         <details>
-          <summary>Ulasan teknikal terkini</summary>
+          <summary>Jadual konsolidasi teknikal latihan</summary>
           <ul>
-            {Object.entries(view.referral.comments).map(
-              ([department, comment]) => (
-                <li key={department}>
-                  {
-                    departmentLabels[
-                      department as keyof typeof departmentLabels
-                    ]
-                  }{" "}
-                  — {(comment as { general: string }).general}
-                </li>
-              ),
-            )}
+            {view.consolidation.departments.map((row) => (
+              <li key={row.department}>
+                <strong>{departmentLabels[row.department]}</strong>
+                {" · "}{{
+                  RECEIVED: "Ulasan diterima",
+                  PENDING: "Menunggu ulasan",
+                  OVERDUE: "Ulasan melepasi SLA",
+                }[row.status]}
+                {row.current && <p>Ulasan semasa{row.currentVersion && " v" + row.currentVersion} · {row.current.general}</p>}
+                {row.previous && <p>Ulasan terdahulu v{row.previous.version} · {row.previous.comment.general}</p>}
+                {row.returnReason && <p>Sebab pemulangan · {row.returnReason}</p>}
+                {[row.current, row.previous?.comment].map((comment, index) =>
+                  comment && comment.details.length > 0 && (
+                    <ul key={index}>
+                      {comment.details.map((detail) => {
+                        const scope = view.scopes.find((item) => scopeKey(item) === scopeKey(detail));
+                        return <li key={scopeKey(detail)}>
+                          {index === 0 ? "Semasa" : "Terdahulu"} · {scope?.unitLabel} · {scope?.floorLabel} · {detail.comment}
+                        </li>;
+                      })}
+                    </ul>
+                  ),
+                )}
+              </li>
+            ))}
           </ul>
+          {view.consolidation.submittedPaperVersion && (
+            <p>Snapshot Kertas Pertimbangan v{view.consolidation.submittedPaperVersion}</p>
+          )}
         </details>
       )}
       {decisions.size > 0 && (

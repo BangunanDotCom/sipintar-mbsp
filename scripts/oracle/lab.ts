@@ -226,7 +226,7 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
           );
         await grantScopedInsert(
           "STL_SYNTH_FINANCIAL_ENTRIES",
-          "ID, SUBMISSION_ID, INVOICE_ID, STAGE, EVENT, AMOUNT_SEN",
+          "ID, SUBMISSION_ID, INVOICE_ID, STAGE, EVENT, AMOUNT_SEN, CREATED_AT",
           runtime.user,
         );
         await grantScopedInsert(

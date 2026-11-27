@@ -437,7 +437,11 @@ type NotificationData = {
   type: string;
   message: string;
 };
-type LedgerEvent = { action: string; metadata: Prisma.JsonValue };
+type LedgerEvent = {
+  action: string;
+  metadata: Prisma.JsonValue;
+  createdAt: Date;
+};
 
 export interface SyntheticReviewTransaction {
   lockOfficer(officer: ReviewOfficer): Promise<void>;
@@ -541,7 +545,8 @@ export function postgresSyntheticReviewTransaction(
     async ledgerEvents(id, actions) {
       return tx.auditLog.findMany({
         where: { target: id, outcome: "SUCCESS", action: { in: [...actions] } },
-        select: { action: true, metadata: true },
+        select: { action: true, metadata: true, createdAt: true },
+        take: 3,
       });
     },
     async audit(entry) {
@@ -553,6 +558,11 @@ export function postgresSyntheticReviewTransaction(
       });
     },
     financial: {
+      referencesElsewhere: (id, references) =>
+        tx.syntheticFinancialEntry.findMany({
+          where: { submissionId: { not: id }, OR: references },
+          select: { invoiceId: true, event: true },
+        }),
       entries: (submissionId) =>
         tx.syntheticFinancialEntry.findMany({
           where: { submissionId },

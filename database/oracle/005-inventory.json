@@ -1,0 +1,3 @@
+[
+  {"type":"INDEX","name":"STL_IX_AUDIT_CASE_LOOKUP","table":"STL_AUDIT_LOGS"}
+]

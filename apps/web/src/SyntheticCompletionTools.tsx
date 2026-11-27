@@ -19,12 +19,34 @@ export function CompletionFinancialLedger({ path, identity }: { path: string; id
     enabled: open,
     retry: false,
   });
+  const reconciliation = useQuery<{
+    source: { invoicedSen: number; settledSen: number; outstandingSen: number };
+    missing: { stage: number; event: string }[];
+    conflicts: { stage: number; event: string; reason: string }[];
+  }>({
+    queryKey: ["completion-financial-reconciliation", identity, path],
+    queryFn: () => api(path + "/financial-ledger/reconciliation"),
+    enabled: open,
+    retry: false,
+  });
   return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>Lejar kewangan latihan</summary>
       {ledger.isLoading && <p role="status">Memuatkan lejar…</p>}
       {ledger.isError && (
         <p role="alert">{syntheticErrorMessage(ledger.error)}</p>
+      )}
+      {reconciliation.isLoading && <p role="status">Memadankan jurnal asal…</p>}
+      {reconciliation.isError && <p role="alert">{syntheticErrorMessage(reconciliation.error)}</p>}
+      {reconciliation.data && (
+        <>
+          <p>
+            Jurnal asal · Invois {reconciliation.data.source.invoicedSen} sen ·
+            Resit {reconciliation.data.source.settledSen} sen ·
+            Baki {reconciliation.data.source.outstandingSen} sen
+          </p>
+          <p>Catatan belum dipindah: {reconciliation.data.missing.length}. Percanggahan: {reconciliation.data.conflicts.length}.</p>
+        </>
       )}
       {ledger.data && (
         <>
