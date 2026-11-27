@@ -4,12 +4,18 @@ export type FinancialEntry = {
   stage: 1 | 2;
   event: "INVOICE" | "RECEIPT";
   amountSen: number;
+  createdAt?: Date;
 };
 export type FinancialView = Omit<
   FinancialEntry,
   "submissionId" | "stage" | "event"
 > & { stage: number; event: string; createdAt: Date };
+export type FinancialReference = Pick<FinancialEntry, "invoiceId" | "event">;
 export type FinancialJournal = {
+  referencesElsewhere(
+    id: string,
+    references: FinancialReference[],
+  ): Promise<Pick<FinancialView, "invoiceId" | "event">[]>;
   entries(id: string): Promise<FinancialView[]>;
   invoice(
     id: string,

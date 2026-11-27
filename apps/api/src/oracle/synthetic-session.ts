@@ -15,6 +15,7 @@ export function oracleSyntheticSession(pool: OraclePool) {
     operator: ObservedPortalSession,
     activeRole: CompletionRole,
     district?: string,
+    lock = true,
   ) => {
     const { id, csrfHash, userId } = operator;
     const applicant =
@@ -25,18 +26,20 @@ export function oracleSyntheticSession(pool: OraclePool) {
       : activeRole === "PIC_KAWASAN" || activeRole === "PPSK"
         ? "areas.read"
         : "profile";
-    await connection.execute(
-      `SELECT ID FROM ${users} WHERE ID=:userId FOR UPDATE`,
-      { userId },
-    );
-    await connection.execute(
-      `SELECT ID FROM ${assignments} WHERE USER_ID=:userId AND ROLE_ID=:activeRole FOR UPDATE`,
-      { userId, activeRole },
-    );
-    await connection.execute(
-      `SELECT ID FROM ${sessions} WHERE ID=:id AND USER_ID=:userId FOR UPDATE`,
-      { id, userId },
-    );
+    if (lock) {
+      await connection.execute(
+        `SELECT ID FROM ${users} WHERE ID=:userId FOR UPDATE`,
+        { userId },
+      );
+      await connection.execute(
+        `SELECT ID FROM ${assignments} WHERE USER_ID=:userId AND ROLE_ID=:activeRole FOR UPDATE`,
+        { userId, activeRole },
+      );
+      await connection.execute(
+        `SELECT ID FROM ${sessions} WHERE ID=:id AND USER_ID=:userId FOR UPDATE`,
+        { id, userId },
+      );
+    }
     const [active] = await queryRows(
       connection,
       `SELECT S.ID FROM ${sessions} S JOIN ${users} U ON U.ID=S.USER_ID

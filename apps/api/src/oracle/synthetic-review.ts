@@ -20,14 +20,23 @@ import {
 import { assertSnapshotAuthority } from "../synthetic-submissions.js";
 import { createOracleDraftRepository } from "./drafts.js";
 import type { OraclePool } from "./pool.js";
-import { clob, oracleInList, oracleTable, queryRows } from "./query.js";
+import {
+  clob,
+  oracleInList,
+  oracleTable,
+  queryRows,
+  timestamp,
+} from "./query.js";
 import { oracleSyntheticSession } from "./synthetic-session.js";
 import { createOracleSyntheticSubmissions } from "./synthetic-submissions.js";
 
 type SubmissionRow = Omit<SyntheticSubmission, "snapshot"> & {
   snapshot: string;
 };
-type EventRow = Omit<ReviewEvent, "metadata"> & { metadata: string | null };
+type EventRow = Omit<ReviewEvent, "metadata"> & {
+  metadata: string | null;
+  createdAt: Date;
+};
 type EvidenceRow = Omit<CurrentEvidence, "scope"> & {
   documentId: string | null;
   unitId: string | null;
@@ -43,7 +52,10 @@ const json = (value: string | null): Prisma.JsonValue =>
 export function createOracleSyntheticReviewRepository(
   pool: OraclePool,
 ): SyntheticReviewRepository & {
-  onConnection(connection: Connection): SyntheticReviewTransaction;
+  onConnection(
+    connection: Connection,
+    consistentRead?: boolean,
+  ): SyntheticReviewTransaction;
 } {
   const delegationEvidence = oracleDelegationEvidence(pool);
   const draftRepository = createOracleDraftRepository(pool);
@@ -69,17 +81,25 @@ export function createOracleSyntheticReviewRepository(
     officerId: officer.operator.userId,
   });
 
-  function onConnection(connection: Connection): SyntheticReviewTransaction {
-    const draftTx = draftRepository.onConnection(connection);
+  function onConnection(
+    connection: Connection,
+    consistentRead = false,
+  ): SyntheticReviewTransaction {
+    const draftTx = draftRepository.onConnection(connection, consistentRead);
     const submissionTx = submissionRepository.onConnection(connection);
-    const events = async (ids: string[], actions: readonly string[]) => {
+    const events = async (
+      ids: string[],
+      actions: readonly string[],
+      ledger = false,
+    ) => {
       const targets = oracleInList("TARGET", ids, "IN", "target_");
       const kinds = oracleInList("ACTION", actions, "IN", "action_");
       return (
         await queryRows<EventRow>(
           connection,
-          `SELECT TARGET AS "target", ACTION AS "action", ACTOR_ID AS "actorId", METADATA AS "metadata"
-         FROM ${audit} WHERE OUTCOME='SUCCESS' AND ${targets.sql} AND ${kinds.sql}`,
+          `SELECT TARGET AS "target", ACTION AS "action", ACTOR_ID AS "actorId", METADATA AS "metadata", CREATED_AT AS "createdAt"
+         FROM ${audit} WHERE OUTCOME='SUCCESS' AND ${targets.sql} AND ${kinds.sql}
+         ${ledger ? "FETCH FIRST 3 ROWS ONLY" : ""}`,
           { ...targets.binds, ...kinds.binds },
         )
       ).map((row) => ({ ...row, metadata: json(row.metadata) }));
@@ -99,8 +119,11 @@ export function createOracleSyntheticReviewRepository(
           officer.operator,
           officer.role,
           officer.district,
+          !consistentRead,
         ),
-      lockEvidence: submissionTx.lockEvidence,
+      async lockEvidence(id) {
+        if (!consistentRead) await submissionTx.lockEvidence(id);
+      },
       async evidenceRows(ids) {
         const output: CurrentEvidence[] = [];
         for (let index = 0; index < ids.length; index += 500) {
@@ -189,7 +212,7 @@ export function createOracleSyntheticReviewRepository(
       },
       requireSnapshotAuthority: (row) =>
         assertSnapshotAuthority(row, draftTx.companyAuthority, (rep) =>
-          delegationEvidence.verified(connection, rep),
+          delegationEvidence.verified(connection, rep, !consistentRead),
         ),
       async lockSubmission(id, officer) {
         await connection.execute(
@@ -215,9 +238,22 @@ export function createOracleSyntheticReviewRepository(
           await draftTx.companyAuthority(userId, draft.companyId);
         return first(`S.DRAFT_ID=:draftId AND ${live}`, { draftId });
       },
-      ledgerEvents: (id, actions) => events([id], actions),
+      ledgerEvents: (id, actions) => events([id], actions, true),
       audit: draftTx.audit,
       financial: {
+        referencesElsewhere: (id, references) => {
+          const ids = oracleInList(
+            "INVOICE_ID",
+            [...new Set(references.map(({ invoiceId }) => invoiceId))],
+            "IN",
+          );
+          return queryRows<Pick<FinancialView, "invoiceId" | "event">>(
+            connection,
+            `SELECT INVOICE_ID AS "invoiceId", EVENT AS "event" FROM ${finance}
+              WHERE SUBMISSION_ID<>:id AND ${ids.sql}`,
+            { id, ...ids.binds },
+          );
+        },
         entries: (id) =>
           queryRows<FinancialView>(
             connection,
@@ -236,9 +272,13 @@ export function createOracleSyntheticReviewRepository(
           )[0] ?? null,
         async append(data) {
           await connection.execute(
-            `INSERT INTO ${finance} (ID,SUBMISSION_ID,INVOICE_ID,STAGE,EVENT,AMOUNT_SEN)
-            VALUES (:id,:submissionId,:invoiceId,:stage,:event,:amountSen)`,
-            { id: randomUUID(), ...data },
+            `INSERT INTO ${finance} (ID,SUBMISSION_ID,INVOICE_ID,STAGE,EVENT,AMOUNT_SEN,CREATED_AT)
+            VALUES (:id,:submissionId,:invoiceId,:stage,:event,:amountSen,COALESCE(:createdAt,SYSTIMESTAMP))`,
+            {
+              ...data,
+              id: randomUUID(),
+              createdAt: timestamp(data.createdAt ?? null),
+            },
           );
         },
       },
@@ -273,10 +313,8 @@ export function createOracleSyntheticReviewRepository(
       try {
         return await pool.transaction(async (connection) => {
           if (consistentRead)
-            await connection.execute(
-              "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-            );
-          return operation(onConnection(connection));
+            await connection.execute("SET TRANSACTION READ ONLY");
+          return operation(onConnection(connection, consistentRead));
         });
       } catch (error) {
         if (

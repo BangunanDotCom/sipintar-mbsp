@@ -268,7 +268,10 @@ function draftDto(row: DraftRow): ApplicationDraft {
 export function createOracleDraftRepository(
   pool: OraclePool,
 ): DraftRepository & {
-  onConnection(connection: Connection): DraftTransaction;
+  onConnection(
+    connection: Connection,
+    consistentRead?: boolean,
+  ): DraftTransaction;
 } {
   const drafts = oracleTable(pool, "STL_APPLICATION_DRAFTS");
   const companies = oracleTable(pool, "STL_COMPANIES");
@@ -285,15 +288,22 @@ export function createOracleDraftRepository(
   const selectAuthority = `SELECT ${selectCompany} FROM ${representatives} R
     JOIN ${companies} C ON C.ID=R.COMPANY_ID WHERE R.USER_ID=:userId AND ${eligible}`;
 
-  function transaction(connection: Connection): DraftTransaction {
+  function transaction(
+    connection: Connection,
+    consistentRead = false,
+  ): DraftTransaction {
     async function findDraft(userId: string, id: string) {
-      // The parent row is the coordination lock for every draft mutation and aggregate read.
-      const [locked] = await queryRows(
-        connection,
-        `SELECT ID FROM ${drafts} WHERE ID=:id AND INITIATED_BY_USER_ID=:userId AND STATUS='DRAFT' FOR UPDATE`,
-        { id, userId },
-      );
-      if (!locked) return null;
+      // Mutation callers share the parent row lock. Snapshot reads already
+      // see the draft and its dependants at a consistent point in time.
+      if (!consistentRead) {
+        // The parent row is the coordination lock for every draft mutation and aggregate read.
+        const [locked] = await queryRows(
+          connection,
+          `SELECT ID FROM ${drafts} WHERE ID=:id AND INITIATED_BY_USER_ID=:userId AND STATUS='DRAFT' FOR UPDATE`,
+          { id, userId },
+        );
+        if (!locked) return null;
+      }
       const [row] = await queryRows<DraftRow>(
         connection,
         `SELECT ${columns(draftFields)} FROM ${drafts} WHERE ID=:id AND INITIATED_BY_USER_ID=:userId AND STATUS='DRAFT'`,
@@ -359,14 +369,16 @@ export function createOracleDraftRepository(
       findDraft,
       findPremises,
       companyAuthority: async (userId, companyId) => {
-        await connection.execute(
-          `SELECT ID FROM ${companies} WHERE ID=:companyId FOR UPDATE`,
-          { companyId },
-        );
-        await connection.execute(
-          `SELECT ID FROM ${representatives} WHERE COMPANY_ID=:companyId AND USER_ID=:userId FOR UPDATE`,
-          { companyId, userId },
-        );
+        if (!consistentRead) {
+          await connection.execute(
+            `SELECT ID FROM ${companies} WHERE ID=:companyId FOR UPDATE`,
+            { companyId },
+          );
+          await connection.execute(
+            `SELECT ID FROM ${representatives} WHERE COMPANY_ID=:companyId AND USER_ID=:userId FOR UPDATE`,
+            { companyId, userId },
+          );
+        }
         const [row] = await queryRows<CompanyRow>(
           connection,
           selectAuthority + " AND R.COMPANY_ID=:companyId",

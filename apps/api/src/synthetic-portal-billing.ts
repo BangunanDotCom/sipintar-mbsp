@@ -31,10 +31,10 @@ const billingBody = z.strictObject({
 const callbackBody = z.strictObject({ payload: z.string().max(4096) });
 const minute = 60_000;
 
-async function ledgerFor(
-  tx: SyntheticReviewTransaction,
+export async function legacyFirstPayment(
+  tx: Pick<SyntheticReviewTransaction, "ledgerEvents">,
   id: string,
-): Promise<MockLedger> {
+) {
   const events = await tx.ledgerEvents(id, [issued, settled]);
   const invoices = events
     .filter((row) => row.action === issued)
@@ -63,6 +63,8 @@ async function ledgerFor(
   return {
     invoices: invoice ? [invoice] : [],
     settlements: receipt ? [receipt] : [],
+    issuedAt: events.find((event) => event.action === issued)?.createdAt,
+    settledAt: events.find((event) => event.action === settled)?.createdAt,
   };
 }
 
@@ -70,7 +72,7 @@ export async function firstPaymentSettled(
   tx: SyntheticReviewTransaction,
   id: string,
 ) {
-  return (await ledgerFor(tx, id)).settlements.length === 1;
+  return (await legacyFirstPayment(tx, id)).settlements.length === 1;
 }
 
 function invoiceView(ledger: MockLedger) {
@@ -158,7 +160,9 @@ export async function syntheticBillingRoutes(
     return repository.transaction(async (tx) => {
       const row = await tx.applicantSubmission(id, userId);
       if (row) await tx.requireSnapshotAuthority(row);
-      return row ? invoiceView(await ledgerFor(tx, row.id)) : { invoice: null };
+      return row
+        ? invoiceView(await legacyFirstPayment(tx, row.id))
+        : { invoice: null };
     }, true);
   });
 
@@ -167,7 +171,7 @@ export async function syntheticBillingRoutes(
     const { id } = params.parse(req.params);
     return repository.transaction(async (tx) => {
       await lockSyntheticReview(tx, id, officer);
-      return invoiceView(await ledgerFor(tx, id));
+      return invoiceView(await legacyFirstPayment(tx, id));
     });
   });
 
@@ -179,7 +183,7 @@ export async function syntheticBillingRoutes(
     const { action } = billingBody.parse(req.body);
     return repository.transaction(async (tx) => {
       const { state, snapshot } = await lockSyntheticReview(tx, id, officer);
-      const ledger = await ledgerFor(tx, id);
+      const ledger = await legacyFirstPayment(tx, id);
       if (state.status !== "REGISTERED")
         fail(409, "Daftar keputusan sintetik dahulu.");
       if (action === "ISSUE") {
@@ -268,7 +272,7 @@ export async function syntheticBillingRoutes(
       return storeReconciliation(
         tx,
         id,
-        await ledgerFor(tx, id),
+        await legacyFirstPayment(tx, id),
         payload,
         signature,
         secret,
