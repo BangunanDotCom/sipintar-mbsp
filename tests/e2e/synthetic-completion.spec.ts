@@ -70,7 +70,7 @@ test("PPSK filters and downloads the district summary with MFA", async ({
       password: string;
       mfaSecretBase32: string;
     }[];
-    scenarios: { submissionId?: string }[];
+    scenarios?: { submissionId?: string }[];
   };
   const officer = kit.accounts.find(({ label }) => label === "ppsk")!;
   const login = await page.request.post("/api/auth/login", {
@@ -129,18 +129,33 @@ test("PPSK filters and downloads the district summary with MFA", async ({
   await expect(
     page.getByText("SPU · Halaman 1", { exact: true }),
   ).toBeVisible();
-  const id = kit.scenarios[0]?.submissionId;
+  const id = kit.scenarios?.[0]?.submissionId;
   const card = id
     ? page.getByRole("article", { name: "Serahan sintetik " + id })
     : page;
   await card.getByText("Lejar kewangan latihan", { exact: true }).click();
-  await expect(page.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
+  await expect(card.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
+  await expect(
+    card.getByText("Catatan belum dipindah: 0. Percanggahan: 0."),
+  ).toBeVisible();
   if (process.env.STAYLINK_SYNTHETIC_RECORDS === "true") {
     await card
       .getByText("Daftar kawalan rekod latihan", { exact: true })
       .click();
+    if (process.env.STAYLINK_COMPLETION_PARITY_BROWSER === "true") {
+      const state = card.getByText(/^(Rekod ditahan|Tiada tahanan rekod)$/);
+      await expect(state).toBeVisible();
+      if ((await state.textContent()) === "Tiada tahanan rekod") {
+        await card
+          .getByLabel("Sebab tindakan rekod")
+          .fill("Pengesahan kawalan rekod melalui pelayar");
+        await card
+          .getByRole("button", { name: "Letak tahanan rekod latihan" })
+          .click();
+      }
+    }
     await expect(
-      page.getByText("Rekod ditahan", { exact: true }),
+      card.getByText("Rekod ditahan", { exact: true }),
     ).toBeVisible();
     await expect(
       card.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup."),

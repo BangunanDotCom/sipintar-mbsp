@@ -52,7 +52,10 @@ const json = (value: string | null): Prisma.JsonValue =>
 export function createOracleSyntheticReviewRepository(
   pool: OraclePool,
 ): SyntheticReviewRepository & {
-  onConnection(connection: Connection): SyntheticReviewTransaction;
+  onConnection(
+    connection: Connection,
+    consistentRead?: boolean,
+  ): SyntheticReviewTransaction;
 } {
   const delegationEvidence = oracleDelegationEvidence(pool);
   const draftRepository = createOracleDraftRepository(pool);
@@ -78,8 +81,11 @@ export function createOracleSyntheticReviewRepository(
     officerId: officer.operator.userId,
   });
 
-  function onConnection(connection: Connection): SyntheticReviewTransaction {
-    const draftTx = draftRepository.onConnection(connection);
+  function onConnection(
+    connection: Connection,
+    consistentRead = false,
+  ): SyntheticReviewTransaction {
+    const draftTx = draftRepository.onConnection(connection, consistentRead);
     const submissionTx = submissionRepository.onConnection(connection);
     const events = async (
       ids: string[],
@@ -113,8 +119,11 @@ export function createOracleSyntheticReviewRepository(
           officer.operator,
           officer.role,
           officer.district,
+          !consistentRead,
         ),
-      lockEvidence: submissionTx.lockEvidence,
+      async lockEvidence(id) {
+        if (!consistentRead) await submissionTx.lockEvidence(id);
+      },
       async evidenceRows(ids) {
         const output: CurrentEvidence[] = [];
         for (let index = 0; index < ids.length; index += 500) {
@@ -203,7 +212,7 @@ export function createOracleSyntheticReviewRepository(
       },
       requireSnapshotAuthority: (row) =>
         assertSnapshotAuthority(row, draftTx.companyAuthority, (rep) =>
-          delegationEvidence.verified(connection, rep),
+          delegationEvidence.verified(connection, rep, !consistentRead),
         ),
       async lockSubmission(id, officer) {
         await connection.execute(
@@ -304,10 +313,8 @@ export function createOracleSyntheticReviewRepository(
       try {
         return await pool.transaction(async (connection) => {
           if (consistentRead)
-            await connection.execute(
-              "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-            );
-          return operation(onConnection(connection));
+            await connection.execute("SET TRANSACTION READ ONLY");
+          return operation(onConnection(connection, consistentRead));
         });
       } catch (error) {
         if (

@@ -25,11 +25,11 @@ export function createOracleCompletionRuntime(
     async transaction(operation, consistentRead) {
       try {
         return await pool.transaction(async (connection) => {
+          // Dashboard requests sharing a session can read concurrently. An
+          // Oracle read-only transaction still gives every query one snapshot.
           if (consistentRead)
-            await connection.execute(
-              "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-            );
-          const review = reviews.onConnection(connection);
+            await connection.execute("SET TRANSACTION READ ONLY");
+          const review = reviews.onConnection(connection, consistentRead);
           return operation({
             ...review,
             async enqueueReminders(entries) {
@@ -39,7 +39,13 @@ export function createOracleCompletionRuntime(
             events: (id) => journal.events(connection, id),
             appendCompletion: (entry) => journal.appendEvent(connection, entry),
             lockActor: (operator, role, district) =>
-              lockSession(connection, operator, role, district),
+              lockSession(
+                connection,
+                operator,
+                role,
+                district,
+                !consistentRead,
+              ),
             async lockApplicant(operator) {
               const role = operator.activeRole;
               if (role !== "PEMOHON" && role !== "WAKIL_SYARIKAT")

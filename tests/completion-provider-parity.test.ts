@@ -1,3 +1,7 @@
+import { createOracleCompletionRuntime } from "../apps/api/src/oracle/completion-runtime";
+import { postgresCompletion } from "../apps/api/src/completion-repository";
+import { mockInvoiceSchema } from "../apps/api/src/synthetic-billing";
+import { reconcileSyntheticLedger } from "../apps/api/src/synthetic-financial-reconciliation";
 import { createOracleTrainingReminders } from "../apps/api/src/oracle/training-reminders";
 import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
 import { readFile, writeFile } from "node:fs/promises";
@@ -1395,6 +1399,59 @@ for (const { name, enabled } of variants) {
                   where: { target: id, action: "SYNTHETIC_LEDGER_BACKFILLED" },
                 });
             expect(backfills).toBe(capacity === "COMPANY" ? 1 : 0);
+            if (capacity === "COMPANY") {
+              // Reconciliation's uniqueness probe reads both the real current journal
+              // and references under other submissions using the engine adapter.
+              const provider = runtime
+                ? createOracleCompletionRuntime(runtime)
+                : postgresCompletion;
+              await provider.transaction(async (tx) => {
+                const action = "SYNTHETIC_PORTAL_INVOICE_ISSUED";
+                const [source] = await tx.ledgerEvents(id, [action]);
+                const invoice = mockInvoiceSchema.parse(source.metadata);
+                const candidate = randomUUID();
+                const crossCase = {
+                  ...tx,
+                  events: async () => [],
+                  ledgerEvents: async () => [
+                    {
+                      ...source,
+                      metadata: { ...invoice, submissionId: candidate },
+                    },
+                  ],
+                };
+                const dry = await reconcileSyntheticLedger(
+                  crossCase,
+                  candidate,
+                  draft,
+                  invoice.unitIds,
+                  [],
+                  false,
+                );
+                expect(dry).toMatchObject({
+                  added: 0,
+                  conflicts: [
+                    {
+                      stage: 1,
+                      event: "INVOICE",
+                      reason: "REFERENCE_CONFLICT",
+                    },
+                  ],
+                });
+                await expect(
+                  reconcileSyntheticLedger(
+                    crossCase,
+                    candidate,
+                    draft,
+                    invoice.unitIds,
+                    [],
+                    true,
+                  ),
+                ).rejects.toMatchObject({ statusCode: 409 });
+                expect(await tx.financial.entries(candidate)).toEqual([]);
+                expect(await tx.financial.entries(id)).toHaveLength(4);
+              });
+            }
 
             const ledger = await app.inject({
               url: completion + "/financial-ledger",
@@ -1497,6 +1554,18 @@ for (const { name, enabled } of variants) {
             expect(aggregate.statusCode).toBe(200);
             expect(aggregate.json().cases).toEqual([]);
             expect(aggregate.json().summary.closed).toBeGreaterThanOrEqual(1);
+            // The dashboard requests these resources in parallel using one
+            // officer session. Oracle snapshot readers must not contend.
+            const dashboardReads = await Promise.all(
+              [
+                root + "/completion/queue?view=closed",
+                root + "/reviews",
+                reconciliation,
+                completion,
+              ].map((url) => app.inject({ url, headers: ppsk })),
+            );
+            for (const response of dashboardReads)
+              expect(response.statusCode, response.body).toBe(200);
             expect(
               (
                 await app.inject({

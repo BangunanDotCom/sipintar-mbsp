@@ -81,10 +81,11 @@ export function oracleDelegationEvidence(pool: OraclePool) {
         authorityType: string;
         verifiedDocumentId: string | null;
       },
+      lock = true,
     ) {
       if (rep.status !== "VERIFIED" || !rep.verifiedDocumentId)
         fail(409, "Surat kuasa versi semasa belum disahkan.");
-      const doc = await metadata(connection, rep.verifiedDocumentId, true);
+      const doc = await metadata(connection, rep.verifiedDocumentId, lock);
       if (
         !doc ||
         doc.representativeId !== rep.id ||
@@ -115,10 +116,12 @@ export function oracleDelegationEvidence(pool: OraclePool) {
         authorityType: string;
         verifiedDocumentId: string | null;
       },
+      lock = true,
     ) {
       const { id, version, sha256 } = await this.lockedVerified(
         connection,
         rep,
+        lock,
       );
       return { id, version, sha256 };
     },
