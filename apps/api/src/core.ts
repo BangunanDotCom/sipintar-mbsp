@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import {
   createHash,
@@ -124,25 +124,34 @@ export async function notify(
   message: string,
   emailText?: string,
 ) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
-  const result = await db.$transaction(async (tx) => {
-    await tx.notification.create({ data: { userId, type, title, message } });
-    return tx.emailDeliveryLog.create({
-      data: {
-        userId,
-        recipient: user.email,
-        type,
-        encryptedPayload: encrypt(
-          JSON.stringify({ subject: title, text: emailText || message }),
-        ),
-      },
-    });
-  });
+  const result = await db.$transaction((tx) =>
+    queueNotification(tx, userId, type, title, message, emailText));
   await dispatchMail(result.id);
 }
-export async function issueIdentity(userId: string, provider: string) {
+
+export async function queueNotification(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  type: string,
+  title: string,
+  message: string,
+  emailText?: string,
+) {
+  const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+  await tx.notification.create({ data: { userId, type, title, message } });
+  return tx.emailDeliveryLog.create({
+    data: {
+      userId,
+      recipient: user.email,
+      type,
+      encryptedPayload: encrypt(JSON.stringify({ subject: title, text: emailText || message })),
+    },
+    select: { id: true },
+  });
+}
+export async function issueIdentity(userId: string, provider: string, tx: Prisma.TransactionClient = db) {
   const raw = token();
-  await db.authenticationIdentity.create({
+  await tx.authenticationIdentity.create({
     data: {
       userId,
       provider,

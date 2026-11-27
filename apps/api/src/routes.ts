@@ -1,3 +1,5 @@
+import { queueStaffAppointment, trainingStaffingEnabled } from "./training-staffing.js";
+import { withStaffAuthority } from "./staff-mutation-authority.js";
 import { trainingRemindersEnabled } from "./training-reminders.js";
 import { unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
 import { delegationRoutes } from "./delegation-routes.js";
@@ -19,7 +21,7 @@ import {
 } from "./company-invitations.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { db, audit, notify, safeUser } from "./core.js";
+import { db, audit, dispatchMail, queueNotification, safeUser } from "./core.js";
 import { authorize, session, fail } from "./auth.js";
 import {
   companySchema,
@@ -234,7 +236,7 @@ export async function routes(app: FastifyInstance) {
     if (!(await db.department.findUnique({ where: { id: b.departmentId } })))
       fail(400, "Jabatan tidak sah.");
     reply.code(201);
-    return inviteOfficer(s.userId, s.activeRole!, b);
+    return inviteOfficer(s, b);
   });
   app.patch("/api/admin/users/:id/status", async (req) => {
     const s = await authorize(req, "users.manage");
@@ -247,24 +249,17 @@ export async function routes(app: FastifyInstance) {
         reason: z.string().min(5).max(500),
       })
       .parse(req.body);
-    await db.$transaction([
-      db.user.update({ where: { id: target }, data: { status: b.status } }),
-      db.session.deleteMany({ where: { userId: target } }),
-    ]);
-    await audit(
-      s.userId,
-      s.activeRole,
-      "ACCOUNT_STATUS_CHANGED",
-      target,
-      "SUCCESS",
-      { reason: b.reason },
-    );
-    await notify(
-      target,
-      "SECURITY",
-      "Status akaun berubah",
-      `${b.status}: ${b.reason}`,
-    );
+    const mail = await db.$transaction((tx) =>
+      withStaffAuthority(tx, s, "users.manage", async () => {
+        await tx.user.update({ where: { id: target }, data: { status: b.status } });
+        await tx.session.deleteMany({ where: { userId: target } });
+        await tx.auditLog.create({ data: {
+          actorId:s.userId, activeRole:s.activeRole, action:"ACCOUNT_STATUS_CHANGED", target,
+          metadata:{reason:b.reason},
+        } });
+        return queueNotification(tx,target,"SECURITY","Status akaun berubah",`${b.status}: ${b.reason}`);
+      }, { targets:[target] }));
+    await dispatchMail(mail.id);
     return { ok: true };
   });
   app.post("/api/admin/users/:id/mfa-reset", async (req) => {
@@ -274,21 +269,22 @@ export async function routes(app: FastifyInstance) {
       .object({ reason: z.string().min(10).max(500) })
       .parse(req.body);
     if (target === s.userId) fail(403, "Pemulihan memerlukan pentadbir lain.");
-    await db.$transaction([
-      db.mfaFactor.deleteMany({ where: { userId: target } }),
-      db.recoveryCode.deleteMany({ where: { userId: target } }),
-      db.session.deleteMany({ where: { userId: target } }),
-    ]);
-    await audit(s.userId, s.activeRole, "MFA_ADMIN_RESET", target, "SUCCESS", {
-      reason,
-    });
-    await notify(
-      target,
-      "SECURITY",
-      "MFA ditetapkan semula",
-      "Daftar faktor MFA baharu pada login seterusnya.",
-    );
+    const mail = await db.$transaction((tx) =>
+      withStaffAuthority(tx, s, "users.manage", async () => {
+        await tx.mfaFactor.deleteMany({ where: { userId: target } });
+        await tx.recoveryCode.deleteMany({ where: { userId: target } });
+        await tx.session.deleteMany({ where: { userId: target } });
+        await tx.auditLog.create({ data:{
+          actorId:s.userId,activeRole:s.activeRole,action:"MFA_ADMIN_RESET",target,metadata:{reason},
+        } });
+        return queueNotification(tx,target,"SECURITY","MFA ditetapkan semula","Daftar faktor MFA baharu pada login seterusnya.");
+      }, { targets:[target] }));
+    await dispatchMail(mail.id);
     return { ok: true };
+  });
+  app.get("/api/admin/staff-training", async (req) => {
+    await authorize(req,"roles.manage");
+    return { enabled:trainingStaffingEnabled() };
   });
   app.post("/api/admin/users/:id/roles", async (req) => {
     const s = await authorize(req, "roles.manage"),
@@ -299,53 +295,63 @@ export async function routes(app: FastifyInstance) {
         roleId: roleSchema,
         departmentId: z.string(),
         districtId: z.enum(["SPU", "SPT", "SPS"]).optional(),
+        districtIds: z.array(z.enum(["SPU","SPT","SPS"])).min(1).max(3).optional(),
+        appointmentKind: z.enum(["TEMPORARY","ACTING"]).optional(),
         reference: z.string().min(5).max(200),
         startsAt: z.iso.datetime(),
         endsAt: z.iso.datetime().optional(),
       })
       .parse(req.body);
-    const u = await db.user.findUniqueOrThrow({ where: { id: userId } });
-    if (
-      u.kind !== "OFFICER" ||
-      ["PEMOHON", "WAKIL_SYARIKAT"].includes(b.roleId)
-    )
-      fail(400, "Pelantikan pegawai sahaja.");
-    if (b.endsAt && new Date(b.endsAt) <= new Date(b.startsAt))
-      fail(400, "Julat tarikh tidak sah.");
-    if (!(await db.department.findUnique({ where: { id: b.departmentId } })))
-      fail(400, "Jabatan tidak sah.");
-    const startsAt=new Date(b.startsAt);
-    const endsAt=b.endsAt?new Date(b.endsAt):null;
-    const a = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
-      if (syntheticPortalDatabase() && process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS==="true") {
-        const overlap=await tx.userRoleAssignment.findFirst({
-          where:{
-            userId,roleId:b.roleId,status:"ACTIVE",
-            ...(endsAt && {startsAt:{lt:endsAt}}),
-            AND:[
-              {OR:[{endsAt:null},{endsAt:{gt:startsAt}}]},
-              ...(b.districtId ? [{OR:[{districtId:null},{districtId:b.districtId}]}] : []),
-            ],
-          },select:{id:true},
-        });
-        if (overlap) fail(409,"Pelantikan latihan bertindih dalam skop yang sama.");
-      }
-      const appointment=await tx.userRoleAssignment.create({
-        data:{...b,userId,startsAt,endsAt,authorizedBy:s.userId},
-      });
-      await tx.auditLog.create({data:{
-        actorId:s.userId,activeRole:s.activeRole,action:"ROLE_ASSIGNED",target:appointment.id,
-      }});
-      return appointment;
-    });
-    await notify(
-      userId,
-      "ROLE",
-      "Pelantikan peranan",
-      `Peranan ${b.roleId} ditambah.`,
-    );
-    return a;
+    const { districtIds, appointmentKind, ...assignment } = b;
+    const training = Boolean(appointmentKind || districtIds);
+    if (training && !trainingStaffingEnabled()) fail(404,"Pelantikan latihan tidak tersedia.");
+    if (districtIds && (b.districtId || new Set(districtIds).size !== districtIds.length))
+      fail(400,"Pilih satu senarai daerah tanpa pendua.");
+    const districts = districtIds ?? [b.districtId ?? null];
+    if (training && (!appointmentKind || !b.endsAt || districts.includes(null) ||
+      !["PIC_KAWASAN","PPSK","PERANCANG_BANDAR","KEJURUTERAAN","URUS_SETIA_JK","PEGAWAI_PENANDATANGAN"].includes(b.roleId)))
+      fail(400,"Pelantikan latihan memerlukan peranan operasi, daerah dan tarikh tamat.");
+    const startsAt = new Date(b.startsAt);
+    const endsAt = b.endsAt ? new Date(b.endsAt) : null;
+    if (endsAt && endsAt <= startsAt) fail(400,"Julat tarikh tidak sah.");
+    if (!(await db.department.findUnique({where:{id:b.departmentId}}))) fail(400,"Jabatan tidak sah.");
+    const { appointments, mail } = await db.$transaction((tx) =>
+      withStaffAuthority(tx,s,"roles.manage",async ()=>{
+        const user = await tx.user.findUniqueOrThrow({where:{id:userId}});
+        if (user.kind !== "OFFICER" || ["PEMOHON","WAKIL_SYARIKAT"].includes(b.roleId))
+          fail(400,"Pelantikan pegawai sahaja.");
+        if (training && (!user.email.toLowerCase().endsWith("@example.test") ||
+          !s.user.email.toLowerCase().endsWith("@example.test")))
+          fail(404,"Pelantikan latihan tidak tersedia.");
+
+        const appointments = [];
+        for (const districtId of districts) {
+          if (training || (syntheticPortalDatabase() && process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS==="true")) {
+            const overlap=await tx.userRoleAssignment.findFirst({where:{
+              userId,roleId:b.roleId,status:"ACTIVE",
+              ...(endsAt && {startsAt:{lt:endsAt}}),
+              AND:[
+                {OR:[{endsAt:null},{endsAt:{gt:startsAt}}]},
+                ...(districtId ? [{OR:[{districtId:null},{districtId}]}] : []),
+              ],
+            },select:{id:true}});
+            if (overlap) fail(409,"Pelantikan latihan bertindih dalam skop yang sama.");
+          }
+          const appointment=await tx.userRoleAssignment.create({data:{
+            ...assignment,userId,districtId,startsAt,endsAt,authorizedBy:s.userId,appointmentKind,
+          }});
+          appointments.push(appointment);
+          await tx.auditLog.create({data:{
+            actorId:s.userId,activeRole:s.activeRole,action:"ROLE_ASSIGNED",target:appointment.id,
+            metadata:{appointmentKind:appointment.appointmentKind,districtId},
+          }});
+          if(training) await queueStaffAppointment(tx,appointment,"START");
+        }
+        const mail = !training ? await queueNotification(tx,userId,"ROLE","Pelantikan peranan",`Peranan ${b.roleId} ditambah.`) : null;
+        return { appointments, mail };
+      },{targets:[userId]}));
+    if (mail) await dispatchMail(mail.id);
+    return training ? {appointments} : appointments[0];
   });
   app.delete("/api/admin/appointments/:id", async (req) => {
     const s = await authorize(req, "roles.manage");
@@ -354,26 +360,29 @@ export async function routes(app: FastifyInstance) {
     });
     if (a.userId === s.userId)
       fail(403, "Perubahan pelantikan sendiri tidak dibenarkan.");
-    const changed = await db.$transaction(async (tx)=>{
-      await tx.$queryRaw`SELECT id FROM users WHERE id = ${a.userId} FOR UPDATE`;
+    const mail = await db.$transaction((tx)=>
+      withStaffAuthority(tx, s, "roles.manage", async () => {
       const revoked=await tx.userRoleAssignment.updateMany({
         where:{id:a.id,status:{not:"REVOKED"}},
         data:{status:"REVOKED",endsAt:new Date()},
       });
-      if (!revoked.count) return false;
+      if (!revoked.count) return null;
       await tx.session.deleteMany({where:{userId:a.userId}});
       await tx.auditLog.create({data:{
         actorId:s.userId,activeRole:s.activeRole,action:"ROLE_REVOKED",target:a.id,
       }});
-      return true;
-    });
-    if (!changed) return {ok:true};
-    await notify(
-      a.userId,
+      if (a.appointmentKind !== "STANDARD") {
+        await queueStaffAppointment(tx,a,"REVOKE");
+        return null;
+      }
+      return queueNotification(
+      tx, a.userId,
       "ROLE",
       "Pelantikan ditamatkan",
       `Peranan ${a.roleId} ditamatkan.`,
-    );
+      );
+    }, { targets:[a.userId] }));
+    if (mail) await dispatchMail(mail.id);
     return { ok: true };
   });
   app.get("/api/areas", async (req) => {
@@ -422,9 +431,13 @@ export async function routes(app: FastifyInstance) {
     const districts = scopedDistricts(s);
     if (districts && !districts.includes(b.districtId))
       fail(403, "Di luar skop daerah.");
-    const a = await db.area.create({ data: b });
-    await audit(s.userId, s.activeRole, "AREA_CREATED", a.id);
-    return a;
+    return db.$transaction((tx) =>
+      withStaffAuthority(tx, s, "areas.write", async () => {
+        const area = await tx.area.create({ data:b });
+        await tx.auditLog.create({ data:{actorId:s.userId,activeRole:s.activeRole,action:"AREA_CREATED",target:area.id} });
+        return area;
+      }, {scope:{district:b.districtId,allowGlobal:true}}));
+
   });
   app.post("/api/areas/assign", async (req) => {
     const s = await authorize(req, "areas.assign");
@@ -462,7 +475,8 @@ export async function routes(app: FastifyInstance) {
         content: z.string().min(5).max(50000),
       })
       .parse(req.body);
-    const t = await db.templateDefinition.create({
+    return db.$transaction((tx) => withStaffAuthority(tx, s, "templates.write", async () => {
+    const t = await tx.templateDefinition.create({
       data: {
         name: b.name,
         category: b.category,
@@ -471,8 +485,10 @@ export async function routes(app: FastifyInstance) {
         },
       },
     });
-    await audit(s.userId, s.activeRole, "TEMPLATE_CREATED", t.id);
+    await tx.auditLog.create({ data:{actorId:s.userId,activeRole:s.activeRole,action:"TEMPLATE_CREATED",target:t.id} });
     return t;
+    }));
+
   });
   app.post("/api/templates/:id/versions", async (req) => {
     const s = await authorize(req, "templates.write");
@@ -480,13 +496,13 @@ export async function routes(app: FastifyInstance) {
     const { content } = z
       .object({ content: z.string().min(5).max(50000) })
       .parse(req.body);
-    const t = await db.$transaction(async (tx) => {
+    return db.$transaction((tx) => withStaffAuthority(tx, s, "templates.write", async () => {
       await tx.$queryRaw`SELECT id FROM template_definitions WHERE id = ${templateId} FOR UPDATE`;
       const max = await tx.templateVersion.aggregate({
         where: { templateId },
         _max: { version: true },
       });
-      return tx.templateVersion.create({
+      const version = await tx.templateVersion.create({
         data: {
           templateId,
           version: (max._max.version || 0) + 1,
@@ -494,9 +510,9 @@ export async function routes(app: FastifyInstance) {
           createdBy: s.userId,
         },
       });
-    });
-    await audit(s.userId, s.activeRole, "TEMPLATE_VERSION_CREATED", t.id);
-    return t;
+      await tx.auditLog.create({ data:{actorId:s.userId,activeRole:s.activeRole,action:"TEMPLATE_VERSION_CREATED",target:version.id} });
+      return version;
+    }));
   });
   app.get("/api/template-versions/:id/preview", async (req, reply) => {
     reply.header("Cache-Control", "private, no-store");
@@ -533,7 +549,7 @@ export async function routes(app: FastifyInstance) {
     const v = await db.templateVersion.findUniqueOrThrow({
       where: { id: versionId },
     });
-    await db.$transaction(async (tx) => {
+    await db.$transaction((tx) => withStaffAuthority(tx,s,"templates.write",async () => {
       await tx.$queryRaw`SELECT id FROM template_definitions WHERE id = ${v.templateId} FOR UPDATE`;
       await tx.templateVersion.updateMany({
         where: { templateId: v.templateId, status: "ACTIVE" },
@@ -551,7 +567,7 @@ export async function routes(app: FastifyInstance) {
           target: v.id,
         },
       });
-    });
+    }));
     return { ok: true };
   });
   app.get("/api/config/:scope", async (req) => {
@@ -581,7 +597,7 @@ export async function routes(app: FastifyInstance) {
       b.value < 1 || b.value > UPLOAD_CATEGORIES[uploadCategory].ceilingMiB))
       fail(400, `Had ${uploadCategory} mesti nombor bulat 1 hingga ${UPLOAD_CATEGORIES[uploadCategory].ceilingMiB} MiB.`);
     const key = `${scope}.${b.key}`;
-    await db.$transaction(async (tx) => {
+    await db.$transaction((tx) => withStaffAuthority(tx,s,`config.${scope}`,async () => {
       await tx.systemConfiguration.upsert({
         where: { key },
         create: { key, value: b.value },
@@ -598,7 +614,7 @@ export async function routes(app: FastifyInstance) {
           target: key,
         },
       });
-    });
+    }));
     return { ok: true };
   });
   app.get("/api/audit", async (req) => {

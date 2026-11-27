@@ -22,6 +22,7 @@ on:
       - 'issue-68-system-consolidation'
       - 'issue-68-remaining-functional-completion'
       - 'issue-68-final-functional-closure'
+      - 'issue-68-complete-remaining-features'
 
 permissions:
   contents: read
@@ -155,7 +156,7 @@ jobs:
           if [[ "${{ matrix.suite }}" == completion ]]; then
             STAYLINK_SKB_MAIL_FIXTURE=true bash scripts/rehearse-demo-host.sh "$kit/portal.env" --completion
           else
-            bash scripts/rehearse-demo-host.sh "$kit/portal.env"
+            STAYLINK_SYNTHETIC_STAFFING=true bash scripts/rehearse-demo-host.sh "$kit/portal.env"
           fi
       - name: Verify hosted demo backup and restore
         if: matrix.suite == 'demo'

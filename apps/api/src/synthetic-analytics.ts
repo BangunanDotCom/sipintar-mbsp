@@ -102,7 +102,7 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
         -- action after that epoch can satisfy it. ACK does not satisfy the SLA.
         workflow AS (
           SELECT a.target, a."activeRole", a.metadata->'command' AS command,
-            CASE WHEN a.metadata->>'version' ~ '^[1-9][0-9]{0,2}$'
+            CASE WHEN a.metadata->>'version' ~ '^[1-9][0-9]{0,3}$'
               THEN (a.metadata->>'version')::int END AS version,
             CASE WHEN a.metadata->>'timestamp' ~ '^[0-9]{1,15}$'
               THEN (a.metadata->>'timestamp')::bigint END AS timestamp

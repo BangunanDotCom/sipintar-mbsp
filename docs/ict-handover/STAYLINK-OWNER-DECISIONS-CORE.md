@@ -47,3 +47,7 @@ Noto Sans CJK dan Noto Naskh Arabic mempunyai lesen SIL Open Font License. Ujian
 ## Gerbang selepas pembetulan P1 dan retensi
 
 Team 2 perlu menerima timestamp serta urutan versi epoch rujukan, status ulasan terakhir mengikut jabatan, dan penapisan rekod sebelum pagination dalam port Oracle. Team 3 perlu mengulang bukti SLA, pemulangan ulasan, sempadan waktu dan kuasa yang luput sebelum komit. Jadual retensi rasmi, pemasangan keistimewaan pengimbas dan stor, serta kelulusan pembayaran kekal pada pemilik keputusan masing-masing. [Matriks penerimaan](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)
+
+## Calon pelantikan dan replay bersegmen
+
+Team 2 perlu mengesahkan peraturan selang pelantikan, kuota jurnal, lock transaksi, UTC dan payload outbox pada Oracle. Team 3 perlu mengulangi ujian gerbang FA-02 secara bebas. Peraturan pemangku, pemindahan, pelarasan, membuka semula dan lampiran produksi kekal memerlukan penerimaan proses. [Matriks kelompok](STAYLINK-FEATURE-COMPLETION.md)

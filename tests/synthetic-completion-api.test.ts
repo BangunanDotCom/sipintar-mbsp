@@ -404,10 +404,27 @@ it.runIf(Boolean(kitFile))(
         expect((await read()).json().version).toBe(499);
         expect((await command(council,499-phaseOffset,"RETURN_PAPER",{reason:"Versi ke-500"})).statusCode).toBe(200);
         expect((await read()).json().version).toBe(500);
-        expect((await command(pic,500-phaseOffset,"SUBMIT_PAPER",{summary:"Versi ke-501"})).statusCode).toBe(409);
-        expect(await db.auditLog.count({where:eventWhere})).toBe(500);
-        await db.auditLog.create({data:extraEvent(501)});
+        expect((await command(pic,500-phaseOffset,"SUBMIT_PAPER",{summary:"Versi ke-501"})).statusCode).toBe(200);
+        expect((await read()).json().version).toBe(501);
+        const duplicate = await db.auditLog.create({data:extraEvent(501)});
         expect((await read()).statusCode).toBe(409);
+        await db.auditLog.delete({where:{id:duplicate.id}});
+        const append = async (first:number,last:number)=>{
+          for(let start=first;start<=last;start+=250)
+            await db.auditLog.createMany({data:Array.from({length:Math.min(250,last-start+1)},(_,offset)=>extraEvent(start+offset))});
+        };
+        await append(502,1000);
+        expect((await read()).json().version).toBe(1000);
+        await append(1001,5000);
+        const last = await read();
+        expect(last.statusCode,last.body.slice(0,200)).toBe(200);
+        expect(last.json().version).toBe(5000);
+        expect(await db.auditLog.count({where:eventWhere})).toBe(5000);
+        expect((await command(pic,5000-phaseOffset,"SUBMIT_PAPER",{summary:"Luar kuota latihan"})).statusCode).toBe(409);
+        const invalid = await db.auditLog.create({data:extraEvent(5001)});
+        expect((await read()).statusCode).toBe(409);
+        await db.auditLog.delete({where:{id:invalid.id}});
+        expect(await db.auditLog.count({where:eventWhere})).toBe(5000);
       } finally {
         await db.auditLog.deleteMany({where:{...eventWhere,id:{notIn:keep}}});
       }
@@ -869,7 +886,7 @@ it.runIf(Boolean(kitFile))(
           let page: number | null = 1;
           while(page!==null) {
             expect(page).toBeLessThanOrEqual(3);
-            const response = await app.inject({url:retentionPath+"&page="+page,headers:ppsk});
+            const response = await app.inject({url:retentionPath+"&page="+page,headers:ppsk,remoteAddress:"192.0.2.244"});
             expect(response.statusCode,response.body).toBe(200);
             const data: {items:{id:string}[];nextPage:number|null} = response.json();
             expect(data.items).toHaveLength(page===3 ? 10 : 20);

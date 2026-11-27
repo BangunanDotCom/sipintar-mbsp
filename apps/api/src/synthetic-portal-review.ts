@@ -637,6 +637,7 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
         target: id, actorId: officer.operator.userId, activeRole: officer.role,
         action: precheckAction, metadata: { version: state.version, result },
       }});
+      await lockSyntheticOfficer(tx,officer);
       return result;
     });
   });

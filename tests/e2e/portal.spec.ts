@@ -316,9 +316,13 @@ function delegationPdf() {
 test("Phase 2A: one applicant manages two companies, a private PDF and an invited second representative", async ({
   page,
   browser,
+  baseURL,
+  ignoreHTTPSErrors,
 }) => {
+  expect(baseURL).toBeTruthy();
   const recipientContext = await browser.newContext({
-    baseURL: "http://localhost:5173",
+    baseURL,
+    ignoreHTTPSErrors,
     reducedMotion: "reduce",
   });
   const recipientPage = await recipientContext.newPage();
