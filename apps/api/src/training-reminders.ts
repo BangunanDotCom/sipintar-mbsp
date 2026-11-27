@@ -1,3 +1,4 @@
+import { eligibleStaffAppointment } from "./training-staffing.js";
 import { caseReminderCopy, eligibleCaseRecipient } from "./training-case-reminders.js";
 import { eligibleTechnicalRecipient } from "./training-technical-reminders.js";
 import { Prisma } from "@prisma/client";
@@ -177,7 +178,9 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         where: { id },
       });
       const caseCopy = caseReminderCopy(row.kind);
-      let email: string | null = null;
+      const staff = row.kind === "STAFF_APPOINTMENT"
+        ? await eligibleStaffAppointment(tx,row) : null;
+      let email: string | null = staff?.email ?? null;
       if (row.kind === "DRAFT_INACTIVE") {
         const [draft] = await readEligible(
           tx, Prisma.sql`d.id = ${row.draftId} AND d.version = ${row.draftVersion}`, 1,
@@ -186,6 +189,8 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
           const account = await tx.user.findUnique({where:{id:row.recipientId},select:{email:true}});
           email = account?.email ?? null;
         }
+      } else if (row.kind === "STAFF_APPOINTMENT") {
+        // Eligibility was checked against its appointment above.
       } else if (caseCopy) {
         email = await eligibleCaseRecipient(tx, row);
       } else {
@@ -202,10 +207,10 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         });
         return null;
       }
-      const copy = caseCopy ?? reminderCopy(row.kind);
+      const copy = staff ? { subject:staff.subject, text:staff.text } : caseCopy ?? reminderCopy(row.kind);
       if (row.kind !== "DRAFT_INACTIVE" && !row.notifiedAt) {
         await tx.notification.create({data:{
-          userId:row.recipientId,type:caseCopy ? "TRAINING_CASE_REMINDER" : "TRAINING_TECHNICAL_REMINDER",title:copy.subject,message:copy.text,
+          userId:row.recipientId,type:staff ? "TRAINING_APPOINTMENT" : caseCopy ? "TRAINING_CASE_REMINDER" : "TRAINING_TECHNICAL_REMINDER",title:copy.subject,message:copy.text,
         }});
         await tx.trainingReminderOutbox.update({where:{id},data:{notifiedAt:new Date()}});
       }
@@ -319,14 +324,9 @@ export async function trainingReminderRoutes(portal: FastifyInstance) {
         );
         if (!draft) fail(404, "Draf latihan tidak tersedia.");
         if (draft.version !== version) fail(409, "Versi draf telah berubah.");
-        return {
-          queued: await enqueue(
-            tx,
-            draft,
-            "SUPERVISOR",
-            officer.operator.userId,
-          ),
-        };
+        const queued = await enqueue(tx,draft,"SUPERVISOR",officer.operator.userId);
+        await lockSyntheticOfficer(tx,officer);
+        return {queued};
       });
     },
   );

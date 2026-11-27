@@ -1,3 +1,4 @@
+import { assertStaffAuthority } from "./staff-mutation-authority.js";
 import type { Prisma } from "@prisma/client";
 import type { CompletionRole } from "../../../packages/shared/src/synthetic-completion.js";
 import { isCurrent } from "../../../packages/shared/src/index.js";
@@ -28,6 +29,10 @@ export async function lockSyntheticPortalSession(
   await tx.$queryRaw`SELECT id FROM user_role_assignments
       WHERE "userId" = ${operator.userId} AND "roleId" = ${roleId} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM sessions WHERE id = ${operator.id} FOR SHARE`;
+  if (!applicant) {
+    await assertStaffAuthority(tx, operator, permission, districtId ? {district:districtId,allowGlobal:false} : undefined);
+    return;
+  }
   const now = new Date();
   const active = await tx.session.findFirst({
     where: {

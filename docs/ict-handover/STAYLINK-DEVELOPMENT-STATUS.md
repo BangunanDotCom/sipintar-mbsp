@@ -80,3 +80,7 @@ Calon `issue-68-remaining-functional-completion` menambah peringatan kes pemohon
 Cabang `issue-68-final-functional-closure` menyelesaikan ketidakpadanan SLA selepas pemulangan ulasan dan pagination retensi. Ia turut membawa pagar waktu penerimaan jemputan dan pengasingan pengimbas PostgreSQL daripada perubahan terpilih PR #80/#81. Audit bebas dan kesetaraan provider masih terbuka. [Matriks penerimaan](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)
 
 Kontrak ujian luar talian untuk enam penyedia kini tersedia dengan audit korelasi respons, replay dan timeout. Perjalanan workflow melalui adapter rasmi masih belum diterima. [Bukti kontrak penyedia](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md#kontrak-penyedia-latihan)
+
+## Pelantikan latihan dan replay bersegmen daripada PR #83
+
+Calon `issue-68-complete-remaining-features` meliputi pelantikan pemangku/sementara, notis bermula dan revokasi, gerbang mutasi pegawai, replay PostgreSQL sehingga 5,000 acara serta regresi HTTPS dua konteks syarikat. [Matriks kelompok dan gerbang FA-02](STAYLINK-FEATURE-COMPLETION.md)

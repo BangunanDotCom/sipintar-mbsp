@@ -428,6 +428,9 @@ export async function delegationRoutes(app: FastifyInstance) {
             message: input.reason,
           },
         });
+        if (!cleanDelegation(doc, new Date()))
+          fail(409,"Verdict surat kuasa telah luput semasa semakan.");
+        await principalAtUse(tx,s,"PIC");
         return {
           ok: true,
           verificationRevision: next.verificationRevision,

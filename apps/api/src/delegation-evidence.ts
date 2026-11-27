@@ -1,3 +1,4 @@
+import { assertStaffAuthority } from "./staff-mutation-authority.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { CompanyRepresentative, Prisma } from "@prisma/client";
 import { isCurrent } from "../../../packages/shared/src/index.js";
@@ -153,6 +154,11 @@ export async function principalAtUse(
   await tx.$queryRaw`SELECT id FROM users WHERE id = ${observed.userId} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM user_role_assignments WHERE "userId" = ${observed.userId} AND "roleId" = ${observed.activeRole} ORDER BY id FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM sessions WHERE id = ${observed.id} FOR SHARE`;
+  if (mode === "PIC") {
+    if (observed.activeRole !== "PIC_KAWASAN") fail(403,"Skop sesi tidak sah untuk surat kuasa.");
+    await assertStaffAuthority(tx,observed,"representation.verify",{globalOnly:true});
+    return;
+  }
   const current = await tx.session.findFirst({
     where: {
       id: observed.id,
@@ -161,11 +167,10 @@ export async function principalAtUse(
       csrfHash: observed.csrfHash,
       expiresAt: { gt: new Date() },
       user: {
-        kind: mode === "PIC" ? "OFFICER" : "APPLICANT",
+        kind: "APPLICANT",
         status: "ACTIVE",
         emailVerified: true,
       },
-      ...(mode === "PIC" && { mfaVerified: true, activeRole: "PIC_KAWASAN" }),
     },
     include: {
       user: {
@@ -181,12 +186,7 @@ export async function principalAtUse(
       (role) =>
         role.roleId === current.activeRole &&
         isCurrent(role) &&
-        (mode === "COMPANY" || role.districtId === null) &&
-        role.role.permissions.some(
-          (p) =>
-            p.action ===
-            (mode === "PIC" ? "representation.verify" : "companies"),
-        ),
+        role.role.permissions.some((p) => p.action === "companies"),
     )
   )
     fail(403, "Skop sesi tidak sah untuk surat kuasa.");

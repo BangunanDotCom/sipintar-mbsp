@@ -109,6 +109,7 @@ export async function eligibleCaseRecipient(
   tx: Tx,
   row: TrainingReminderOutbox,
 ) {
+  if (!row.draftId || row.draftVersion === null) return null;
   const context = z.object(base.shape).safeParse(row.context);
   if (!context.success) return null;
   const { submissionId } = context.data;

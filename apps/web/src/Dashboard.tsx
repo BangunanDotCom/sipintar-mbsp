@@ -1055,7 +1055,14 @@ function appointmentBody(b: any) {
   if (!result.districtId) delete result.districtId;
   return result;
 }
+const trainingAppointmentFields: Field[] = [
+  {name:"appointmentKind",label:"Jenis pelantikan latihan",required:false,
+    options:[{value:"TEMPORARY",label:"Sementara"},{value:"ACTING",label:"Pemangku"}]},
+  {name:"secondDistrict",label:"Daerah tambahan pertama (latihan)",required:false,options:districtOptions},
+  {name:"thirdDistrict",label:"Daerah tambahan kedua (latihan)",required:false,options:districtOptions},
+];
 function UsersPanel() {
+  const trainingStaff = useResource("/admin/staff-training");
   const q = useResource("/admin/users"),
     refresh = useRefresh();
   const [error, setError] = React.useState("");
@@ -1100,6 +1107,8 @@ function UsersPanel() {
                               <small>
                                 {a.status} · {a.districtId || "Semua daerah"} ·{" "}
                                 {a.reference}
+                                {a.appointmentKind === "ACTING" && " · Pemangku latihan"}
+                                {a.appointmentKind === "TEMPORARY" && " · Sementara latihan"}
                               </small>
                               <small>
                                 {malaysiaTime(a.startsAt)} —{" "}
@@ -1184,12 +1193,21 @@ function UsersPanel() {
           </div>
           {action.kind === "role" ? (
             <Form
-              fields={appointmentFields}
+              fields={trainingStaff.data?.enabled ? [...appointmentFields,...trainingAppointmentFields] : appointmentFields}
               onSubmit={async (b) => {
+                const { secondDistrict, thirdDistrict, appointmentKind, ...payload }=appointmentBody(b);
+                const requestedDistricts = [payload.districtId,secondDistrict,thirdDistrict].filter(Boolean);
+                if (appointmentKind || secondDistrict || thirdDistrict) {
+                  if (new Set(requestedDistricts).size !== requestedDistricts.length)
+                    throw Error("Pilih daerah berbeza.");
+                  delete payload.districtId;
+                  payload.appointmentKind=appointmentKind;
+                  payload.districtIds=requestedDistricts;
+                }
                 await api(
                   `/admin/users/${action.user.id}/roles`,
                   "POST",
-                  appointmentBody(b),
+                  payload,
                 );
                 refresh();
                 setAction(null);

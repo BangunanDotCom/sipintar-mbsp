@@ -442,6 +442,62 @@ describe("companies, IDOR and secure document storage", () => {
     expect(d.json().companies).toHaveLength(1);
   });
 });
+describe("FA-02 staff transaction authority", () => {
+  it("rolls back account, audit, notification and mail if the acting administrator expires before commit", async ()=>{
+    const administrator=await actor("PENTADBIR_ICT");
+    const subject=await actor("PIC_KAWASAN","SPU");
+    const reason="Latihan penggantungan dengan pelantikan luput.";
+    await db.$executeRaw`CREATE FUNCTION training_expire_staff_fixture() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action = 'ACCOUNT_STATUS_CHANGED' THEN PERFORM pg_sleep(2.5); END IF;
+        RETURN NEW;
+      END $$`;
+    try {
+      await db.$executeRaw`CREATE TRIGGER training_expire_staff_fixture BEFORE INSERT ON audit_logs
+        FOR EACH ROW EXECUTE FUNCTION training_expire_staff_fixture()`;
+      await db.userRoleAssignment.updateMany({where:{userId:administrator.id},
+        data:{endsAt:new Date(Date.now()+2000)}});
+      const response=await request(administrator,`/api/admin/users/${subject.id}/status`,"PATCH",
+        {status:"SUSPENDED",reason});
+      expect(response.statusCode,response.body).toBe(403);
+      expect(await db.user.findUnique({where:{id:subject.id},select:{status:true}})).toEqual({status:"ACTIVE"});
+      expect(await db.session.count({where:{userId:subject.id}})).toBe(1);
+      expect(await db.auditLog.count({where:{actorId:administrator.id,action:"ACCOUNT_STATUS_CHANGED"}})).toBe(0);
+      expect(await db.notification.count({where:{userId:subject.id}})).toBe(0);
+      expect(await db.emailDeliveryLog.count({where:{userId:subject.id}})).toBe(0);
+    } finally {
+      await db.$executeRaw`DROP TRIGGER IF EXISTS training_expire_staff_fixture ON audit_logs`;
+      await db.$executeRaw`DROP FUNCTION training_expire_staff_fixture()`;
+    }
+  });
+
+  it.each(["district","role","revoke"] as const)("rechecks %s changes if a staff action was already queued",async (change)=>{
+    const administrator=await actor("PENTADBIR_OPERASI","SPU");
+    const name="Kawasan latihan "+randomUUID();
+    let action!: Promise<Awaited<ReturnType<typeof request>>>;
+    await db.$transaction(async (tx)=>{
+      const [{pid}]=await tx.$queryRaw<{pid:number}[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM users WHERE id=${administrator.id} FOR UPDATE`;
+      action=request(administrator,"/api/areas","POST",{name,districtId:"SPU"});
+      let blocked=false;
+      for(let i=0;i<50&&!blocked;i++){
+        const [lock]=await tx.$queryRaw<{blocked:boolean}[]>`SELECT EXISTS
+          (SELECT 1 FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pg_stat_activity.pid))) AS blocked`;
+        blocked=lock.blocked;
+        if(!blocked) await new Promise((resolve)=>setTimeout(resolve,20));
+      }
+      expect(blocked).toBe(true);
+      if(change==="role")
+        await tx.session.updateMany({where:{userId:administrator.id},data:{activeRole:"PPSK"}});
+      else await tx.userRoleAssignment.updateMany({where:{userId:administrator.id},data:
+        change==="district" ? {districtId:"SPT"} : {status:"REVOKED"}});
+    });
+    expect((await action).statusCode).toBe(403);
+    expect(await db.area.count({where:{name}})).toBe(0);
+    expect(await db.auditLog.count({where:{actorId:administrator.id,action:"AREA_CREATED"}})).toBe(0);
+  });
+});
+
 describe("area scopes, templates, notifications and audit", () => {
   it("creates scoped areas and rejects cross district changes", async () => {
     const r = await request(ops, "/api/areas", "POST", {
@@ -3596,6 +3652,49 @@ describe("Issue 31 integrated synthetic portal", () => {
     } finally {
       if (oldFlag===undefined) delete process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS;
       else process.env.STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS=oldFlag;
+    }
+  });
+
+  it.runIf(enabled)("creates multi-district acting appointments and cancels stale notices safely",async ()=>{
+    const admin = await actor("PENTADBIR_ICT");
+    const officer = await actor("PENTADBIR_TEMPLAT");
+    const previous = [process.env.STAYLINK_SYNTHETIC_STAFFING,process.env.STAYLINK_SYNTHETIC_REMINDERS];
+    const path=`/api/admin/users/${officer.id}/roles`;
+    const settings={roleId:"PIC_KAWASAN",departmentId:"BANGUNAN",districtIds:["SPU","SPT"],
+      appointmentKind:"ACTING",reference:"Pemangku dua daerah latihan",
+      startsAt:new Date(Date.now()-5000).toISOString(),endsAt:new Date(Date.now()+86_400_000).toISOString()};
+    delete process.env.STAYLINK_SYNTHETIC_STAFFING;
+    expect((await request(admin,path,"POST",settings)).statusCode).toBe(404);
+    process.env.STAYLINK_SYNTHETIC_STAFFING="true";
+    process.env.STAYLINK_SYNTHETIC_REMINDERS="true";
+    try {
+      expect((await request(admin,path,"POST",{...settings,districtIds:["SPU","SPU"]})).statusCode).toBe(400);
+      expect((await request(admin,path,"POST",{...settings,endsAt:undefined})).statusCode).toBe(400);
+      const results = await Promise.all([request(admin,path,"POST",settings),request(admin,path,"POST",settings)]);
+      expect(results.map((r)=>r.statusCode).sort()).toEqual([200,409]);
+      const appointments=results.find((r)=>r.statusCode===200)!.json().appointments;
+      expect(appointments).toMatchObject([{districtId:"SPU",appointmentKind:"ACTING"},{districtId:"SPT",appointmentKind:"ACTING"}]);
+      expect((await request(admin,`/api/admin/appointments/${appointments[0].id}`,"DELETE")).statusCode).toBe(200);
+      expect((await request(officer,"/api/auth/me")).statusCode).toBe(401);
+      const { deliverTrainingReminders }=await import("../apps/api/src/training-reminders");
+      const recipient=await db.user.findUniqueOrThrow({where:{id:officer.id},select:{email:true}});
+      const subjects:string[]=[];
+      const send: Parameters<typeof deliverTrainingReminders>[0]=async (mail)=>{if(mail.to===recipient.email) subjects.push(mail.subject);};
+      await Promise.all([deliverTrainingReminders(send),deliverTrainingReminders(send)]);
+      expect(subjects.sort()).toEqual(["Pelantikan latihan STAYLink bermula","Pelantikan latihan STAYLink ditamatkan"]);
+      expect(await db.trainingReminderOutbox.count({where:{recipientId:officer.id,status:"CANCELLED",kind:"STAFF_APPOINTMENT"}})).toBe(1);
+      expect(await db.notification.count({where:{userId:officer.id,type:"TRAINING_APPOINTMENT"}})).toBe(2);
+      const next=await request(admin,path,"POST",{...settings,appointmentKind:"TEMPORARY",districtIds:["SPS"]});
+      expect(next.statusCode,next.body).toBe(200);
+      await db.user.update({where:{id:officer.id},data:{status:"SUSPENDED"}});
+      await deliverTrainingReminders(send);
+      expect(subjects).toHaveLength(2);
+      expect(await db.trainingReminderOutbox.count({where:{recipientId:officer.id,status:"CANCELLED",kind:"STAFF_APPOINTMENT"}})).toBe(2);
+    } finally {
+      for(const [index,key] of ["STAYLINK_SYNTHETIC_STAFFING","STAYLINK_SYNTHETIC_REMINDERS"].entries()) {
+        if (previous[index]===undefined) delete process.env[key];
+        else process.env[key]=previous[index];
+      }
     }
   });
 

@@ -62,14 +62,17 @@ openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 -subj '/CN=localhost' 
   printf '}\n'
 } > "$work/nginx.conf"
 
-node --env-file="$kit_env" --import=tsx apps/api/src/index.ts > "$work/api.log" 2>&1 &
-api_pid=$!
-for _ in {1..30}; do
-  if ! kill -0 "$api_pid" 2>/dev/null; then echo "API demo tidak dapat dimulakan." >&2; exit 1; fi
-  if curl -fsS --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then break; fi
-  sleep 1
-done
-curl -fsS --max-time 3 http://127.0.0.1:3001/api/health >/dev/null
+start_api() {
+  node --env-file="$kit_env" --import=tsx apps/api/src/index.ts > "$work/api.log" 2>&1 &
+  api_pid=$!
+  for _ in {1..30}; do
+    if ! kill -0 "$api_pid" 2>/dev/null; then echo "API demo tidak dapat dimulakan." >&2; exit 1; fi
+    if curl -fsS --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  curl -fsS --max-time 3 http://127.0.0.1:3001/api/health >/dev/null
+}
+start_api
 image=nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
 volumes=(
   --mount "type=bind,src=$work/nginx.conf,dst=/etc/nginx/nginx.conf,readonly"
@@ -93,3 +96,13 @@ elif [[ "$host_port" == 5444 ]]; then
   suite=(tests/e2e/personal-demo.spec.ts)
 fi
 node --env-file="$kit_env" node_modules/@playwright/test/cli.js test "${suite[@]}"
+
+if [[ "$host_port" == 5443 ]]; then
+  # Each independent suite starts with the same default rate-limit budget.
+  kill "$api_pid"
+  wait "$api_pid" 2>/dev/null || true
+  start_api
+  node --env-file="$kit_env" node_modules/@playwright/test/cli.js test \
+    tests/e2e/portal.spec.ts tests/e2e/staffing.spec.ts \
+    --grep 'one applicant manages two companies|staffing lab admin'
+fi

@@ -96,6 +96,7 @@ export async function eligibleTechnicalRecipient(
   tx: Tx,
   row: TrainingReminderOutbox,
 ) {
+  if (!row.draftId || row.draftVersion === null) return null;
   if (!completionSandbox()) return null;
   const parsed = contextShape.safeParse(row.context);
   if (!parsed.success) return null;

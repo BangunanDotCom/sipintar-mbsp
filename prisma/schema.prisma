@@ -95,6 +95,7 @@ model UserRoleAssignment {
  districtId String?
  startsAt DateTime @default(now())
  endsAt DateTime?
+ appointmentKind String @default("STANDARD")
  status String @default("ACTIVE")
  authorizedBy String?
  reference String
@@ -455,8 +456,8 @@ model SyntheticSubmission {
 
 model TrainingReminderOutbox {
  id String @id @default(uuid())
- draftId String
- draftVersion Int
+ draftId String?
+ draftVersion Int?
  recipientId String
  source String
  kind String @default("DRAFT_INACTIVE")

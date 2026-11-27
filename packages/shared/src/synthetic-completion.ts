@@ -22,7 +22,9 @@ export type {
 export const completionDatabaseName =
   /^staylink_issue62_personal_completion[a-z0-9]{0,14}_test$/;
 
-export const completionHistoryLimit = 500;
+export const completionHistoryLimit = 5_000;
+export const completionHistorySegmentSize = 250;
+export const completionHistoryByteLimit = 8 * 1024 * 1024;
 
 export function assertCompletionHistoryCount(count: number) {
   if (!Number.isSafeInteger(count) || count < 0 || count > completionHistoryLimit)
@@ -98,19 +100,39 @@ export function completionState() {
 }
 export type CompletionState = ReturnType<typeof completionState>;
 
+type CompletionContext = {
+  role: CompletionRole;
+  actorId: string;
+  now: number;
+  scopes: Scope[];
+  firstPaid: boolean;
+  letterTemplate?: TrainingLetterVersion;
+  feeSen: number | null;
+  invoiceId?: string;
+};
+
 export function applyCompletion(
   state: CompletionState,
   command: CompletionCommand,
-  context: {
-    role: CompletionRole;
-    actorId: string;
-    now: number;
-    scopes: Scope[];
-    firstPaid: boolean;
-    letterTemplate?: TrainingLetterVersion;
-    feeSen: number | null;
-    invoiceId?: string;
-  },
+  context: CompletionContext,
+) {
+  return evolveCompletion(state, command, context, false);
+}
+
+// Replay owns the projection exclusively and discards it on any error.
+export function replayCompletionCommand(
+  projection: CompletionState,
+  command: CompletionCommand,
+  context: CompletionContext,
+) {
+  return evolveCompletion(projection, command, context, true);
+}
+
+function evolveCompletion(
+  state: CompletionState,
+  command: CompletionCommand,
+  context: CompletionContext,
+  replay: boolean,
 ): { state: CompletionState; changed: boolean } {
   const { role, actorId, now, scopes } = context;
   const { action } = command;
@@ -120,7 +142,7 @@ export function applyCompletion(
     return { state, changed: false };
   if (state.closed) throw Error("Permohonan telah ditutup.");
   assertCompletionHistoryCount(state.version + 1);
-  const next = structuredClone(state);
+  const next = replay ? state : structuredClone(state);
   const { referral, response } = next;
   const pending = next.decisions.filter(
     ({ outcome }) => outcome === "TANGGUH" || outcome === "SKB",

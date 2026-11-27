@@ -4,7 +4,7 @@ import { trainingRemindersEnabled } from "./training-reminders.js";
 import { enqueueTechnicalReminders } from "./training-technical-reminders.js";
 import { reconcileSyntheticLedger } from "./synthetic-financial-reconciliation.js";
 import { technicalConsolidation, overdueTechnicalDepartments } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
-import { stateFor } from "./synthetic-completion-journal.js";
+import { stateFor, assertCompletionAppendBudget } from "./synthetic-completion-journal.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { trainingLetterPdf, unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
 import {
@@ -19,6 +19,7 @@ import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   applyCompletion,
+  completionHistoryLimit,
   canActOnCompletion,
   completionCommand,
   completionRoles,
@@ -55,7 +56,7 @@ const edit = z.strictObject({
 const idParam = z.strictObject({ id: uuid });
 const letterParam = z.strictObject({
   id: uuid,
-  number: z.coerce.number().int().positive().max(500),
+  number: z.coerce.number().int().positive().max(completionHistoryLimit),
 });
 type Tx = Prisma.TransactionClient;
 type Scope = { unitId: string; floorId: string };
@@ -219,21 +220,19 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           amountSen:invoice.amountSen,
         });
       }
+      const metadata: Prisma.InputJsonValue = {
+        version: result.state.version,
+        timestamp, firstPaid, feeSen,
+        ...(invoiceId && { invoiceId }),
+        ...(command.action === "SIGN" && { letterTemplate: unicodeLetterTemplate }),
+        command,
+      };
+      await assertCompletionAppendBudget(tx,id,metadata);
       await tx.auditLog.create({
         data: {
-          target: id,
-          action: eventName,
-          actorId: actor.userId,
-          activeRole: actor.userId === provider ? null : actor.role,
-          metadata: {
-            version: result.state.version,
-            timestamp,
-            firstPaid,
-            feeSen,
-            ...(invoiceId && { invoiceId }),
-            ...(command.action === "SIGN" && { letterTemplate: unicodeLetterTemplate }),
-            command,
-          } as Prisma.InputJsonValue,
+          target:id, action:eventName, actorId:actor.userId,
+          activeRole:actor.userId === provider ? null : actor.role,
+          metadata,
         },
       });
       if (trainingRemindersEnabled())
@@ -453,6 +452,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           metadata: { slots: report.missing },
         } });
       }
+      if (apply) await lockSyntheticPortalSession(tx,officer.operator,officer.role,officer.district);
       return report;
     }, apply ? undefined : { isolationLevel: "RepeatableRead" });
   }
@@ -506,7 +506,9 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         actorId:officer.operator.userId,activeRole:officer.role,target:id,
         action:"SYNTHETIC_ARCHIVE_CONTROL",metadata:{...input,version:current.version+1},
       }});
-      return syntheticRecordOverlay(tx,id);
+      const overlay = await syntheticRecordOverlay(tx,id);
+      await lockSyntheticPortalSession(tx,officer.operator,officer.role,officer.district);
+      return overlay;
     });
   });
 
