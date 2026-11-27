@@ -285,6 +285,9 @@ test("officers complete a registered case through the browser", async ({
     const context = await browser.newContext({
       baseURL: test.info().project.use.baseURL,
       ignoreHTTPSErrors: true,
+      extraHTTPHeaders: {
+        "x-staylink-demo-client": "192.0.2." + (contexts.length + 1),
+      },
     });
     context.setDefaultTimeout(12_000);
     contexts.push(context);
@@ -379,6 +382,8 @@ test("officers complete a registered case through the browser", async ({
       [planning, "Ulasan perancang lengkap."],
       [engineering, "Ulasan kejuruteraan lengkap."],
     ] as const) {
+      // Each department opens the latest case version before writing.
+      await page.reload();
       const card = caseCard(page);
       await act(
         page,

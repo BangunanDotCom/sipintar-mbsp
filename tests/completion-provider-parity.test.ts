@@ -1,3 +1,4 @@
+import { eligibleCaseRecipient } from "../apps/api/src/training-case-reminders";
 import { createOracleCompletionRuntime } from "../apps/api/src/oracle/completion-runtime";
 import { postgresCompletion } from "../apps/api/src/completion-repository";
 import { mockInvoiceSchema } from "../apps/api/src/synthetic-billing";
@@ -830,7 +831,7 @@ for (const { name, enabled } of variants) {
                   await ownerPool.transaction((c) =>
                     c.execute(
                       `UPDATE STL_TRAINING_REMINDER_OUTBOX
-                  SET AVAILABLE_AT=SYSTIMESTAMP-INTERVAL '3650' DAY
+                  SET AVAILABLE_AT=TO_TIMESTAMP_TZ('1970-01-01 00:00:00 +00:00','YYYY-MM-DD HH24:MI:SS TZH:TZM')
                   WHERE DEDUPE_KEY=:key`,
                       { key },
                     ),
@@ -840,13 +841,34 @@ for (const { name, enabled } of variants) {
                     where: { dedupeKey: key },
                     data: { availableAt: new Date(0) },
                   });
+                const queuedId = ownerPool
+                  ? (
+                      await ownerPool.use((c) =>
+                        queryRows<{ ID: string }>(
+                          c,
+                          "SELECT ID FROM STL_TRAINING_REMINDER_OUTBOX WHERE DEDUPE_KEY=:key",
+                          { key },
+                        ),
+                      )
+                    )[0]?.ID
+                  : (
+                      await db.trainingReminderOutbox.findUniqueOrThrow({
+                        where: { dedupeKey: key },
+                      })
+                    ).id;
+                expect(queuedId).toBeTruthy();
                 const email =
                   owner.cookie.slice("staylink=".length) + "@example.test";
                 const sender = async (message: {
                   to: string;
                   messageId: string;
                 }) => {
-                  if (message.to === email) sent.push(message.messageId);
+                  if (
+                    message.to === email &&
+                    message.messageId ===
+                      `<staylink-training-${queuedId}@example.test>`
+                  )
+                    sent.push(message.messageId);
                 };
                 if (ownerPool) {
                   const worker = await createOraclePool(
@@ -1393,6 +1415,45 @@ for (const { name, enabled } of variants) {
                 .statusCode,
             ).toBe(200);
             expect((await command(signer, 5, "SIGN")).statusCode).toBe(200);
+            const skbDue = new Date(
+              outcomes[2].conditionUntil + "T16:00:00.000Z",
+            );
+            const workflow = runtime
+              ? createOracleCompletionRuntime(runtime)
+              : postgresCompletion;
+            const email =
+              owner.cookie.slice("staylink=".length) + "@example.test";
+            const draftVersion = submitted.json().version;
+            for (const [instant, expected] of [
+              [skbDue.getTime() - 1, null],
+              [skbDue.getTime(), email],
+              [skbDue.getTime() + 1, email],
+            ] as const) {
+              await workflow.transaction(async (tx) => {
+                expect(
+                  await eligibleCaseRecipient(
+                    {
+                      ...tx,
+                      databaseNow: async () => new Date(instant),
+                    },
+                    {
+                      kind: "CASE_SKB_EXPIRY",
+                      draftId: draft,
+                      draftVersion,
+                      recipientId: owner.userId,
+                      availableAt: skbDue,
+                      context: {
+                        submissionId: id,
+                        date: outcomes[2].conditionUntil!,
+                      },
+                    },
+                    async () => email,
+                    true,
+                  ),
+                ).toBe(expected);
+              });
+            }
+
             const first = await app.inject({
               url: appUrl + "/completion/letters/1",
               headers: owner,

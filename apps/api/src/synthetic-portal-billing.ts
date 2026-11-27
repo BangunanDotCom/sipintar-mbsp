@@ -241,11 +241,12 @@ export async function syntheticBillingRoutes(
             context: { reference: output.invoice.id },
             availableAt: new Date(output.invoice.expiresAt),
           });
-        await tx.lockOfficer(officer);
-        return {
+        const response = {
           ...invoiceView(output.ledger, await tx.databaseNow()),
           result: output.status,
         };
+        await tx.lockOfficer(officer);
+        return response;
       }
       const invoice = ledger.invoices[0];
       if (!invoice) fail(409, "Jana invois sintetik dahulu.");

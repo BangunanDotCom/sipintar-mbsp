@@ -496,6 +496,7 @@ function registerCompletion(
           metadata: { slots: report.missing },
         });
       }
+      if (apply) await tx.lockOfficer(officer);
       return report;
     }, !apply);
   }
@@ -541,6 +542,7 @@ function registerCompletion(
         action: "SYNTHETIC_ARCHIVE_ACCESSED",
         target: id,
       });
+      await tx.lockOfficer(officer);
       return overlay;
     });
   });
@@ -565,7 +567,9 @@ function registerCompletion(
         action: "SYNTHETIC_ARCHIVE_CONTROL",
         metadata: { ...input, version: current.version + 1 },
       });
-      return syntheticRecordOverlay(tx, id);
+      const overlay = await syntheticRecordOverlay(tx, id);
+      await tx.lockOfficer(officer);
+      return overlay;
     });
   });
 
@@ -704,21 +708,16 @@ function registerCompletion(
       const state = await stateFor(tx, record.row.id, record.scopes);
       if (state.version !== input.version)
         fail(409, "Versi aliran latihan sudah berubah.");
-      return scopedView(
-        await mutate(
-          tx,
-          record.row.id,
-          state,
-          record.scopes,
-          {
-            role,
-            userId: operator.userId,
-          },
-          input.command,
-        ),
-        record,
-        role,
+      const next = await mutate(
+        tx,
+        record.row.id,
+        state,
+        record.scopes,
+        { role, userId: operator.userId },
+        input.command,
       );
+      await tx.lockApplicant(operator);
+      return scopedView(next, record, role);
     });
   });
   api.get("/drafts/:id/completion/letters/:number", async (req, reply) => {

@@ -256,24 +256,28 @@ export async function syntheticAnalyticsRoutes(
             await tx.$executeRaw`SET LOCAL jit = off`;
             const counts = new Map<Counts["status"], Counts>();
             const now = Date.now();
-            let cursor = "";
-            for (;;) {
-              const page: (ReportEvent & { id: string })[] = await tx.$queryRaw`
-                WITH eligible AS (
-                  SELECT s.id FROM synthetic_submissions s
-                  WHERE s.id > ${cursor} AND s.snapshot->>'districtId' = ${officer.district}
-                    AND s."policyVersion" LIKE 'SYNTHETIC-%'
-                    AND s."actorId" <> ${officer.operator.userId}
-                    AND NOT EXISTS (
-                      SELECT 1 FROM synthetic_submissions child
-                      WHERE child."previousId" = s.id AND child."draftId" = s."draftId"
-                    )
-                    ${from ? Prisma.sql`AND s."createdAt" >= ${from}` : Prisma.empty}
-                    ${until ? Prisma.sql`AND s."createdAt" < ${until}` : Prisma.empty}
-                    ${input.category ? Prisma.sql`AND lower(s.snapshot->>'buildingType') = lower(${input.category})` : Prisma.empty}
-                    AND ${liveAuthority}
-                  ORDER BY s.id LIMIT 500
+            const eligible = await tx.$queryRaw<{ id: string }[]>`
+              WITH corrected AS MATERIALIZED (
+                SELECT "previousId","draftId" FROM synthetic_submissions WHERE "previousId" IS NOT NULL
+              )
+              SELECT s.id FROM synthetic_submissions s
+              WHERE s.snapshot->>'districtId' = ${officer.district}
+                AND s."policyVersion" LIKE 'SYNTHETIC-%'
+                AND s."actorId" <> ${officer.operator.userId}
+                AND NOT EXISTS (
+                  SELECT 1 FROM corrected child
+                  WHERE child."previousId" = s.id AND child."draftId" = s."draftId"
                 )
+                ${from ? Prisma.sql`AND s."createdAt" >= ${from}` : Prisma.empty}
+                ${until ? Prisma.sql`AND s."createdAt" < ${until}` : Prisma.empty}
+                ${input.category ? Prisma.sql`AND lower(s.snapshot->>'buildingType') = lower(${input.category})` : Prisma.empty}
+                AND ${liveAuthority}
+            `;
+            for (let start = 0; start < eligible.length; start += 500) {
+              const ids = eligible
+                .slice(start, start + 500)
+                .map(({ id }) => id);
+              const page: (ReportEvent & { id: string })[] = await tx.$queryRaw`
                 SELECT eligible.id, a.action, a."activeRole" AS role,
                   a.metadata->'command'->>'action' AS command,
                   a.metadata->'command'->>'department' AS department,
@@ -284,7 +288,8 @@ export async function syntheticAnalyticsRoutes(
                   CASE WHEN a.metadata->>'timestamp' ~ '^[0-9]{1,15}$'
                     THEN (a.metadata->>'timestamp')::double precision
                     ELSE extract(epoch FROM a."createdAt")::double precision * 1000 END AS timestamp
-                FROM eligible LEFT JOIN audit_logs a ON a.target=eligible.id
+                FROM unnest(ARRAY[${Prisma.join(ids)}]::text[]) eligible(id)
+                LEFT JOIN audit_logs a ON a.target=eligible.id
                   AND a.outcome='SUCCESS' AND a.action LIKE 'SYNTHETIC_PORTAL_%'
                 ORDER BY eligible.id
               `;
@@ -294,11 +299,8 @@ export async function syntheticAnalyticsRoutes(
                 if (row.action) events.push(row);
                 grouped.set(row.id, events);
               }
-              for (const [id, events] of grouped) {
+              for (const events of grouped.values())
                 countReportCases(counts, events, now);
-                cursor = id;
-              }
-              if (grouped.size < 500) break;
             }
             return [...counts.values()].sort((a, b) =>
               a.status.localeCompare(b.status),
