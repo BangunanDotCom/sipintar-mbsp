@@ -496,9 +496,44 @@ it.runIf(Boolean(kitFile))(
           await app.inject({ url: appUrl + "/completion", headers: owner })
         ).json().closed,
       ).toBe(true);
-      await db.trainingReminderOutbox.updateMany({where:{draftId:draft,status:"PENDING"},data:{availableAt:new Date(0)}});
-      await deliverTrainingReminders(async ()=>{throw new Error("A closed case must not send.");});
-      expect(await db.trainingReminderOutbox.count({where:{draftId:draft,status:"CANCELLED"}})).toBe(7);
+      await db.trainingReminderOutbox.updateMany({
+        where: { draftId: draft, status: "PENDING" },
+        data: { availableAt: new Date(0) },
+      });
+      const postClosureDeliveries: string[] = [];
+      await deliverTrainingReminders(async ({ messageId }) => {
+        postClosureDeliveries.push(messageId);
+      });
+      const postClosureOutbox = await db.trainingReminderOutbox.findMany({
+        where: { draftId: draft },
+        select: { id: true, kind: true, status: true },
+      });
+      const cancelled = postClosureOutbox.filter(
+        ({ status }) => status === "CANCELLED",
+      );
+      expect(cancelled.filter(({ kind }) => kind.startsWith("TECH_"))).toHaveLength(
+        7,
+      );
+      expect(
+        cancelled
+          .filter(({ kind }) => !kind.startsWith("TECH_"))
+          .map(({ kind }) => kind)
+          .sort(),
+      ).toEqual(["CASE_FIRST_PAYMENT", "CASE_SECOND_PAYMENT"]);
+      const retainedNotices = postClosureOutbox.filter(
+        ({ kind }) => kind === "CASE_LETTER" || kind === "CASE_CLOSED",
+      );
+      expect(retainedNotices.map(({ kind }) => kind).sort()).toEqual([
+        "CASE_CLOSED",
+        "CASE_LETTER",
+        "CASE_LETTER",
+      ]);
+      expect(retainedNotices.every(({ status }) => status === "SENT")).toBe(true);
+      expect(postClosureDeliveries.sort()).toEqual(
+        retainedNotices
+          .map(({ id }) => `<staylink-training-${id}@example.test>`)
+          .sort(),
+      );
 
       const ledgerPath=completion+"/financial-ledger";
       const financial=await app.inject({url:ledgerPath,headers:ppsk});
