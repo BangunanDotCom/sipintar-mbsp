@@ -68,8 +68,21 @@ Cabang `issue-68-remaining-functional-completion` bermula pada SHA `4af4851428be
 | Had 500 · tersekat pada penyelarasan | `synthetic-completion-journal.ts` dan migrasi indeks `202611260003`. Team 2 perlu menyepakati kunci unik versi per serahan, checkpoint dengan cap jari, replay segmen, penomboran berterusan dan kesan pada restore. | Ujian 499/500/501 mengekalkan had. Bukti migrasi dan replay 1,000 acara masih perlu disediakan. |
 | Outbox pemohon · simulasi | `training-case-reminders.ts`, `training-reminders.ts`, migrasi `202611260004`. Pembetulan, invois pertama luput, peringatan bayaran kedua 24 jam selepas terbit, SKB tamat pada hujung hari Malaysia, keputusan/surat bertandatangan dan penutupan. | Ujian API mengesahkan pembetulan lewat dibatalkan selepas serahan semula, surat dan penutupan dihantar sekali, bil selesai membatalkan peringatan, serta lease/retry/UNCERTAIN sedia ada. Cabang SKB masih memerlukan senario integrasi masa penuh. |
 | Outbox penugasan · terbuka | `training-reminders.ts` dan `routes.ts`. | Perlu versi pelantikan/penugasan, peraturan penerima dan pembatalan acara selepas pemindahan. Penghantaran latihan menggunakan Mailpit. |
-| PDF Han/Jawi · prototaip | Chromium luar laluan renderer aplikasi. Noto Sans CJK SC dan Noto Naskh Arabic, CSS `dir=rtl`, Poppler. | 120 baris merentas enam halaman kekal mengikut turutan. Han dan amaun diekstrak pada semua baris. Fon tertanam dengan peta Unicode. Poppler mengulang tertib visual Jawi, jadi penyalinan frasa dalam tertib logik belum lulus. v1/v2 dan alternatif UTF-8 kekal. |
+| PDF Han/Jawi · prototaip | Chromium luar laluan renderer aplikasi. Noto Sans CJK SC dan Noto Naskh Arabic, CSS `dir=rtl`, Poppler. | 120 baris merentas enam halaman kekal mengikut turutan. Han dan amaun diekstrak pada semua baris. Fon tertanam dengan peta Unicode. Poppler mod lalai dan layout memulihkan 120 frasa Jawi dalam tertib logik selepas penanda bidirectional dibuang. Mod raw menyimpan tertib visual. Keserasian merentas pembaca masih terbuka. v1/v2 dan alternatif UTF-8 kekal. |
 | Adapter dan mock · separa | `synthetic-billing.ts`, `synthetic-precheck.ts`, renderer dan penghantar Mailpit. | Padanan callback dan replay, semakan manusia dan penghantaran latihan wujud. Kontrak tambahan bagi timeout/pemulihan, pembekal tanda tangan, GIS serta SSO dan semakan sekatan penyedia belum lengkap. |
 | Perjalanan E2E · separa | Suite API dan Playwright per peranan dalam matriks di atas. | Refund, buka semula, penyerahan lampiran dan peranan kewangan/rekod bebas belum mempunyai perjalanan lengkap. K11 majikan pilihan, RM50 setiap unit fizikal unik dan SLA tujuh hari kekal pada regresi sedia ada. |
 
 Team 2 perlu memadankan jenis konteks outbox, masa semakan kuasa, ID kes/penerima dan kunci deduplikasi dengan kontrak Oracle. Penyusunan semula perlu menguji luput kuasa selepas kerja transaksi, ketika lock menunggu dan semasa tuntutan outbox, serta pemulihan selepas penghantaran tidak pasti. [CI calon dan SHA larian](https://github.com/BangunanDotCom/sipintar-mbsp/actions/workflows/staylink-synthetic-uat.yml?query=branch%3Aissue-68-remaining-functional-completion)
+
+
+### Ukuran laporan latihan dan integriti pemulihan
+
+Laporan agregat `GET /api/synthetic-portal/reports/applications` diuji melalui suntikan Fastify terhadap PostgreSQL loopback. Akaun PPSK latihan menggunakan MFA dan skop SPU. Setiap volum menerima 50 permintaan pada konkurensi lima selepas satu permintaan pemanasan. Kes tambahan menyalin snapshot pemohon individu dalam fixture berasingan. Bukti ini terhad pada satu daerah dan satu bentuk snapshot.
+
+| Kes | Median | p95 | RSS proses sebelum–selepas |
+| --- | ---: | ---: | ---: |
+| 1 | 34.31 ms | 80.20 ms | 176–186 MiB |
+| 100 | 31.06 ms | 51.15 ms | 186–186 MiB |
+| 1,000 | 376.99 ms | 470.00 ms | 186–186 MiB |
+
+Semua kiraan respons sepadan dengan volum. Latensi meningkat pada 1,000 kes. Beban hos penerimaan, data pelbagai daerah dan Oracle memerlukan pengukuran berasingan. Sandar dan pulih PostgreSQL membandingkan fingerprint lejar, outbox, PDF delegasi, metadata dokumen dan sembilan faktor MFA disulitkan. Naik taraf salinan PR #79 menambah jenis outbox sekali dan larian ulangan tiada perubahan.
