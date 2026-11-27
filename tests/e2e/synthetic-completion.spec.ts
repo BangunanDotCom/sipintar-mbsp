@@ -133,6 +133,29 @@ test("PPSK filters and downloads the district summary with MFA", async ({
   const card = id
     ? page.getByRole("article", { name: "Serahan sintetik " + id })
     : page;
+  if (process.env.STAYLINK_COMPLETION_PARITY_BROWSER === "true") {
+    await expect(card.getByText(/^BKT latihan diterima/)).toBeVisible();
+    await card
+      .getByText("Jadual konsolidasi teknikal latihan", { exact: true })
+      .click();
+    await expect(
+      card.getByText(/Ulasan semasa.*Semakan susulan selesai/),
+    ).toBeVisible();
+    await expect(
+      card.getByText(/Snapshot Kertas Pertimbangan v/),
+    ).toBeVisible();
+    await card
+      .getByText("Sejarah versi ulasan teknikal", { exact: true })
+      .click();
+    await expect(
+      card.getByText(/PERANCANG_BANDAR.*Diserah.*Semakan perancang/).first(),
+    ).toBeVisible();
+    await expect(
+      card.getByText(/KEJURUTERAAN.*Diserah.*Semakan kejuruteraan/),
+    ).toBeVisible();
+    await expect(card.getByText(/— SK$/)).toHaveCount(3);
+    await expect(card.getByText(/— TOLAK$/)).toBeVisible();
+  }
   await card.getByText("Lejar kewangan latihan", { exact: true }).click();
   await expect(card.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
   await expect(

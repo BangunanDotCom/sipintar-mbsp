@@ -1449,7 +1449,14 @@ for (const { name, enabled } of variants) {
                   ),
                 ).rejects.toMatchObject({ statusCode: 409 });
                 expect(await tx.financial.entries(candidate)).toEqual([]);
-                expect(await tx.financial.entries(id)).toHaveLength(4);
+                const restored = await tx.financial.entries(id);
+                expect(restored).toHaveLength(4);
+                expect(restored[0]).toMatchObject({
+                  stage: 1,
+                  event: "INVOICE",
+                  amountSen: invoice.amountSen,
+                  createdAt: source.createdAt,
+                });
               });
             }
 
