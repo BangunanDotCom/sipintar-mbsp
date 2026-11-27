@@ -1,7 +1,8 @@
 import { withOracleBrowserFixture } from "./oracle-fixtures";
 import { activationLink, openPremisesDraft, registerApplicant } from "./applicant-fixtures";
 import { awaitDraftRequestBudget } from "./request-budget";
-import { test, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./parity-browser-test";
 import { randomUUID, randomBytes } from "node:crypto";
 import { totp } from "../../apps/api/src/auth";
 // Exercise form/auth/draft behavior without fetching community map tiles in automation.

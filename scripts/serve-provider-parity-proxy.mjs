@@ -17,14 +17,17 @@ function forward(req, reply) {
   const api = req.url === "/api" || req.url.startsWith("/api/");
   const marker = req.headers["x-staylink-demo-client"];
   const match =
-    typeof marker === "string" && /^192\.0\.2\.([1-9]|1[0-2])$/.exec(marker);
+    typeof marker === "string" && /^192\.0\.2\.([1-9]\d{0,2})$/.exec(marker);
+  const client = match ? Number(match[1]) : 0;
   // Each synthetic browser persona uses a separate loopback source. Backend
   // rate limits remain active, including in Oracle HTTP mode.
   const upstream = request(
     {
       hostname: "127.0.0.1",
       localAddress:
-        api && match ? "127.0.0." + (Number(match[1]) + 1) : "127.0.0.1",
+        api && client >= 1 && client <= 223
+          ? "127.0.0." + (client + 1)
+          : "127.0.0.1",
       port: api ? 3001 : 5174,
       path: req.url,
       method: req.method,

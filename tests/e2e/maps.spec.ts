@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { openPremisesDraft, registerApplicant } from "./applicant-fixtures";
 import { awaitDraftRequestBudget } from "./request-budget";
-import { test, expect } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./parity-browser-test";
 // Network fixtures prove rendering/fallback mechanics only. They are never saved as review screenshots.
 const pixel = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==",
