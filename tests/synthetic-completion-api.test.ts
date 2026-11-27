@@ -423,6 +423,8 @@ it.runIf(Boolean(kitFile))(
         reason:"Pinda ringkasan latihan.",
         paper:{summary:"Kertas Pertimbangan latihan",submittedVersion:4+phaseOffset},
       });
+      const exerciseSkb = process.env.STAYLINK_SKB_MAIL_FIXTURE === "true";
+      const skbDate = new Date(Date.now() + 24 * 3_600_000).toISOString().slice(0,10);
       const outcomes = scopes.map(
         (
           { unitId, floorId }: { unitId: string; floorId: string },
@@ -430,7 +432,8 @@ it.runIf(Boolean(kitFile))(
         ) => ({
           unitId,
           floorId,
-          outcome: i ? "TANGGUH" : "SK",
+          outcome: i ? "TANGGUH" : exerciseSkb ? "SKB" : "SK",
+          ...(!i && exerciseSkb ? { conditionUntil: skbDate } : {}),
           reason: "Keputusan mesyuarat latihan",
         }),
       );
@@ -443,6 +446,45 @@ it.runIf(Boolean(kitFile))(
           .statusCode,
       ).toBe(200);
       expect((await command(signer, 7, "SIGN")).statusCode).toBe(200);
+      if (exerciseSkb) {
+        const outbox = await db.trainingReminderOutbox.findFirstOrThrow({
+          where:{draftId:draft,kind:"CASE_SKB_EXPIRY"},
+        });
+        const midnightMyt = Date.parse(skbDate+"T16:00:00.000Z");
+        expect(outbox.availableAt.getTime()).toBe(midnightMyt);
+        const { default: nodemailer } = await import("nodemailer");
+        const transport = nodemailer.createTransport({
+          host:"127.0.0.1",port:1025,secure:false,ignoreTLS:true,
+        });
+        const messageId = `<staylink-training-${outbox.id}@example.test>`;
+        const sent: string[] = [];
+        const send: Parameters<typeof deliverTrainingReminders>[0] = async (mail) => {
+          if (mail.messageId !== messageId) return;
+          await transport.sendMail({from:"STAYLink LATIHAN <noreply@example.test>",...mail});
+          sent.push(mail.messageId);
+        };
+        vi.useFakeTimers({toFake:["Date"]});
+        try {
+          vi.setSystemTime(midnightMyt-1);
+          await deliverTrainingReminders(send);
+          expect(await db.trainingReminderOutbox.findUnique({where:{id:outbox.id}}))
+            .toMatchObject({status:"PENDING",attempts:0});
+          vi.setSystemTime(midnightMyt);
+          await Promise.all([deliverTrainingReminders(send),deliverTrainingReminders(send)]);
+          vi.setSystemTime(midnightMyt+1);
+          await deliverTrainingReminders(send);
+          expect(sent).toEqual([messageId]);
+          const messages = await fetch("http://127.0.0.1:8025/api/v1/messages");
+          expect(messages.status).toBe(200);
+          expect((await messages.json() as { messages: { MessageID?:string }[] }).messages
+            .filter(({MessageID})=>MessageID?.includes(outbox.id))).toHaveLength(1);
+          expect(await db.trainingReminderOutbox.findUnique({where:{id:outbox.id}}))
+            .toMatchObject({status:"SENT",attempts:1});
+        } finally {
+          vi.useRealTimers();
+          transport.close();
+        }
+      }
       const first = await app.inject({
         url: appUrl + "/completion/letters/1",
         headers: owner,
@@ -517,7 +559,8 @@ it.runIf(Boolean(kitFile))(
       expect(
         (
           await command(council, 14, "DECIDE", {
-            decisions: [{ ...outcomes[1], outcome: "SK" }],
+            decisions: (exerciseSkb ? outcomes : [outcomes[1]])
+              .map(({unitId,floorId,reason}: {unitId:string;floorId:string;reason:string})=>({unitId,floorId,reason,outcome:"SK"})),
           })
         ).statusCode,
       ).toBe(200);
@@ -588,7 +631,7 @@ it.runIf(Boolean(kitFile))(
       await deliverTrainingReminders(async (mail)=>{ caseMail.push(mail.subject); });
       expect(caseMail.sort()).toEqual([
         "Keputusan dan surat latihan tersedia",
-        "Keputusan dan surat latihan tersedia",
+        ...(!exerciseSkb ? ["Keputusan dan surat latihan tersedia"] : []),
         "Permohonan latihan ditutup",
       ]);
       const outbox = await db.trainingReminderOutbox.findMany({
@@ -596,7 +639,7 @@ it.runIf(Boolean(kitFile))(
         select:{ kind:true, status:true, notifiedAt:true },
       });
       expect(outbox.filter(({status})=>status==="SENT").map(({kind})=>kind).sort())
-        .toEqual(["CASE_CLOSED","CASE_LETTER","CASE_LETTER"]);
+        .toEqual(["CASE_CLOSED","CASE_LETTER","CASE_LETTER",...(exerciseSkb ? ["CASE_SKB_EXPIRY"] : [])]);
       await db.trainingReminderOutbox.updateMany({
         where:{draftId:draft,status:"PENDING",kind:{startsWith:"CASE_"}},
         data:{availableAt:new Date(0)},

@@ -11,6 +11,8 @@ SELECT current_database() = 'staylink_issue58_p0privileges_test'
 \endif
 
 BEGIN;
+REVOKE ALL ON DATABASE staylink_issue58_p0privileges_test FROM PUBLIC;
+GRANT CONNECT ON DATABASE staylink_issue58_p0privileges_test TO stl_p0_api, stl_p0_scanner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO stl_p0_api, stl_p0_scanner;
 

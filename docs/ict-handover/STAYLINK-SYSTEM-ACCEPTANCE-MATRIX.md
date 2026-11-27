@@ -98,4 +98,18 @@ Calon `issue-68-final-functional-closure` bermula pada SHA `a4916a5adc0c2ff620f7
 | Jemputan P0 B | Integrasi terpilih daripada PR #80 menilai bukti, penerima, pemberi, sesi dan tempoh sah pada pagar pangkalan data sebelum komit. Ujian mengesahkan rollback apabila verdict luput selepas penulisan penerimaan. | Pagar menggunakan jam nyata PostgreSQL. Team 3 perlu menyemak replikasi Oracle dan PostgreSQL pada calon yang sama sebelum menutup P0. |
 | Principal scanner | Integrasi terpilih daripada PR #81 menambah fungsi lock tetap, tanpa akses ubah jadual kuasa untuk pengimbas. Skrip grant hanya untuk pangkalan data ujian khusus. | Model keistimewaan hos produksi dan penerimaan penyedia kuarantin kekal pada JTIK. Uji semula pemisahan peranan migrasi, API dan pengimbas dalam penerimaan. |
 
-Pemangku dan penyerahan, lampiran BKT, refund/dispute dan pelarasan, kelulusan buka semula serta replay melebihi 500 acara masih terbuka. Outbox SKB belum mempunyai bukti penghantaran penuh pada sempadan waktu Malaysia. Kontrak dan mock integrasi lengkap serta keserasian PDF Han/Jawi merentas pembaca masih belum diterima. Tiada perubahan pada renderer surat. Jadual kuasa dan polisi rasmi kekal dalam [daftar keputusan](STAYLINK-OWNER-DECISIONS-CORE.md).
+Pemangku dan penyerahan, lampiran BKT, refund/dispute dan pelarasan, kelulusan buka semula serta replay melebihi 500 acara masih terbuka. Outbox SKB diuji melalui penerbitan SKB sebenar dalam aliran latihan. Satu milisaat sebelum tengah malam Malaysia, baris masih menunggu. Tepat pada sempadan, dua worker menghasilkan satu penghantaran Mailpit dan larian ulangan tidak menghantar semula. Kontrak dan mock integrasi lengkap serta keserasian PDF Han/Jawi merentas pembaca masih belum diterima. Tiada perubahan pada renderer surat. Jadual kuasa dan polisi rasmi kekal dalam [daftar keputusan](STAYLINK-OWNER-DECISIONS-CORE.md).
+
+### Ujian prestasi P1 dan pengesahan PDF
+
+Laporan PPSK SPU diuji pada PostgreSQL sintetik, 25 permintaan untuk setiap kombinasi volum dan konkurensi melalui suntikan Fastify. Status dan kiraan respons disahkan. Ukuran p95 dalam ms:
+
+| Kes | PR #82, konkurensi 1 / 5 | Calon, konkurensi 1 / 5 |
+| --- | --- | --- |
+| 100 | 21.94 / 56.83 | 47.74 / 78.69 |
+| 1,000 | 373.23 / 497.33 | 58.73 / 70.66 |
+| 5,000 | HTTP 500 P2028 pada larian konkurensi 1; konkurensi 5 tidak diteruskan | 92.33 / 139.79 |
+
+Analisis interim pada 5,000 kes menunjukkan join anti berulang dengan 25 juta penolakan padanan, serta kos JIT 1,059 ms. Calon membentuk set pembetulan sekali dan melumpuhkan JIT hanya bagi transaksi laporan PostgreSQL. Pada pelan akhir 5,000 kes, SQL mengambil 32.184 ms tanpa JIT. Larian dibuat secara berasingan pada hos ujian bersama. Prestasi untuk volum kecil tidak bertambah baik pada larian ini. Bukti belum meliputi campuran semua daerah, syarikat dan dokumen sebenar.
+
+PDF prototaip enam halaman disemak secara terasing menggunakan Ghostscript, MuPDF, pypdf dan bukti Poppler terdahulu. Ghostscript memproses semua halaman. MuPDF dan pypdf mengekstrak 120 baris Han dan amaun mengikut turutan. MuPDF mengembalikan 120 frasa Jawi mengikut tertib logik, tetapi pypdf gagal mengembalikan sebarang frasa Jawi lengkap. Renderer v1/v2 dan alternatif UTF-8 kekal pada laluan aplikasi.

@@ -76,14 +76,21 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
     const rows = await db.$transaction(
       async (tx) => {
         await lockSyntheticOfficer(tx, officer);
+        // PostgreSQL can compile this scoped aggregate afresh on each request.
+        // Keep this tuning local to the reporting transaction.
+        await tx.$executeRaw`SET LOCAL jit = off`;
         return tx.$queryRaw<Counts[]>`
-        WITH eligible AS (
+        WITH corrected AS MATERIALIZED (
+          SELECT "previousId", "draftId" FROM synthetic_submissions
+          WHERE "previousId" IS NOT NULL
+        ),
+        eligible AS (
           SELECT s.id FROM synthetic_submissions s
           WHERE s.snapshot->>'districtId' = ${officer.district}
             AND s."policyVersion" LIKE 'SYNTHETIC-%'
             AND s."actorId" <> ${officer.operator.userId}
             AND NOT EXISTS (
-              SELECT 1 FROM synthetic_submissions child
+              SELECT 1 FROM corrected child
               WHERE child."previousId" = s.id AND child."draftId" = s."draftId"
             )
             ${from ? Prisma.sql`AND s."createdAt" >= ${from}` : Prisma.empty}
