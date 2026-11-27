@@ -1,3 +1,5 @@
+import { enqueueCaseReminder } from "./training-case-reminders.js";
+import type { ReminderInput } from "./oracle/training-reminders.js";
 import type { FinancialJournal } from "./synthetic-financial-journal.js";
 import {
   configuredPrecheckProvider,
@@ -219,7 +221,7 @@ function reviewEvents(tx: Prisma.TransactionClient, ids: string[]) {
 export type ReviewEvent = Awaited<ReturnType<typeof reviewEvents>>[number];
 
 export async function loadSyntheticReview(
-  tx: SyntheticReviewTransaction,
+  tx: Pick<SyntheticReviewTransaction, "reviewEvents">,
   row: Submission,
 ) {
   return assembleSyntheticReview(row, await tx.reviewEvents([row.id]));
@@ -444,6 +446,8 @@ type LedgerEvent = {
 };
 
 export interface SyntheticReviewTransaction {
+  databaseNow(): Promise<Date>;
+  enqueueReminders(entries: ReminderInput[]): Promise<void>;
   lockOfficer(officer: ReviewOfficer): Promise<void>;
   lockEvidence(draftId: string): Promise<void>;
   evidenceRows(ids: string[]): Promise<CurrentEvidence[]>;
@@ -491,6 +495,18 @@ export function postgresSyntheticReviewTransaction(
   tx: Prisma.TransactionClient,
 ): SyntheticReviewTransaction {
   return {
+    async databaseNow() {
+      const [row] = await tx.$queryRaw<
+        { now: Date }[]
+      >`SELECT clock_timestamp() AS now`;
+      return row.now;
+    },
+    async enqueueReminders(entries) {
+      await tx.trainingReminderOutbox.createMany({
+        data: entries,
+        skipDuplicates: true,
+      });
+    },
     lockOfficer: (officer) => lockSyntheticOfficer(tx, officer),
     async lockEvidence(draftId) {
       await tx.$queryRaw`SELECT id FROM application_documents WHERE "draftId" = ${draftId} FOR SHARE`;
@@ -612,6 +628,7 @@ export async function syntheticReviewRoutes(
   portal: FastifyInstance,
   repository = postgresSyntheticReviewRepository,
   auth = postgresAuth,
+  remindersEnabled = false,
 ) {
   portal.get("/reviews", async (req) => {
     const officer = await syntheticReviewOfficer(req, auth);
@@ -824,6 +841,7 @@ export async function syntheticReviewRoutes(
         action: precheckAction,
         metadata: { version: state.version, result },
       });
+      await tx.lockOfficer(officer);
       return result;
     });
   });
@@ -888,6 +906,11 @@ export async function syntheticReviewRoutes(
               ? "PIC mengesahkan kelengkapan. Permohonan latihan menunggu PPSK."
               : "PPSK mendaftar permohonan latihan. Semak status dalam portal.",
       });
+      if (input.action === "REQUEST_CORRECTION" && remindersEnabled)
+        await enqueueCaseReminder(tx, id, "CASE_CORRECTION", {
+          portalAlreadyNotified: true,
+        });
+      await tx.lockOfficer(officer);
       return {
         status: decision.next.status,
         version: decision.next.version,

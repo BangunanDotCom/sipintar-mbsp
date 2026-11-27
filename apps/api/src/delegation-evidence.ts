@@ -75,8 +75,10 @@ export function matchesDelegationBytes(
 export async function lockedDelegation(
   tx: Prisma.TransactionClient,
   id: string,
+  lock = true,
 ) {
-  await tx.$queryRaw`SELECT id FROM delegation_documents WHERE id = ${id} FOR SHARE`;
+  if (lock)
+    await tx.$queryRaw`SELECT id FROM delegation_documents WHERE id = ${id} FOR SHARE`;
   return tx.delegationDocument.findUnique({
     where: { id },
     select: delegationMetadata,
@@ -105,10 +107,11 @@ export async function delegationBytes(
 export async function lockedVerifiedDelegation(
   tx: Prisma.TransactionClient,
   rep: CompanyRepresentative,
+  lock = true,
 ) {
   if (rep.status !== "VERIFIED" || !rep.verifiedDocumentId)
     fail(409, "Surat kuasa versi semasa belum disahkan.");
-  const doc = await lockedDelegation(tx, rep.verifiedDocumentId);
+  const doc = await lockedDelegation(tx, rep.verifiedDocumentId, lock);
   if (
     !doc ||
     doc.representativeId !== rep.id ||
@@ -128,8 +131,9 @@ export async function lockedVerifiedDelegation(
 export async function verifiedDelegation(
   tx: Prisma.TransactionClient,
   rep: CompanyRepresentative,
+  lock = true,
 ) {
-  const { id, version, sha256 } = await lockedVerifiedDelegation(tx, rep);
+  const { id, version, sha256 } = await lockedVerifiedDelegation(tx, rep, lock);
   return { id, version, sha256 };
 }
 

@@ -1,3 +1,4 @@
+import { withOracleBrowserFixture } from "./oracle-fixtures";
 import { awaitDraftRequestBudget } from "./request-budget";
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext } from "@playwright/test";
@@ -13,18 +14,21 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
   browser,
   baseURL,
 }) => {
+  const oracleLab = process.env.STAYLINK_ORACLE_LAB_HTTP === "true";
   const database = syntheticPortalDatabase();
   test.skip(
-    !database ||
+    !(oracleLab ? process.env.STAYLINK_ORACLE_LAB_SYNTHETIC === "true" : database) ||
       !process.env.STAYLINK_SYNTHETIC_PIC_ID ||
       !process.env.STAYLINK_SYNTHETIC_SUPERVISOR_ID ||
       !process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY,
   );
   test.setTimeout(150000);
-  const [active] = await db.$queryRaw<
-    { name: string }[]
-  >`SELECT current_database()::text AS name`;
-  expect(active?.name).toBe(database);
+  if (!oracleLab) {
+    const [active] = await db.$queryRaw<
+      { name: string }[]
+    >`SELECT current_database()::text AS name`;
+    expect(active?.name).toBe(database);
+  }
   const contexts: BrowserContext[] = [];
   type KitAccount = {
     id: string;
@@ -117,39 +121,76 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       return measure(await context.newPage());
     }
     // Fixture provisioning. Browser requests then use the normal session and CSRF handlers.
-    await db.user.upsert({
-      where: { id },
-      update: {},
-      create: {
-        id,
-        name: `Latihan portal ${role}`,
-        email: `${id}@example.test`,
-        kind: applicant ? "APPLICANT" : "OFFICER",
-        emailVerified: true,
-        phone: "0123456789",
-        ...(applicant
-          ? protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`)
-          : {}),
-        roles: {
-          create: {
-            roleId: role,
-            districtId: applicant ? null : "SPU",
-            reference: "UJIAN ISSUE 31",
+    const raw = token();
+    if (oracleLab) {
+      const identity = applicant
+        ? protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`)
+        : null;
+      await withOracleBrowserFixture(async (connection) => {
+        await connection.execute(
+          `INSERT INTO STL_USERS (ID,NAME,EMAIL,KIND,EMAIL_VERIFIED,PHONE,UPDATED_AT,
+             IDENTIFICATION_HASH,IDENTIFICATION_ENCRYPTED,IDENTIFICATION_MASKED)
+           SELECT :id,:name,:email,:kind,1,'0123456789',SYSTIMESTAMP,
+             :identificationHash,:identificationEncrypted,:identificationMasked
+           FROM dual WHERE NOT EXISTS (SELECT 1 FROM STL_USERS WHERE ID=:id)`,
+          {
+            id,
+            name: `Latihan portal ${role}`,
+            email: `${id}@example.test`,
+            kind: applicant ? "APPLICANT" : "OFFICER",
+            identificationHash: identity?.identificationHash ?? null,
+            identificationEncrypted: identity?.identificationEncrypted ?? null,
+            identificationMasked: identity?.identificationMasked ?? null,
+          },
+        );
+        await connection.execute(
+          `INSERT INTO STL_USER_ROLE_ASSIGNMENTS (ID,USER_ID,ROLE_ID,DISTRICT_ID,REFERENCE)
+           SELECT :assignment,:id,:role,:district,'UJIAN ISSUE 31' FROM dual
+           WHERE NOT EXISTS (
+             SELECT 1 FROM STL_USER_ROLE_ASSIGNMENTS WHERE USER_ID=:id AND ROLE_ID=:role
+           )`,
+          { assignment: randomUUID(), id, role, district: applicant ? null : "SPU" },
+        );
+        await connection.execute(
+          `INSERT INTO STL_SESSIONS (ID,USER_ID,ACTIVE_ROLE,CSRF_HASH,MFA_VERIFIED,EXPIRES_AT)
+           VALUES (:sessionId,:id,:role,:csrf,1,SYSTIMESTAMP + INTERVAL '1' HOUR)`,
+          { sessionId: hash(raw), id, role, csrf: hash(token()) },
+        );
+      });
+    } else {
+      await db.user.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          name: `Latihan portal ${role}`,
+          email: `${id}@example.test`,
+          kind: applicant ? "APPLICANT" : "OFFICER",
+          emailVerified: true,
+          phone: "0123456789",
+          ...(applicant
+            ? protectIdentification(`UJIAN${randomBytes(6).toString("hex")}`)
+            : {}),
+          roles: {
+            create: {
+              roleId: role,
+              districtId: applicant ? null : "SPU",
+              reference: "UJIAN ISSUE 31",
+            },
           },
         },
-      },
-    });
-    const raw = token();
-    await db.session.create({
-      data: {
-        id: hash(raw),
-        userId: id,
-        activeRole: role,
-        mfaVerified: true,
-        csrfHash: hash(token()),
-        expiresAt: new Date(Date.now() + 3_600_000),
-      },
-    });
+      });
+      await db.session.create({
+        data: {
+          id: hash(raw),
+          userId: id,
+          activeRole: role,
+          mfaVerified: true,
+          csrfHash: hash(token()),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
+    }
     await context.addCookies([
       {
         name: "staylink",
@@ -427,13 +468,40 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
       )
         billingReads++;
     });
-    const reminderDraft = process.env.STAYLINK_SYNTHETIC_REMINDERS === "true"
-      ? await db.applicationDraft.create({data:{
-          initiatedByUserId:applicantSession.user.id, officialApplicantUserId:applicantSession.user.id,
-          capacity:"INDIVIDUAL", initiatorSnapshot:{}, applicantSnapshot:{},
-          updatedAt:new Date(Date.now()-61*86_400_000), premises:{create:{districtId:"SPU"}},
-        }})
-      : null;
+    let reminderDraft: { id: string } | null = null;
+    if (process.env.STAYLINK_SYNTHETIC_REMINDERS === "true") {
+      const userId = applicantSession.user.id;
+      if (oracleLab) {
+        const id = randomUUID();
+        await withOracleBrowserFixture(async (connection) => {
+          await connection.execute(
+            `INSERT INTO STL_APPLICATION_DRAFTS
+               (ID, INITIATED_BY_USER_ID, OFFICIAL_APPLICANT_USER_ID, CAPACITY,
+                INITIATOR_SNAPSHOT, APPLICANT_SNAPSHOT, UPDATED_AT)
+             VALUES (:id,:userId,:userId,'INDIVIDUAL','{}','{}',SYSTIMESTAMP - INTERVAL '61' DAY)`,
+            { id, userId },
+          );
+          await connection.execute(
+            `INSERT INTO STL_APPLICATION_PREMISES (ID,DRAFT_ID,DISTRICT_ID,UPDATED_AT)
+             VALUES (:premiseId,:id,'SPU',SYSTIMESTAMP)`,
+            { premiseId: randomUUID(), id },
+          );
+        });
+        reminderDraft = { id };
+      } else {
+        reminderDraft = await db.applicationDraft.create({
+          data: {
+            initiatedByUserId: userId,
+            officialApplicantUserId: userId,
+            capacity: "INDIVIDUAL",
+            initiatorSnapshot: {},
+            applicantSnapshot: {},
+            updatedAt: new Date(Date.now() - 61 * 86_400_000),
+            premises: { create: { districtId: "SPU" } },
+          },
+        });
+      }
+    }
     const openPpsk = performance.now();
     await supervisor.goto("/dashboard");
     if (reminderDraft) {
@@ -632,6 +700,6 @@ test("synthetic portal joins applicant, PIC, supervisor and invoicing", async ({
         join(evidenceDirectory, "timings-ms.json"),
         JSON.stringify({ ui: uiTimings, api: apiTimings }, null, 2) + "\n",
       );
-    await db.$disconnect();
+    if (!oracleLab) await db.$disconnect();
   }
 });

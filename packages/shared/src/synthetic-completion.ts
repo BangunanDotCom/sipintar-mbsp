@@ -37,6 +37,7 @@ type Determination = z.infer<typeof determination>;
 type Scope = Pick<Determination, "unitId" | "floorId">;
 type Comment = Extract<CompletionCommand, { action: "COMMENT" }>;
 const day = 86_400_000;
+export const technicalReferralSlaMs = 7 * day;
 export const noTechnicalComment =
   "Tiada ulasan diterima daripada jabatan berkenaan dalam tempoh tujuh (7) hari kalendar yang ditetapkan. Sehubungan itu, jabatan berkenaan hendaklah mengemukakan ulasan semasa mesyuarat pertimbangan.";
 const key = (item: Scope) => item.unitId + "/" + item.floorId;
@@ -193,7 +194,7 @@ export function applyCompletion(
         departments: [...departments],
         comments: {},
         acknowledged: [],
-        deadline: now + 7 * day,
+        deadline: technicalReferralDeadline(now),
         version: state.version + 1,
         paperSubmitted: false,
       };
@@ -215,7 +216,7 @@ export function applyCompletion(
         departments: command.departments,
         comments: {},
         acknowledged: [],
-        deadline: now + 7 * day,
+        deadline: technicalReferralDeadline(now),
         version: state.version + 1,
         paperSubmitted: false,
       };
@@ -425,4 +426,36 @@ export function applyCompletion(
   }
   next.version++;
   return { state: next, changed: true };
+}
+
+export function technicalReferralDeadline(openedAt: number) {
+  return openedAt + technicalReferralSlaMs;
+}
+
+export function technicalSla(
+  closed: boolean,
+  deadline: number,
+  outstanding: boolean,
+  now: number,
+) {
+  return !closed && outstanding && now >= deadline;
+}
+
+export function completionOverdue(
+  { closed, referral }: CompletionState,
+  now: number,
+  department?: TechnicalDepartment,
+) {
+  return Boolean(
+    referral &&
+    technicalSla(
+      closed,
+      referral.deadline,
+      referral.departments.some(
+        (role) =>
+          (!department || department === role) && !referral.comments[role],
+      ),
+      now,
+    ),
+  );
 }

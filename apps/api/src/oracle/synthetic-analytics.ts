@@ -1,7 +1,14 @@
+import { createOracleCompletionRepository } from "./synthetic-completion.js";
 import type { Prisma } from "@prisma/client";
 import type { Connection } from "oracledb";
 import { completionEvent } from "../../../../packages/shared/src/synthetic-completion-contract.js";
-import type { AnalyticsRepository, Counts } from "../synthetic-analytics.js";
+import {
+  countReportCases,
+  retentionPage,
+  type ReportEvent,
+  type AnalyticsRepository,
+  type Counts,
+} from "../synthetic-analytics.js";
 import type { ReviewOfficer } from "../synthetic-portal-review.js";
 import type { OraclePool } from "./pool.js";
 import { oracleInList, oracleTable, queryRows, timestamp } from "./query.js";
@@ -9,18 +16,13 @@ import { createOracleSyntheticReviewRepository } from "./synthetic-review.js";
 
 type Filters = Parameters<AnalyticsRepository["applications"]>[1];
 type CaseRow = { id: string; actorId: string; snapshot: string };
-type Event = {
+type Event = Omit<ReportEvent, "departments"> & {
   id: string;
   target: string;
-  action: string;
-  command: string | null;
-  version: number | null;
   departments: string | null;
-  role: string | null;
   createdAt: Date;
   stamp: string;
 };
-const days7 = 7 * 86_400_000;
 
 export function createOracleSyntheticAnalytics(
   pool: OraclePool,
@@ -28,13 +30,15 @@ export function createOracleSyntheticAnalytics(
   const submissions = oracleTable(pool, "STL_SYNTHETIC_SUBMISSIONS");
   const audit = oracleTable(pool, "STL_AUDIT_LOGS");
   const review = createOracleSyntheticReviewRepository(pool);
+  const journal = createOracleCompletionRepository(pool);
 
   async function* eligible(
     connection: Connection,
     officer: ReviewOfficer,
     filters: Filters,
+    consistentRead = false,
   ) {
-    const tx = review.onConnection(connection);
+    const tx = review.onConnection(connection, consistentRead);
     let last = "";
     for (;;) {
       const page = await queryRows<CaseRow>(
@@ -92,6 +96,8 @@ export function createOracleSyntheticAnalytics(
         TO_CHAR(SYS_EXTRACT_UTC(CREATED_AT),'YYYY-MM-DD"T"HH24:MI:SS.FF6') AS "stamp",
         JSON_VALUE(METADATA,'$.command.action') AS "command",
         JSON_VALUE(METADATA,'$.version' RETURNING NUMBER NULL ON ERROR) AS "version",
+        JSON_VALUE(METADATA,'$.command.department') AS "department",
+        JSON_VALUE(METADATA,'$.timestamp' RETURNING NUMBER NULL ON ERROR) AS "timestamp",
         JSON_QUERY(METADATA,'$.command.departments') AS "departments"
        FROM ${audit} WHERE ${targets.sql} AND OUTCOME='SUCCESS'
          AND ${onlyClosed ? "ACTION=:completion AND JSON_VALUE(METADATA,'$.command.action')='CLOSE'" : "ACTION LIKE 'SYNTHETIC_PORTAL_%'"}`,
@@ -101,100 +107,54 @@ export function createOracleSyntheticAnalytics(
   return {
     applications: (officer, filters) =>
       pool.transaction(async (connection) => {
-        await connection.execute(
-          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
-        );
-        await review.onConnection(connection).lockOfficer(officer);
+        await connection.execute("SET TRANSACTION READ ONLY");
+        await review.onConnection(connection, true).lockOfficer(officer);
         const now = Date.now();
         const counts = new Map<Counts["status"], Counts>();
-        for await (const ids of eligible(connection, officer, filters)) {
+        for await (const ids of eligible(connection, officer, filters, true)) {
           const grouped = new Map<string, Event[]>();
           for (const e of await events(connection, ids)) {
             const values = grouped.get(e.target) ?? [];
             values.push(e);
             grouped.set(e.target, values);
           }
-          for (const id of ids) {
-            const rows = grouped.get(id) ?? [];
-            const has = (action: string) =>
-              rows.some((e) => e.action === action);
-            const completion = rows.filter((e) => e.action === completionEvent);
-            const completed = (command: string) =>
-              completion.some((e) => e.command === command);
-            const referred = completion
-              .filter(
-                (e) =>
-                  (e.command === "REFER" || e.command === "REREFER") &&
-                  Number.isInteger(e.version) &&
-                  Number(e.version) >= 0 &&
-                  Number(e.version) <= 999,
-              )
-              .sort((a, b) => Number(b.version) - Number(a.version))[0];
-            const closed = completed("CLOSE");
-            const status = has("SYNTHETIC_PORTAL_REGISTERED")
-              ? "REGISTERED"
-              : has("SYNTHETIC_PORTAL_CORRECTION_REQUESTED")
-                ? "CORRECTION_REQUESTED"
-                : has("SYNTHETIC_PORTAL_COMPLETE")
-                  ? "COMPLETE"
-                  : "SUBMITTED";
-            const total = counts.get(status) ?? {
-              status,
-              cases: 0,
-              firstPaid: 0,
-              secondPaid: 0,
-              referred: 0,
-              overdue: 0,
-              closed: 0,
-            };
-            total.cases++;
-            if (has("SYNTHETIC_PORTAL_INVOICE_SETTLED")) total.firstPaid++;
-            if (completed("SETTLE_SECOND")) total.secondPaid++;
-            if (completed("REFER")) total.referred++;
-            if (closed) total.closed++;
-            if (
-              referred &&
-              !closed &&
-              referred.createdAt.getTime() + days7 <= now
-            ) {
-              const departments =
-                referred.command === "REFER"
-                  ? ["PERANCANG_BANDAR", "KEJURUTERAAN"]
-                  : JSON.parse(referred.departments ?? "[]");
-              if (
-                Array.isArray(departments) &&
-                departments.some(
-                  (d) =>
-                    !completion.some(
-                      (e) =>
-                        e.role === d &&
-                        e.command === "COMMENT" &&
-                        Number.isInteger(e.version) &&
-                        Number(e.version) <= 999 &&
-                        Number(e.version) > Number(referred.version),
-                    ),
-                )
-              )
-                total.overdue++;
-            }
-            counts.set(status, total);
-          }
+          for (const id of ids)
+            countReportCases(
+              counts,
+              (grouped.get(id) ?? []).map((row) => ({
+                ...row,
+                timestamp: row.timestamp ?? row.createdAt.getTime(),
+                departments: row.departments
+                  ? JSON.parse(row.departments)
+                  : null,
+              })),
+              now,
+            );
         }
         return [...counts.values()].sort((a, b) =>
           a.status.localeCompare(b.status),
         );
       }),
-    archive: (officer, page) =>
+    archive: (officer, page, retention) =>
       pool.transaction(async (connection) => {
+        const readOnly = retention === null;
         await connection.execute(
-          "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+          readOnly
+            ? "SET TRANSACTION READ ONLY"
+            : "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
         );
-        await review.onConnection(connection).lockOfficer(officer);
+        const tx = review.onConnection(connection, readOnly);
+        await tx.lockOfficer(officer);
         const latest = new Map<string, Event>();
-        for await (const ids of eligible(connection, officer, {
-          from: null,
-          until: null,
-        })) {
+        for await (const ids of eligible(
+          connection,
+          officer,
+          {
+            from: null,
+            until: null,
+          },
+          readOnly,
+        )) {
           for (const event of await events(connection, ids, true)) {
             const prior = latest.get(event.target);
             if (!prior || prior.stamp < event.stamp)
@@ -202,14 +162,25 @@ export function createOracleSyntheticAnalytics(
           }
         }
         const start = (page - 1) * 20;
-        return [...latest.values()]
+        const rows = [...latest.values()]
           .sort(
             (a, b) =>
               b.stamp.localeCompare(a.stamp) ||
               b.target.localeCompare(a.target),
           )
-          .slice(start, start + 21)
           .map((e) => ({ id: e.target, closedAt: e.createdAt }));
+        if (retention === null) return rows.slice(start, start + 21);
+        async function* candidates() {
+          yield* rows;
+        }
+        return retentionPage(
+          tx,
+          (id) => journal.events(connection, id),
+          candidates(),
+          officer,
+          page,
+          retention,
+        );
       }),
   };
 }

@@ -1,4 +1,3 @@
-import type { ReminderInput } from "./oracle/training-reminders.js";
 import type { Prisma, SyntheticSubmission } from "@prisma/client";
 import {
   completionEvent,
@@ -26,7 +25,6 @@ export interface CompletionTransaction extends SyntheticReviewTransaction {
     }[]
   >;
   appendCompletion(entry: AuditEntry): Promise<void>;
-  enqueueReminders(entries: ReminderInput[]): Promise<void>;
   lockActor(
     operator: ObservedPortalSession,
     role: CompletionRole,
@@ -65,12 +63,6 @@ export const postgresCompletion: CompletionRepository = {
         return operation({
           ...review,
           appendCompletion: review.audit,
-          async enqueueReminders(entries) {
-            await tx.trainingReminderOutbox.createMany({
-              data: entries,
-              skipDuplicates: true,
-            });
-          },
           async events(id) {
             return tx.auditLog.findMany({
               where: {

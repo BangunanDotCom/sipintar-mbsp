@@ -1,3 +1,4 @@
+import { enqueueCompletionReminders } from "./training-case-reminders.js";
 import { technicalReminderEntries } from "./training-technical-reminders.js";
 import { reconcileSyntheticLedger } from "./synthetic-financial-reconciliation.js";
 import { technicalConsolidation } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
@@ -23,6 +24,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   applyCompletion,
+  completionOverdue,
   canActOnCompletion,
   completionCommand,
   completionRoles,
@@ -176,7 +178,11 @@ function registerCompletion(
     const record = await lockedRow(tx, id, district);
     if (record.row.actorId === officer.userId)
       fail(404, "Serahan latihan tidak ditemui.");
-    return { record, actor: { userId: officer.userId, role } };
+    return {
+      record,
+      operator: officer,
+      actor: { userId: officer.userId, role },
+    };
   }
 
   async function mutate(
@@ -189,7 +195,7 @@ function registerCompletion(
   ) {
     if (!canActOnCompletion(actor.role, command.action))
       fail(403, "Peranan tidak dibenarkan untuk tindakan ini.");
-    const timestamp = Date.now();
+    const timestamp = (await tx.databaseNow()).getTime();
     const firstPaid =
       ["REFER", "RECEIVE_BKT"].includes(command.action) &&
       (await firstPaymentSettled(tx, id));
@@ -249,6 +255,14 @@ function registerCompletion(
           command,
         },
       });
+      if (remindersEnabled)
+        await enqueueCompletionReminders(
+          tx,
+          id,
+          command.action,
+          result.state,
+          timestamp,
+        );
     }
     return result.state;
   }
@@ -312,11 +326,7 @@ function registerCompletion(
       technicalHistory: state.technicalHistory,
       recordsEnabled: recordsEnabled && role === "PPSK",
       referral: state.referral,
-      overdue: Boolean(
-        state.referral &&
-        Date.now() >= state.referral.deadline &&
-        state.referral.departments.some((d) => !state.referral?.comments[d]),
-      ),
+      overdue: completionOverdue(state, Date.now()),
     };
   }
 
@@ -362,17 +372,12 @@ function registerCompletion(
             !state.referral?.departments.includes(role)
           )
             continue;
-          const responsible =
+          const overdue = completionOverdue(
+            state,
+            now,
             role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN"
-              ? [role]
-              : (state.referral?.departments ?? []);
-          const overdue = Boolean(
-            !state.closed &&
-            state.referral &&
-            now >= state.referral.deadline &&
-            responsible.some(
-              (department) => !state.referral?.comments[department],
-            ),
+              ? role
+              : undefined,
           );
           if (
             (view === "open" && state.closed) ||
@@ -491,6 +496,7 @@ function registerCompletion(
           metadata: { slots: report.missing },
         });
       }
+      if (apply) await tx.lockOfficer(officer);
       return report;
     }, !apply);
   }
@@ -536,6 +542,7 @@ function registerCompletion(
         action: "SYNTHETIC_ARCHIVE_ACCESSED",
         target: id,
       });
+      await tx.lockOfficer(officer);
       return overlay;
     });
   });
@@ -560,7 +567,9 @@ function registerCompletion(
         action: "SYNTHETIC_ARCHIVE_CONTROL",
         metadata: { ...input, version: current.version + 1 },
       });
-      return syntheticRecordOverlay(tx, id);
+      const overlay = await syntheticRecordOverlay(tx, id);
+      await tx.lockOfficer(officer);
+      return overlay;
     });
   });
 
@@ -590,7 +599,7 @@ function registerCompletion(
         await tx.lockOfficer(manager);
         await tx.lockParent(id, district, manager.operator.userId);
       }
-      const { record, actor } = manager
+      const { record, operator, actor } = manager
         ? await (async () => {
             const { snapshot, state } = await lockSyntheticReview(
               tx,
@@ -601,6 +610,7 @@ function registerCompletion(
               fail(409, "Daftar serahan latihan dahulu.");
             return {
               record: inventory(snapshot),
+              operator: manager.operator,
               actor: { userId: manager.operator.userId, role: manager.role },
             };
           })()
@@ -663,6 +673,7 @@ function registerCompletion(
               : "Permohonan latihan ditutup.",
         });
       }
+      await tx.lockActor(operator, actor.role, district);
       return scopedView(next, record, actor.role);
     });
   });
@@ -697,21 +708,16 @@ function registerCompletion(
       const state = await stateFor(tx, record.row.id, record.scopes);
       if (state.version !== input.version)
         fail(409, "Versi aliran latihan sudah berubah.");
-      return scopedView(
-        await mutate(
-          tx,
-          record.row.id,
-          state,
-          record.scopes,
-          {
-            role,
-            userId: operator.userId,
-          },
-          input.command,
-        ),
-        record,
-        role,
+      const next = await mutate(
+        tx,
+        record.row.id,
+        state,
+        record.scopes,
+        { role, userId: operator.userId },
+        input.command,
       );
+      await tx.lockApplicant(operator);
+      return scopedView(next, record, role);
     });
   });
   api.get("/drafts/:id/completion/letters/:number", async (req, reply) => {

@@ -1,3 +1,4 @@
+import { eligibleCaseRecipient } from "../apps/api/src/training-case-reminders";
 import { createOracleCompletionRuntime } from "../apps/api/src/oracle/completion-runtime";
 import { postgresCompletion } from "../apps/api/src/completion-repository";
 import { mockInvoiceSchema } from "../apps/api/src/synthetic-billing";
@@ -112,6 +113,7 @@ for (const { name, enabled } of variants) {
           vi.stubEnv("STAYLINK_SYNTHETIC_LEDGER_BACKFILL", "false");
           vi.stubEnv("STAYLINK_SYNTHETIC_BKT", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_RECORDS", "true");
+          vi.stubEnv("STAYLINK_SYNTHETIC_RETENTION_DAYS", "1");
           vi.stubEnv("STAYLINK_SYNTHETIC_APPOINTMENT_CONFLICTS", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_REMINDERS", "true");
           vi.stubEnv("STAYLINK_SYNTHETIC_PORTAL", "true");
@@ -128,6 +130,8 @@ for (const { name, enabled } of variants) {
               : undefined;
           const browserAccounts: {
             label: string;
+            id: string;
+            role: string;
             email: string;
             password: string;
             mfaSecretBase32?: string;
@@ -135,6 +139,7 @@ for (const { name, enabled } of variants) {
           const actor = async (
             role: string,
             districtId: string | null = "SPU",
+            label?: string,
           ) => {
             const raw = randomUUID();
             const email = `${raw}@example.test`;
@@ -153,14 +158,14 @@ for (const { name, enabled } of variants) {
                 : password,
               consentAt: new Date(),
             });
-            const officer = role !== "PEMOHON";
+            const officer = role !== "PEMOHON" && role !== "WAKIL_SYARIKAT";
             if (ownerPool) {
               await ownerPool.transaction(async (connection) => {
                 await connection.execute(
                   "UPDATE STL_USERS SET EMAIL_VERIFIED=1,KIND=:kind WHERE ID=:id",
                   { id: user.id, kind: officer ? "OFFICER" : "APPLICANT" },
                 );
-                if (officer)
+                if (role !== "PEMOHON")
                   await connection.execute(
                     `INSERT INTO STL_USER_ROLE_ASSIGNMENTS (ID,USER_ID,ROLE_ID,DISTRICT_ID,REFERENCE)
                  VALUES (:id,:userId,:role,:districtId,'Issue 68 synthetic parity')`,
@@ -173,7 +178,7 @@ for (const { name, enabled } of variants) {
                 data: {
                   emailVerified: true,
                   kind: officer ? "OFFICER" : "APPLICANT",
-                  ...(officer && {
+                  ...(role !== "PEMOHON" && {
                     roles: {
                       create: {
                         roleId: role,
@@ -185,22 +190,31 @@ for (const { name, enabled } of variants) {
                 },
               });
             }
-            if (kitDirectory) {
+            if (kitDirectory && label) {
               // Base32 test secret with 128 bits of entropy held only in the local kit.
               const mfaSecretBase32 = officer
                 ? new (await import("otpauth")).Secret({ size: 16 }).base32
                 : undefined;
-              if (mfaSecretBase32)
+              if (mfaSecretBase32) {
                 await auth.setFactor(user.id, encrypt(mfaSecretBase32));
+                if (ownerPool) {
+                  await ownerPool.transaction((c) =>
+                    c.execute(
+                      "UPDATE STL_MFA_FACTORS SET VERIFIED=1 WHERE USER_ID=:id",
+                      { id: user.id },
+                    ),
+                  );
+                } else {
+                  await db.mfaFactor.update({
+                    where: { userId: user.id },
+                    data: { verified: true },
+                  });
+                }
+              }
               browserAccounts.push({
-                label:
-                  role === "PEMOHON"
-                    ? "pemohon"
-                    : role === "PPSK"
-                      ? "ppsk"
-                      : role === "PIC_KAWASAN" && districtId === "SPT"
-                        ? "PIC_KAWASAN_SPT"
-                        : role,
+                label,
+                id: user.id,
+                role,
                 email,
                 password,
                 mfaSecretBase32,
@@ -222,19 +236,38 @@ for (const { name, enabled } of variants) {
               "x-csrf-token": csrf,
             };
           };
-          const owner = await actor("PEMOHON");
+          const owner = await actor("PEMOHON", null, "pemohon");
           const other = await actor("PEMOHON");
-          const pic = await actor("PIC_KAWASAN");
-          const spt = await actor("PIC_KAWASAN", "SPT");
-          const ppsk = await actor("PPSK");
-          const planning = await actor("PERANCANG_BANDAR");
-          const engineering = await actor("KEJURUTERAAN");
-          const council = await actor("URUS_SETIA_JK");
-          const signer = await actor("PEGAWAI_PENANDATANGAN");
+          const pic = await actor("PIC_KAWASAN", "SPU", "pic-spu");
+          const spt = await actor("PIC_KAWASAN", "SPT", "pic-spt");
+          const ppsk = await actor("PPSK", "SPU", "ppsk");
+          const planning = await actor("PERANCANG_BANDAR", "SPU", "perancang");
+          const engineering = await actor(
+            "KEJURUTERAAN",
+            "SPU",
+            "kejuruteraan",
+          );
+          const council = await actor("URUS_SETIA_JK", "SPU", "urus-setia");
+          const signer = await actor(
+            "PEGAWAI_PENANDATANGAN",
+            "SPU",
+            "penandatangan",
+          );
+          const sps = kitDirectory
+            ? await actor("PIC_KAWASAN", "SPS", "pic-sps")
+            : undefined;
+          if (kitDirectory) {
+            await actor("WAKIL_SYARIKAT", null, "wakil");
+            await actor("PENTADBIR_ICT", null, "pentadbir");
+            expect(browserAccounts).toHaveLength(11);
+          }
           vi.stubEnv("STAYLINK_SYNTHETIC_PIC_ID", pic.userId);
           vi.stubEnv("STAYLINK_SYNTHETIC_SUPERVISOR_ID", ppsk.userId);
           vi.stubEnv("STAYLINK_PERSONAL_PIC_SPT_ID", spt.userId);
-          vi.stubEnv("STAYLINK_PERSONAL_PIC_SPS_ID", randomUUID());
+          vi.stubEnv(
+            "STAYLINK_PERSONAL_PIC_SPS_ID",
+            sps?.userId ?? randomUUID(),
+          );
           vi.stubEnv(
             "STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS",
             JSON.stringify({
@@ -244,6 +277,43 @@ for (const { name, enabled } of variants) {
               PEGAWAI_PENANDATANGAN: signer.userId,
             }),
           );
+          async function writeKit(draft: string, id: string) {
+            if (kitDirectory) {
+              const kit = {
+                accounts: browserAccounts,
+                scenarios: [
+                  {
+                    id: "single-unit",
+                    submissionId: id,
+                    draftPath: `/permohonan/draf/${draft}/semakan`,
+                  },
+                ],
+              };
+              const config = [
+                "STAYLINK_SYNTHETIC_PORTAL=true",
+                "STAYLINK_SYNTHETIC_COMPLETION=true",
+                "STAYLINK_SYNTHETIC_BKT=true",
+                "STAYLINK_SYNTHETIC_RECORDS=true",
+                "STAYLINK_SYNTHETIC_SECOND_UNIT_FEE_SEN=1234",
+                "STAYLINK_SYNTHETIC_DISTRICT=SPU",
+                `STAYLINK_SYNTHETIC_PIC_ID=${pic.userId}`,
+                `STAYLINK_SYNTHETIC_SUPERVISOR_ID=${ppsk.userId}`,
+                `STAYLINK_PERSONAL_PIC_SPT_ID=${spt.userId}`,
+                `STAYLINK_PERSONAL_PIC_SPS_ID=${process.env.STAYLINK_PERSONAL_PIC_SPS_ID}`,
+                `STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS=${process.env.STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS}`,
+              ];
+              const prefix = join(kitDirectory, name.toLowerCase());
+              await writeFile(prefix + ".json", JSON.stringify(kit), {
+                mode: 0o600,
+                flag: "wx",
+              });
+              await writeFile(prefix + ".env", config.join("\n") + "\n", {
+                mode: 0o600,
+                flag: "wx",
+              });
+            }
+          }
+
           const app = oracleRepositories
             ? await buildOracleLabApp(oracleRepositories)
             : await buildApp();
@@ -713,6 +783,135 @@ for (const { name, enabled } of variants) {
                 version: version + offset,
                 command: { action, ...other },
               });
+            if (
+              capacity === "INDIVIDUAL" &&
+              process.env.STAYLINK_COMPLETION_VERIFY_CORRECTION === "true"
+            ) {
+              async function requestCorrection(caseId: string) {
+                const response = await post(root + "/reviews/" + caseId, pic, {
+                  action: "REQUEST_CORRECTION",
+                  version: 1,
+                  reason: "Sila semak draf latihan",
+                });
+                expect(response.statusCode, response.body).toBe(200);
+              }
+              async function resubmit(previousId: string) {
+                const info = (
+                  await app.inject({ url: appUrl, headers: owner })
+                ).json();
+                const edited = await app.inject({
+                  method: "PATCH",
+                  url: "/api/application-drafts/" + draft,
+                  headers: owner,
+                  payload: {
+                    version: info.draftVersion,
+                    capacity: "INDIVIDUAL",
+                    notes: "Pembetulan sintetik " + previousId,
+                  },
+                });
+                expect(edited.statusCode, edited.body).toBe(200);
+                const updated = (
+                  await app.inject({ url: appUrl, headers: owner })
+                ).json();
+                const sent = await post(appUrl + "/submit", owner, {
+                  ...submission,
+                  version: updated.draftVersion,
+                  previousId,
+                  key: randomUUID(),
+                });
+                expect(sent.statusCode, sent.body).toBe(200);
+                return sent.json().id as string;
+              }
+              async function deliverCorrections(
+                caseId: string,
+                sent: string[],
+              ) {
+                const key = `CASE_CORRECTION:${caseId}:once`;
+                if (ownerPool)
+                  await ownerPool.transaction((c) =>
+                    c.execute(
+                      `UPDATE STL_TRAINING_REMINDER_OUTBOX
+                  SET AVAILABLE_AT=TO_TIMESTAMP_TZ('1970-01-01 00:00:00 +00:00','YYYY-MM-DD HH24:MI:SS TZH:TZM')
+                  WHERE DEDUPE_KEY=:key`,
+                      { key },
+                    ),
+                  );
+                else
+                  await db.trainingReminderOutbox.update({
+                    where: { dedupeKey: key },
+                    data: { availableAt: new Date(0) },
+                  });
+                const queuedId = ownerPool
+                  ? (
+                      await ownerPool.use((c) =>
+                        queryRows<{ ID: string }>(
+                          c,
+                          "SELECT ID FROM STL_TRAINING_REMINDER_OUTBOX WHERE DEDUPE_KEY=:key",
+                          { key },
+                        ),
+                      )
+                    )[0]?.ID
+                  : (
+                      await db.trainingReminderOutbox.findUniqueOrThrow({
+                        where: { dedupeKey: key },
+                      })
+                    ).id;
+                expect(queuedId).toBeTruthy();
+                const email =
+                  owner.cookie.slice("staylink=".length) + "@example.test";
+                const sender = async (message: {
+                  to: string;
+                  messageId: string;
+                }) => {
+                  if (
+                    message.to === email &&
+                    message.messageId ===
+                      `<staylink-training-${queuedId}@example.test>`
+                  )
+                    sent.push(message.messageId);
+                };
+                if (ownerPool) {
+                  const worker = await createOraclePool(
+                    oracleConfig(
+                      parse(
+                        await readFile(process.env.ORACLE_CONSOL_WORKER_ENV!),
+                      ),
+                      "runtime",
+                    ),
+                  );
+                  try {
+                    await createOracleTrainingReminders(worker).deliver(sender);
+                  } finally {
+                    await worker.close();
+                  }
+                  const [row] = await ownerPool.use((c) =>
+                    queryRows<{ STATUS: string }>(
+                      c,
+                      "SELECT STATUS FROM STL_TRAINING_REMINDER_OUTBOX WHERE DEDUPE_KEY=:key",
+                      { key },
+                    ),
+                  );
+                  return row.STATUS;
+                }
+                await deliverTrainingReminders(sender);
+                return (
+                  await db.trainingReminderOutbox.findUniqueOrThrow({
+                    where: { dedupeKey: key },
+                  })
+                ).status;
+              }
+              const sent: string[] = [];
+              await requestCorrection(id);
+              expect(await deliverCorrections(id, sent)).toBe("SENT");
+              const corrected = await resubmit(id);
+              await requestCorrection(corrected);
+              await resubmit(corrected);
+              expect(await deliverCorrections(corrected, sent)).toBe(
+                "CANCELLED",
+              );
+              expect(sent).toHaveLength(1);
+              return;
+            }
             const precheck = await post(review + "/precheck", pic, {
               version: 1,
               mode: "AUTO",
@@ -781,6 +980,13 @@ for (const { name, enabled } of variants) {
               legacyWrites?.mockRestore();
             }
             expect((await command(pic, 0, "REFER")).statusCode).toBe(409);
+            if (
+              kitDirectory &&
+              process.env.STAYLINK_COMPLETION_PARITY_UI_FLOW === "true"
+            ) {
+              await writeKit(draft, id);
+              return;
+            }
             const readyBkt = await app.inject({
               url: root + "/completion/queue",
               headers: council,
@@ -789,6 +995,62 @@ for (const { name, enabled } of variants) {
             expect(readyBkt.json().cases).toEqual(
               expect.arrayContaining([expect.objectContaining({ id })]),
             );
+            if (capacity === "INDIVIDUAL") {
+              if (ownerPool) {
+                await ownerPool.use((c) =>
+                  c.execute(`CREATE OR REPLACE TRIGGER STL_TEST_BKT_FINAL
+                  AFTER INSERT ON STL_AUDIT_LOGS FOR EACH ROW
+                  WHEN (NEW.ACTION = 'SYNTHETIC_PORTAL_COMPLETION')
+                  BEGIN
+                    IF JSON_VALUE(:NEW.METADATA, '$.command.action') = 'RECEIVE_BKT' THEN
+                      DBMS_SESSION.SLEEP(3);
+                    END IF;
+                  END;`),
+                );
+                await ownerPool.transaction((c) =>
+                  c.execute(
+                    `UPDATE STL_USER_ROLE_ASSIGNMENTS
+                  SET ENDS_AT=SYSTIMESTAMP+INTERVAL '2' SECOND WHERE USER_ID=:id AND ROLE_ID='URUS_SETIA_JK'`,
+                    { id: council.userId },
+                  ),
+                );
+              } else {
+                await db.$executeRaw`CREATE FUNCTION stl_test_bkt_final() RETURNS trigger LANGUAGE plpgsql AS $$
+                  BEGIN IF NEW.action='SYNTHETIC_PORTAL_COMPLETION'
+                    AND NEW.metadata->'command'->>'action'='RECEIVE_BKT'
+                    THEN PERFORM pg_sleep(3); END IF; RETURN NEW; END $$`;
+                await db.$executeRaw`CREATE TRIGGER stl_test_bkt_final AFTER INSERT ON audit_logs
+                  FOR EACH ROW EXECUTE FUNCTION stl_test_bkt_final()`;
+                await db.$executeRaw`UPDATE user_role_assignments SET "endsAt"=(clock_timestamp()+interval '2 seconds') AT TIME ZONE 'UTC'
+                  WHERE "userId"=${council.userId} AND "roleId"='URUS_SETIA_JK'`;
+              }
+              try {
+                const expired = await command(council, 0, "RECEIVE_BKT", {
+                  note: "Ujian luput kelayakan pegawai",
+                });
+                expect(expired.statusCode, expired.body).toBe(403);
+              } finally {
+                if (ownerPool) {
+                  await ownerPool.use((c) =>
+                    c.execute("DROP TRIGGER STL_TEST_BKT_FINAL"),
+                  );
+                  await ownerPool.transaction((c) =>
+                    c.execute(
+                      `UPDATE STL_USER_ROLE_ASSIGNMENTS
+                    SET ENDS_AT=NULL WHERE USER_ID=:id AND ROLE_ID='URUS_SETIA_JK'`,
+                      { id: council.userId },
+                    ),
+                  );
+                } else {
+                  await db.$executeRaw`DROP TRIGGER stl_test_bkt_final ON audit_logs`;
+                  await db.$executeRaw`DROP FUNCTION stl_test_bkt_final()`;
+                  await db.userRoleAssignment.updateMany({
+                    where: { userId: council.userId, roleId: "URUS_SETIA_JK" },
+                    data: { endsAt: null },
+                  });
+                }
+              }
+            }
             const bkt = await command(council, 0, "RECEIVE_BKT", {
               note: "Penerimaan BKT sintetik",
             });
@@ -1034,12 +1296,62 @@ for (const { name, enabled } of variants) {
                 },
               ],
             });
+            async function overdueAt(time: number) {
+              const clock = vi.spyOn(Date, "now").mockReturnValue(time);
+              try {
+                const [detail, dashboard, report, csv] = await Promise.all([
+                  app.inject({ url: completion, headers: pic }),
+                  app.inject({
+                    url: root + "/completion/queue?view=overdue",
+                    headers: ppsk,
+                  }),
+                  app.inject({
+                    url: root + "/reports/applications",
+                    headers: ppsk,
+                  }),
+                  app.inject({
+                    url: root + "/reports/applications?format=csv",
+                    headers: ppsk,
+                  }),
+                ]);
+                for (const response of [detail, dashboard, report, csv])
+                  expect(response.statusCode, response.body).toBe(200);
+                const registered = report
+                  .json()
+                  .rows.find(
+                    (row: { status: string }) => row.status === "REGISTERED",
+                  );
+                const csvRegistered = csv.body
+                  .split("\r\n")
+                  .find((line) => line.startsWith("SPU,REGISTERED,"));
+                expect(Number(csvRegistered?.split(",")[6])).toBe(
+                  registered.overdue,
+                );
+                return {
+                  detail: detail.json().overdue,
+                  dashboard: dashboard.json().summary.overdue,
+                  report: registered.overdue,
+                };
+              } finally {
+                clock.mockRestore();
+              }
+            }
+            const bothSubmitted = await overdueAt(slaDeadline);
+            expect(bothSubmitted.detail).toBe(false);
             const returnedComment = await command(pic, 3, "RETURN_COMMENT", {
               department: "PERANCANG_BANDAR",
               reason: "Perlu maklumat tambahan latihan",
             });
             expect(returnedComment.statusCode, returnedComment.body).toBe(200);
             offset++;
+            expect((await overdueAt(slaDeadline - 1)).detail).toBe(false);
+            for (const now of [slaDeadline, slaDeadline + 1]) {
+              expect(await overdueAt(now)).toEqual({
+                detail: true,
+                dashboard: bothSubmitted.dashboard + 1,
+                report: bothSubmitted.report + 1,
+              });
+            }
             const resentComment = await command(
               planning,
               3,
@@ -1103,6 +1415,45 @@ for (const { name, enabled } of variants) {
                 .statusCode,
             ).toBe(200);
             expect((await command(signer, 5, "SIGN")).statusCode).toBe(200);
+            const skbDue = new Date(
+              outcomes[2].conditionUntil + "T16:00:00.000Z",
+            );
+            const workflow = runtime
+              ? createOracleCompletionRuntime(runtime)
+              : postgresCompletion;
+            const email =
+              owner.cookie.slice("staylink=".length) + "@example.test";
+            const draftVersion = submitted.json().version;
+            for (const [instant, expected] of [
+              [skbDue.getTime() - 1, null],
+              [skbDue.getTime(), email],
+              [skbDue.getTime() + 1, email],
+            ] as const) {
+              await workflow.transaction(async (tx) => {
+                expect(
+                  await eligibleCaseRecipient(
+                    {
+                      ...tx,
+                      databaseNow: async () => new Date(instant),
+                    },
+                    {
+                      kind: "CASE_SKB_EXPIRY",
+                      draftId: draft,
+                      draftVersion,
+                      recipientId: owner.userId,
+                      availableAt: skbDue,
+                      context: {
+                        submissionId: id,
+                        date: outcomes[2].conditionUntil!,
+                      },
+                    },
+                    async () => email,
+                    true,
+                  ),
+                ).toBe(expected);
+              });
+            }
+
             const first = await app.inject({
               url: appUrl + "/completion/letters/1",
               headers: owner,
@@ -1259,40 +1610,7 @@ for (const { name, enabled } of variants) {
                 })
               ).json().closed,
             ).toBe(true);
-            if (kitDirectory) {
-              const kit = {
-                accounts: browserAccounts,
-                scenarios: [
-                  {
-                    id: "single-unit",
-                    submissionId: id,
-                    draftPath: `/permohonan/draf/${draft}/semakan`,
-                  },
-                ],
-              };
-              const config = [
-                "STAYLINK_SYNTHETIC_PORTAL=true",
-                "STAYLINK_SYNTHETIC_COMPLETION=true",
-                "STAYLINK_SYNTHETIC_BKT=true",
-                "STAYLINK_SYNTHETIC_RECORDS=true",
-                "STAYLINK_SYNTHETIC_SECOND_UNIT_FEE_SEN=1234",
-                "STAYLINK_SYNTHETIC_DISTRICT=SPU",
-                `STAYLINK_SYNTHETIC_PIC_ID=${pic.userId}`,
-                `STAYLINK_SYNTHETIC_SUPERVISOR_ID=${ppsk.userId}`,
-                `STAYLINK_PERSONAL_PIC_SPT_ID=${spt.userId}`,
-                `STAYLINK_PERSONAL_PIC_SPS_ID=${process.env.STAYLINK_PERSONAL_PIC_SPS_ID}`,
-                `STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS=${process.env.STAYLINK_SYNTHETIC_COMPLETION_ASSIGNMENTS}`,
-              ];
-              const prefix = join(kitDirectory, name.toLowerCase());
-              await writeFile(prefix + ".json", JSON.stringify(kit), {
-                mode: 0o600,
-                flag: "wx",
-              });
-              await writeFile(prefix + ".env", config.join("\n") + "\n", {
-                mode: 0o600,
-                flag: "wx",
-              });
-            }
+            await writeKit(draft, id);
             const letter = await app.inject({
               url: appUrl + "/completion/letters/1?format=pdf",
               headers: owner,
@@ -1499,6 +1817,34 @@ for (const { name, enabled } of variants) {
                 })
               ).statusCode,
             ).toBe(404);
+            const retentionUrl = root + "/reports/archive?review=retention";
+            const retention = () =>
+              app.inject({ url: retentionUrl, headers: ppsk });
+            expect((await retention()).json()).toMatchObject({
+              retentionDays: 1,
+            });
+            expect(
+              (await app.inject({ url: retentionUrl, headers: pic }))
+                .statusCode,
+            ).toBe(404);
+            if (ownerPool) {
+              await ownerPool.transaction((c) =>
+                c.execute(
+                  `UPDATE STL_AUDIT_LOGS
+                SET CREATED_AT=SYSTIMESTAMP-INTERVAL '2' DAY
+                WHERE TARGET=:id AND ACTION=:event AND JSON_VALUE(METADATA,'$.command.action')='CLOSE'`,
+                  { id, event: completionEvent },
+                ),
+              );
+            } else {
+              await db.$executeRaw`UPDATE audit_logs SET "createdAt"=clock_timestamp()-interval '2 days'
+                WHERE target=${id} AND action=${completionEvent} AND metadata->'command'->>'action'='CLOSE'`;
+            }
+            expect((await retention()).json().items).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ id, eligibleAt: expect.any(String) }),
+              ]),
+            );
             for (const [version, action] of [
               "PLACE_HOLD",
               "RELEASE_HOLD",
@@ -1510,6 +1856,13 @@ for (const { name, enabled } of variants) {
                 reason: "Ujian semakan rekod",
               });
               expect(record.statusCode, record.body).toBe(200);
+              const candidates = await retention();
+              expect(candidates.statusCode, candidates.body).toBe(200);
+              expect(
+                candidates
+                  .json()
+                  .items.some((row: { id: string }) => row.id === id),
+              ).toBe(action === "RELEASE_HOLD");
             }
             const overlay = await app.inject({
               url: completion + "/records",
@@ -1662,6 +2015,115 @@ for (const { name, enabled } of variants) {
             expect(
               events.filter(([actorId]) => actorId === "SYNTHETIC_PROVIDER"),
             ).toEqual([["SYNTHETIC_PROVIDER", null]]);
+            if (
+              capacity === "INDIVIDUAL" &&
+              (!oracle || process.env.ORACLE_CONSOL_WORKER_ENV)
+            ) {
+              const outbox = async () =>
+                ownerPool
+                  ? ownerPool.use((c) =>
+                      queryRows<{
+                        id: string;
+                        kind: string;
+                        status: string;
+                        availableAt: Date;
+                        notifiedAt: Date | null;
+                      }>(
+                        c,
+                        `SELECT ID AS "id", KIND AS "kind", STATUS AS "status",
+                    AVAILABLE_AT AS "availableAt", NOTIFIED_AT AS "notifiedAt"
+                    FROM STL_TRAINING_REMINDER_OUTBOX WHERE RECIPIENT_ID=:recipientId AND KIND LIKE 'CASE_%'`,
+                        { recipientId: owner.userId },
+                      ),
+                    )
+                  : db.trainingReminderOutbox.findMany({
+                      where: {
+                        recipientId: owner.userId,
+                        kind: { startsWith: "CASE_" },
+                      },
+                    });
+              const queued = await outbox();
+              expect(queued.map(({ kind }) => kind).sort()).toEqual([
+                "CASE_CLOSED",
+                "CASE_FIRST_PAYMENT",
+                "CASE_LETTER",
+                "CASE_LETTER",
+                "CASE_SECOND_PAYMENT",
+                "CASE_SKB_EXPIRY",
+              ]);
+              const expiry = queued.find(
+                ({ kind }) => kind === "CASE_SKB_EXPIRY",
+              )!;
+              expect(expiry.availableAt.toISOString()).toBe(
+                outcomes[2].conditionUntil + "T16:00:00.000Z",
+              );
+              if (ownerPool)
+                await ownerPool.transaction((c) =>
+                  c.execute(
+                    `UPDATE STL_TRAINING_REMINDER_OUTBOX
+                SET AVAILABLE_AT=TO_TIMESTAMP_TZ('1970-01-01 00:00:00 +00:00','YYYY-MM-DD HH24:MI:SS TZH:TZM')
+                WHERE RECIPIENT_ID=:recipientId AND KIND LIKE 'CASE_%'`,
+                    { recipientId: owner.userId },
+                  ),
+                );
+              else
+                await db.trainingReminderOutbox.updateMany({
+                  where: {
+                    recipientId: owner.userId,
+                    kind: { startsWith: "CASE_" },
+                  },
+                  data: { availableAt: new Date(0) },
+                });
+              const sent: string[] = [];
+              const expectedEmail =
+                owner.cookie.slice("staylink=".length) + "@example.test";
+              const sender = async ({
+                to,
+                messageId,
+                text,
+              }: {
+                to: string;
+                messageId: string;
+                text: string;
+              }) => {
+                if (to !== expectedEmail) return;
+                expect(text).not.toContain(id);
+                sent.push(messageId);
+              };
+              if (ownerPool) {
+                const worker = await createOraclePool(
+                  oracleConfig(
+                    parse(
+                      await readFile(process.env.ORACLE_CONSOL_WORKER_ENV!),
+                    ),
+                    "runtime",
+                  ),
+                );
+                try {
+                  const service = createOracleTrainingReminders(worker);
+                  await Promise.all([
+                    service.deliver(sender),
+                    service.deliver(sender),
+                  ]);
+                } finally {
+                  await worker.close();
+                }
+              } else {
+                await Promise.all([
+                  deliverTrainingReminders(sender),
+                  deliverTrainingReminders(sender),
+                ]);
+              }
+              const handled = await outbox();
+              for (const { kind, status } of handled)
+                expect(status).toBe(
+                  kind === "CASE_LETTER" || kind === "CASE_CLOSED"
+                    ? "SENT"
+                    : "CANCELLED",
+                );
+              expect(sent).toHaveLength(3);
+              expect(new Set(sent).size).toBe(3);
+            }
             if (companyId && proofId) {
               const revoked = await app.inject({
                 method: "POST",

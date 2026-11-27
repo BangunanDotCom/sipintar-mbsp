@@ -485,9 +485,22 @@ export async function registerSyntheticPortal(
       });
 
       registerSyntheticSubmitRoute(portal, owner, auth, capture);
+      const remindersEnabled = (
+        advanced ? oracleTrainingRemindersEnabled : trainingRemindersEnabled
+      )();
       if (review.enabled) {
-        await syntheticReviewRoutes(portal, reviewRepository, auth);
-        await syntheticAnalyticsRoutes(portal, auth, advanced?.analytics);
+        await syntheticReviewRoutes(
+          portal,
+          reviewRepository,
+          auth,
+          remindersEnabled,
+        );
+        await syntheticAnalyticsRoutes(
+          portal,
+          auth,
+          advanced?.analytics,
+          Boolean(completion),
+        );
         await trainingReminderRoutes(portal, auth, advanced?.reminders);
       }
       if (billing.mode === "MOCK")
@@ -499,6 +512,7 @@ export async function registerSyntheticPortal(
           },
           reviewRepository,
           auth,
+          remindersEnabled,
         );
       if (review.enabled && billing.mode === "MOCK" && completion)
         await syntheticCompletionRoutes(
@@ -506,9 +520,7 @@ export async function registerSyntheticPortal(
           completion.config,
           auth,
           completion.repository,
-          (advanced
-            ? oracleTrainingRemindersEnabled
-            : trainingRemindersEnabled)(),
+          remindersEnabled,
         );
     },
     { prefix: "/api/synthetic-portal" },

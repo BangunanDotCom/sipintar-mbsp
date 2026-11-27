@@ -47,3 +47,31 @@ export async function syntheticRecordOverlay(
     history,
   };
 }
+
+export function syntheticRetentionDays(env = process.env) {
+  if (env.STAYLINK_SYNTHETIC_RECORDS !== "true") return null;
+  const raw = env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+  if (raw === undefined) return null;
+  if (!/^[1-9]\d{0,3}$/.test(raw) || Number(raw) > 3650)
+    fail(503, "Tempoh retensi latihan mesti antara 1 hingga 3650 hari.");
+  return Number(raw);
+}
+
+export function syntheticRetentionReview(
+  closedAt: Date,
+  days: number,
+  overlay: { legalHold: boolean; reopenRequested: boolean },
+  now: Date,
+) {
+  const eligibleAt = new Date(closedAt.getTime() + days * 86_400_000);
+  return {
+    eligibleAt,
+    status: overlay.legalHold
+      ? "LEGAL_HOLD"
+      : overlay.reopenRequested
+        ? "REOPEN_REQUESTED"
+        : eligibleAt <= now
+          ? "REVIEW_DUE"
+          : "RETAIN",
+  };
+}

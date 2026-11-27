@@ -84,7 +84,9 @@ export function createOracleRepositories(
         oracleCompletionEnabled()
           ? completionConfig()
           : null;
-      if (config) await assertOracleCompletionMigration(pool);
+      const reminders = oracleTrainingRemindersEnabled();
+      if (config || reminders)
+        await assertOracleCompletionMigration(pool, reminders);
       await registerSyntheticPortal(
         app,
         owner,
