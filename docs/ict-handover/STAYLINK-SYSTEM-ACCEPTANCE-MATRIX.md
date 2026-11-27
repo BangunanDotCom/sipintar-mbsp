@@ -86,3 +86,16 @@ Laporan agregat `GET /api/synthetic-portal/reports/applications` diuji melalui s
 | 1,000 | 376.99 ms | 470.00 ms | 186–186 MiB |
 
 Semua kiraan respons sepadan dengan volum. Latensi meningkat pada 1,000 kes. Beban hos penerimaan, data pelbagai daerah dan Oracle memerlukan pengukuran berasingan. Sandar dan pulih PostgreSQL membandingkan fingerprint lejar, outbox, PDF delegasi, metadata dokumen dan sembilan faktor MFA disulitkan. Naik taraf salinan PR #79 menambah jenis outbox sekali dan larian ulangan tiada perubahan.
+
+## Pembetulan daripada PR #82
+
+Calon `issue-68-final-functional-closure` bermula pada SHA `a4916a5adc0c2ff620f7bd40875372fafef35976`. [PR #82](https://github.com/BangunanDotCom/sipintar-mbsp/pull/82) · [Issue #68](https://github.com/BangunanDotCom/sipintar-mbsp/issues/68)
+
+| Skop | Penerimaan dan bukti sintetik | Kontrak Team 2 dan semakan Team 3 |
+| --- | --- | --- |
+| P1 SLA | Sebelum pembetulan, Completion menunjukkan satu jabatan lewat selepas RETURN_COMMENT, sementara laporan masih mencatat sifar. Kini detail, queue, laporan JSON dan CSV menggunakan semantik perujukan yang sama. Regresi PostgreSQL mengesahkan sebelum, tepat dan selepas tamat SLA. | Tujuh hari daripada cap waktu milisaat UTC bagi REFER/REREFER semasa. Selepas versi epoch, tindakan terakhir per jabatan ialah COMMENT atau RETURN_COMMENT. ACK tidak melengkapkan ulasan. Penutupan membatalkan status lewat. Oracle perlu mengulang kontrak dan ukuran. |
+| Retensi | Penapisan umur, daerah, legal hold dan permintaan buka semula dibuat sebelum pagination. Replay dan kuasa dikaji semula sebelum rekod dipaparkan. Fixture 120 rekod menghasilkan 50 calon pada halaman 20, 20 dan 10. | Team 2 perlu memadankan urutan tarikh tutup dan ID serta keutuhan versi overlay. Pemeriksaan audit meliputi larangan pelupusan dan akses silang daerah. |
+| Jemputan P0 B | Integrasi terpilih daripada PR #80 menilai bukti, penerima, pemberi, sesi dan tempoh sah pada pagar pangkalan data sebelum komit. Ujian mengesahkan rollback apabila verdict luput selepas penulisan penerimaan. | Pagar menggunakan jam nyata PostgreSQL. Team 3 perlu menyemak replikasi Oracle dan PostgreSQL pada calon yang sama sebelum menutup P0. |
+| Principal scanner | Integrasi terpilih daripada PR #81 menambah fungsi lock tetap, tanpa akses ubah jadual kuasa untuk pengimbas. Skrip grant hanya untuk pangkalan data ujian khusus. | Model keistimewaan hos produksi dan penerimaan penyedia kuarantin kekal pada JTIK. Uji semula pemisahan peranan migrasi, API dan pengimbas dalam penerimaan. |
+
+Pemangku dan penyerahan, lampiran BKT, refund/dispute dan pelarasan, kelulusan buka semula serta replay melebihi 500 acara masih terbuka. Outbox SKB belum mempunyai bukti penghantaran penuh pada sempadan waktu Malaysia. Kontrak dan mock integrasi lengkap serta keserasian PDF Han/Jawi merentas pembaca masih belum diterima. Tiada perubahan pada renderer surat. Jadual kuasa dan polisi rasmi kekal dalam [daftar keputusan](STAYLINK-OWNER-DECISIONS-CORE.md).

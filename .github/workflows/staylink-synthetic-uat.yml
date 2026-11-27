@@ -21,6 +21,7 @@ on:
       - 'issue-68-core-functional-completion'
       - 'issue-68-system-consolidation'
       - 'issue-68-remaining-functional-completion'
+      - 'issue-68-final-functional-closure'
 
 permissions:
   contents: read

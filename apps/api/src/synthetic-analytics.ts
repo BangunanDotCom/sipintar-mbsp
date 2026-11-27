@@ -1,3 +1,4 @@
+import { technicalReferralSlaMs } from "../../../packages/shared/src/synthetic-completion.js";
 import { completionSandbox } from "./synthetic-completion-gate.js";
 import { syntheticRecordOverlay, syntheticRetentionDays, syntheticRetentionReview } from "./synthetic-record-overlay.js";
 import { stateFor } from "./synthetic-completion-journal.js";
@@ -71,6 +72,7 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
     const until = input.to
       ? new Date(Date.parse(input.to + "T00:00:00+08:00") + 86_400_000)
       : null;
+    const dueBefore = Date.now() - technicalReferralSlaMs;
     const rows = await db.$transaction(
       async (tx) => {
         await lockSyntheticOfficer(tx, officer);
@@ -89,31 +91,44 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
             ${input.category ? Prisma.sql`AND lower(s.snapshot->>'buildingType') = lower(${input.category})` : Prisma.empty}
             AND ${liveAuthority}
         ),
-        latest_referrals AS (
-          SELECT DISTINCT ON (a.target) a.target, a."createdAt", a.metadata
+        -- Each case has one active referral epoch. Only the last department
+        -- action after that epoch can satisfy it. ACK does not satisfy the SLA.
+        workflow AS (
+          SELECT a.target, a."activeRole", a.metadata->'command' AS command,
+            CASE WHEN a.metadata->>'version' ~ '^[1-9][0-9]{0,2}$'
+              THEN (a.metadata->>'version')::int END AS version,
+            CASE WHEN a.metadata->>'timestamp' ~ '^[0-9]{1,15}$'
+              THEN (a.metadata->>'timestamp')::bigint END AS timestamp
           FROM eligible JOIN audit_logs a ON a.target = eligible.id
           WHERE a.outcome = 'SUCCESS' AND a.action = 'SYNTHETIC_PORTAL_COMPLETION'
-            AND a.metadata->'command'->>'action' IN ('REFER', 'REREFER')
-            AND a.metadata->>'version' ~ '^[0-9]{1,3}$'
-          ORDER BY a.target, (a.metadata->>'version')::int DESC
+        ),
+        latest_referrals AS (
+          SELECT DISTINCT ON (target) target, version, timestamp, command
+          FROM workflow
+          WHERE command->>'action' IN ('REFER','REREFER') AND version IS NOT NULL
+          ORDER BY target, version DESC
+        ),
+        due_departments AS (
+          SELECT r.target, r.version, d.role
+          FROM latest_referrals r
+          CROSS JOIN (VALUES ('PERANCANG_BANDAR'), ('KEJURUTERAAN')) AS d(role)
+          WHERE r.timestamp <= ${dueBefore}::bigint
+            AND (r.command->>'action' = 'REFER' OR (r.command->'departments') ? d.role)
+        ),
+        latest_comments AS (
+          SELECT DISTINCT ON (c.target, department) c.target,
+            CASE WHEN c.command->>'action' = 'COMMENT' THEN c."activeRole"
+              ELSE c.command->>'department' END AS department,
+            c.command->>'action' AS action, c.version
+          FROM workflow c
+          JOIN latest_referrals r ON r.target = c.target AND c.version > r.version
+          WHERE c.command->>'action' IN ('COMMENT','RETURN_COMMENT')
+          ORDER BY c.target, department, c.version DESC
         ),
         overdue_referrals AS (
-          SELECT r.target FROM latest_referrals r
-          WHERE r."createdAt" + interval '7 days' <= CURRENT_TIMESTAMP
-            AND EXISTS (
-              SELECT 1 FROM (VALUES ('PERANCANG_BANDAR'), ('KEJURUTERAAN')) AS dept(role)
-              WHERE (
-                r.metadata->'command'->>'action' = 'REFER'
-                OR (r.metadata->'command'->'departments') ? dept.role
-              ) AND NOT EXISTS (
-                SELECT 1 FROM audit_logs c
-                WHERE c.target = r.target AND c.action = 'SYNTHETIC_PORTAL_COMPLETION'
-                  AND c.outcome = 'SUCCESS' AND c."activeRole" = dept.role
-                  AND c.metadata->'command'->>'action' = 'COMMENT'
-                  AND CASE WHEN c.metadata->>'version' ~ '^[0-9]{1,3}$'
-                    THEN (c.metadata->>'version')::int > (r.metadata->>'version')::int ELSE false END
-              )
-            )
+          SELECT DISTINCT d.target FROM due_departments d
+          LEFT JOIN latest_comments c ON c.target = d.target AND c.department = d.role
+          WHERE c.action IS DISTINCT FROM 'COMMENT'
         ),
         journal AS (
           SELECT eligible.id,
@@ -127,10 +142,11 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
             bool_or(a.action = 'SYNTHETIC_PORTAL_COMPLETION' AND a.metadata->'command'->>'action' = 'SETTLE_SECOND') AS second_paid,
             bool_or(a.action = 'SYNTHETIC_PORTAL_COMPLETION' AND a.metadata->'command'->>'action' = 'REFER') AS referred,
             bool_or(a.action = 'SYNTHETIC_PORTAL_COMPLETION' AND a.metadata->'command'->>'action' = 'CLOSE') AS closed,
-            EXISTS (SELECT 1 FROM overdue_referrals o WHERE o.target = eligible.id) AS overdue
+            bool_or(o.target IS NOT NULL) AS overdue
           FROM eligible
           LEFT JOIN audit_logs a ON a.target = eligible.id AND a.outcome = 'SUCCESS'
             AND a.action LIKE 'SYNTHETIC_PORTAL_%'
+          LEFT JOIN overdue_referrals o ON o.target = eligible.id
           GROUP BY eligible.id
         )
         SELECT status, count(*)::int AS cases,
@@ -182,6 +198,38 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
     const retention = completionSandbox() && officer.role === "PPSK"
       ? syntheticRetentionDays() : null;
     if (review && retention === null) fail(404, "Semakan retensi latihan tidak tersedia.");
+    const now = new Date();
+    const cutoff = review && retention !== null
+      ? new Date(now.getTime() - retention * 86_400_000)
+      : null;
+    // Project the validated overlay before pagination. A corrupt or over-limit
+    // stream is ineligible and cannot consume a slot on a retention page.
+    const retentionFilter = cutoff ? Prisma.sql`
+      AND (SELECT
+        count(*) <= 100
+        AND count(*) = count(DISTINCT control.version)
+        AND COALESCE(max(control.version), 0) = count(*)
+        AND COALESCE(bool_and(control.valid), true)
+        AND NOT COALESCE(bool_or(control.action = 'REQUEST_REOPEN'), false)
+        AND COALESCE((array_agg(control.action ORDER BY control.version DESC)
+          FILTER (WHERE control.action IN ('PLACE_HOLD','RELEASE_HOLD')))[1], 'RELEASE_HOLD') = 'RELEASE_HOLD'
+      FROM (
+        SELECT
+          CASE WHEN jsonb_typeof(log.metadata->'version') = 'number'
+            AND log.metadata->>'version' ~ '^[1-9][0-9]{0,2}$'
+            THEN (log.metadata->>'version')::int END AS version,
+          log.metadata->>'action' AS action,
+          CASE WHEN jsonb_typeof(log.metadata) = 'object' THEN
+            log.metadata - ARRAY['version','action','reason'] = '{}'::jsonb
+            AND COALESCE(log.metadata->>'action' IN ('PLACE_HOLD','RELEASE_HOLD','REQUEST_REOPEN'), false)
+            AND COALESCE(jsonb_typeof(log.metadata->'reason') = 'string'
+              AND length(btrim(log.metadata->>'reason')) BETWEEN 5 AND 500, false)
+          ELSE false END AS valid
+        FROM audit_logs log
+        WHERE log.target = s.id AND log.action = 'SYNTHETIC_ARCHIVE_CONTROL'
+          AND log.outcome = 'SUCCESS'
+        LIMIT 101
+      ) control)` : Prisma.empty;
     const result = await db.$transaction(
       async (tx) => {
         await lockSyntheticOfficer(tx, officer);
@@ -196,9 +244,9 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
           AND NOT EXISTS (SELECT 1 FROM synthetic_submissions child
             WHERE child."previousId" = s.id AND child."draftId" = s."draftId")
           AND ${liveAuthority}
+          ${retentionFilter}
         GROUP BY s.id
-        ${review && retention !== null ? Prisma.sql`HAVING max(a."createdAt") <=
-          CURRENT_TIMESTAMP - (${retention} * interval '1 day')` : Prisma.empty}
+        ${cutoff ? Prisma.sql`HAVING max(a."createdAt") <= ${cutoff}` : Prisma.empty}
         ORDER BY max(a."createdAt") DESC, s.id DESC
         LIMIT 21 OFFSET ${(page - 1) * 20}
       `;
@@ -207,7 +255,6 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
         if (!review || retention === null) return { items, nextPage };
 
         const candidates = [];
-        const now = new Date();
         for (const item of items) {
           const { snapshot } = await lockSyntheticReview(tx, item.id, officer, { forWrite: false });
           const scopes = snapshot.units.flatMap(({ id, floorIds }) =>
@@ -216,8 +263,9 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
             fail(409, "Penutupan arkib latihan tidak konsisten.");
           const overlay = await syntheticRecordOverlay(tx, item.id);
           const assessment = syntheticRetentionReview(item.closedAt, retention, overlay, now);
-          if (assessment.status === "REVIEW_DUE")
-            candidates.push({ ...item, eligibleAt: assessment.eligibleAt });
+          if (assessment.status !== "REVIEW_DUE")
+            fail(409, "Status retensi latihan tidak konsisten.");
+          candidates.push({ ...item, eligibleAt: assessment.eligibleAt });
         }
         await tx.auditLog.create({ data: {
           actorId: officer.operator.userId, activeRole: officer.role,

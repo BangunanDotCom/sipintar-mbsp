@@ -3,7 +3,7 @@ import { syntheticRecordOverlay, recordAction } from "./synthetic-record-overlay
 import { trainingRemindersEnabled } from "./training-reminders.js";
 import { enqueueTechnicalReminders } from "./training-technical-reminders.js";
 import { reconcileSyntheticLedger } from "./synthetic-financial-reconciliation.js";
-import { technicalConsolidation } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
+import { technicalConsolidation, overdueTechnicalDepartments } from "../../../packages/shared/src/synthetic-technical-consolidation.js";
 import { stateFor } from "./synthetic-completion-journal.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { trainingLetterPdf, unicodeTrainingPdf, trainingPdfDigest, UnsupportedTrainingGlyph } from "./synthetic-letter-pdf.js";
@@ -286,9 +286,10 @@ function registerCompletion(api: FastifyInstance, config: Config) {
         },
       };
     }
+    const now = Date.now();
     return {
       ...stats,
-      consolidation: technicalConsolidation(state, Date.now()),
+      consolidation: technicalConsolidation(state, now),
       decisions: state.decisions,
       decisionSigned: state.decisionSigned,
       response: state.response,
@@ -296,11 +297,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
       returnedPapers: state.returnedPapers,
       bktEnabled, bkt:state.bkt, technicalHistory:state.technicalHistory, recordsEnabled:recordsEnabled && role === "PPSK",
       referral: state.referral,
-      overdue: Boolean(
-        state.referral &&
-        Date.now() >= state.referral.deadline &&
-        state.referral.departments.some((d) => !state.referral?.comments[d]),
-      ),
+      overdue: overdueTechnicalDepartments(state, now).length > 0,
     };
   }
 
@@ -356,11 +353,8 @@ function registerCompletion(api: FastifyInstance, config: Config) {
               role === "PERANCANG_BANDAR" || role === "KEJURUTERAAN"
                 ? [role]
                 : (state.referral?.departments ?? []);
-            const overdue = Boolean(
-              !state.closed &&
-              state.referral &&
-              now >= state.referral.deadline &&
-              responsible.some((department) => !state.referral?.comments[department]),
+            const overdue = overdueTechnicalDepartments(state, now).some(
+              (department) => responsible.includes(department),
             );
             if ((view === "open" && state.closed) ||
                 (view === "closed" && !state.closed) ||

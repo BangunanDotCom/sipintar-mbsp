@@ -1,5 +1,6 @@
+import type { Prisma } from "@prisma/client";
 import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { reconcileSyntheticLedger } from "../apps/api/src/synthetic-financial-reconciliation";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -317,6 +318,46 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
+      const reportPath = root + "/reports/applications";
+      const referral = await db.auditLog.findFirstOrThrow({
+        where:{target:id,action:"SYNTHETIC_PORTAL_COMPLETION",metadata:{path:["command","action"],equals:"REFER"}},
+      });
+      const openedAt = Date.now() - 7 * 86_400_000 - 60_000;
+      await db.auditLog.update({where:{id:referral.id},data:{
+        createdAt:new Date(openedAt),
+        metadata:{...(referral.metadata as object),timestamp:openedAt},
+      }});
+      expect((await command(pic,3,"RETURN_COMMENT",{
+        department:"PERANCANG_BANDAR",reason:"Ulasan selepas tempoh dikembalikan.",
+      })).statusCode).toBe(200);
+      phaseOffset++;
+      try {
+        const deadline = openedAt + 7 * 86_400_000;
+        for (const [timestamp, expected] of [[deadline-1,0],[deadline,1],[deadline+1,1]]) {
+          const clock = vi.spyOn(Date,"now").mockReturnValue(timestamp);
+          try {
+            const detail = await app.inject({url:completion,headers:pic});
+            expect(detail.json().consolidation.departments.filter(
+              ({status}: {status:string})=>status==="OVERDUE",
+            )).toHaveLength(expected);
+            const report = await app.inject({url:reportPath,headers:ppsk});
+            expect(report.statusCode,report.body).toBe(200);
+            expect(report.json().rows.find(({status}: {status:string})=>status==="REGISTERED").overdue).toBe(expected);
+            expect((await app.inject({url:reportPath+"?format=csv",headers:ppsk})).body)
+              .toContain(`SPU,REGISTERED,1,1,0,1,${expected},0`);
+          } finally {
+            clock.mockRestore();
+          }
+        }
+      } finally {
+        await db.auditLog.update({where:{id:referral.id},data:{
+          createdAt:referral.createdAt,metadata:referral.metadata as object,
+        }});
+      }
+      expect((await command(planning,3,"COMMENT",{
+        general:"Semakan perancang muktamad latihan",details:[],
+      })).statusCode).toBe(200);
+      phaseOffset++;
       expect(
         (
           await command(pic, 3, "SUBMIT_PAPER", {
@@ -329,9 +370,9 @@ it.runIf(Boolean(kitFile))(
         submittedPaperVersion: 4 + phaseOffset,
         departments: [
           { department: "PERANCANG_BANDAR", status: "RECEIVED",
-            current: { general: "Semakan perancang dipinda" },
-            previous: { comment: { general: "Semakan perancang latihan" } },
-            returnReason: "Ulasan latihan dipulangkan." },
+            current: { general: "Semakan perancang muktamad latihan" },
+            previous: { comment: { general: "Semakan perancang dipinda" } },
+            returnReason: "Ulasan selepas tempoh dikembalikan." },
           { department: "KEJURUTERAAN", status: "RECEIVED" },
         ],
       });
@@ -376,7 +417,7 @@ it.runIf(Boolean(kitFile))(
       expect((await command(pic,5,"SUBMIT_PAPER",{summary:"Kertas Pertimbangan dipinda"})).statusCode).toBe(200);
       const papers = (await app.inject({url:completion,headers:pic})).json();
       expect(papers.technicalHistory.filter((event:{department:string}) => event.department==="PERANCANG_BANDAR")
-        .map((event:{action:string})=>event.action)).toEqual(["SUBMITTED","RETURNED","SUBMITTED"]);
+        .map((event:{action:string})=>event.action)).toEqual(["SUBMITTED","RETURNED","SUBMITTED","RETURNED","SUBMITTED"]);
       expect(papers.papers[0].summary).toBe("Kertas Pertimbangan dipinda");
       expect(papers.returnedPapers[0]).toMatchObject({
         reason:"Pinda ringkasan latihan.",
@@ -749,6 +790,56 @@ it.runIf(Boolean(kitFile))(
           where: { target: id, action: "SYNTHETIC_PORTAL_COMPLETION" },
         }),
       ).toBe(19+phaseOffset);
+      if (process.env.STAYLINK_RETENTION_VOLUME_FIXTURE === "true") {
+        const original = await db.syntheticSubmission.findUniqueOrThrow({where:{id}});
+        const snapshot = original.snapshot as Prisma.InputJsonObject;
+        const history = await db.auditLog.findMany({
+          where:{target:id,action:{in:["SYNTHETIC_PORTAL_COMPLETION",
+            "SYNTHETIC_PORTAL_COMPLETE","SYNTHETIC_PORTAL_REGISTERED"]}},
+          select:{action:true,actorId:true,activeRole:true,metadata:true,createdAt:true},
+        });
+        const now = Date.now();
+        const fixtures = Array.from({length:120},(_,index)=>({
+          key:randomUUID(), index, districtId:index>=100 ? "SPT" : "SPU",
+          closedAt:new Date(now - (index>=90 && index<100 ? 1 : 2*86_400_000) - index*100),
+        }));
+        await db.syntheticSubmission.createMany({data:fixtures.map(({key,index,districtId})=>({
+          ...original, id:key, key, previousId:null,draftVersion:original.draftVersion+100+index,
+          snapshot:{...snapshot,districtId},
+        }))});
+        await db.auditLog.createMany({data:fixtures.flatMap(({key,index,closedAt})=>[
+          ...history.map((event)=>({...event,target:key,
+            createdAt:(event.metadata as {command?:{action:string}})?.command?.action==="CLOSE"
+              ? closedAt : event.createdAt,
+            metadata:event.metadata===null ? undefined : event.metadata as Prisma.InputJsonValue,
+          })),
+          ...((index<25 || (index>=30 && index<45)) ? [{
+            target:key,action:"SYNTHETIC_ARCHIVE_CONTROL",
+            metadata:{version:1,action:index<25 ? "PLACE_HOLD" : "REQUEST_REOPEN",reason:"Latihan retensi pukal"},
+          }] : []),
+        ])});
+        const previousRetention = process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+        process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS="1";
+        try {
+          const expected = fixtures.filter(({index})=>(index>=25 && index<30)||(index>=45 && index<90)).map(({key})=>key);
+          const found: string[] = [];
+          let page: number | null = 1;
+          while(page!==null) {
+            expect(page).toBeLessThanOrEqual(3);
+            const response = await app.inject({url:retentionPath+"&page="+page,headers:ppsk});
+            expect(response.statusCode,response.body).toBe(200);
+            const data: {items:{id:string}[];nextPage:number|null} = response.json();
+            expect(data.items).toHaveLength(page===3 ? 10 : 20);
+            found.push(...data.items.map(({id})=>id));
+            page=data.nextPage;
+          }
+          expect(found).toEqual(expected);
+          expect(new Set(found).size).toBe(50);
+        } finally {
+          if(previousRetention===undefined) delete process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+          else process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS=previousRetention;
+        }
+      }
     } finally {
       await app.close();
       flags.forEach((key,index)=>{
