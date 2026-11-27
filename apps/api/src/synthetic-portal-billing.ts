@@ -1,3 +1,5 @@
+import { enqueueCaseReminder } from "./training-case-reminders.js";
+import { trainingRemindersEnabled } from "./training-reminders.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { createHmac, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -18,6 +20,7 @@ import {
 } from "./synthetic-billing.js";
 import {
   loadSyntheticReview,
+  lockSyntheticOfficer,
   lockSyntheticReview,
   requireCurrentSyntheticEvidence,
   syntheticReviewOfficer,
@@ -235,6 +238,13 @@ export async function syntheticBillingRoutes(
             },
           });
         }
+        if (output.status === "ISSUED" && trainingRemindersEnabled()) {
+          await enqueueCaseReminder(tx, id, "CASE_FIRST_PAYMENT", {
+            context: { reference: output.invoice.id },
+            availableAt: new Date(output.invoice.expiresAt),
+          });
+        }
+        await lockSyntheticOfficer(tx, officer);
         return { ...invoiceView(output.ledger), result: output.status };
       }
       const invoice = ledger.invoices[0];
@@ -250,7 +260,7 @@ export async function syntheticBillingRoutes(
       const signature = createHmac("sha256", secret)
         .update(payload)
         .digest("hex");
-      return storeReconciliation(
+      const reconciled = await storeReconciliation(
         tx,
         id,
         ledger,
@@ -259,6 +269,8 @@ export async function syntheticBillingRoutes(
         secret,
         officer.operator.userId,
       );
+      await lockSyntheticOfficer(tx, officer);
+      return reconciled;
     });
   });
 

@@ -34,3 +34,12 @@ Pada prototaip makmal berasingan, kedua-dua fon menemui glyph untuk sampel Han d
 ## Perkara pada calon penyatuan
 
 Kewangan perlu menerima sumber yang layak untuk rekonsiliasi, rawatan percanggahan selepas komit dan pengasingan kuasa sebelum klasifikasi rasmi bagi tunggakan, kegagalan, refund/dispute, reversal atau pelarasan. Padanan dan backfill baharu menggunakan rekod sintetik per serahan. Jabatan Bangunan, JTIK dan Unit Rekod perlu menentukan klasifikasi lampiran BKT dan siapa boleh menerima atau meminda lampiran selepas snapshot. Team 2 dan JTIK perlu menerima kesetaraan replay, lock, indeks dan pemulihan Oracle; Team 3 perlu menilai semula A/B pada calon yang akan diuji pengguna. [Matriks penerimaan sistem](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)
+
+## Penerimaan calon baki fungsi
+
+- **Jabatan Bangunan dan JTIK** perlu menerima aturan pemangku, pengagihan semula dan konflik peranan, skop lampiran BKT, jadual notifikasi, penerima e-mel serta format surat. Peringatan kes digunakan dalam latihan dan kandungan e-mel hanya meminta pengguna menyemak portal.
+- **Unit Rekod** perlu menerima tarikh mula retensi, pengecualian legal hold, proses kelulusan buka semula bebas, perubahan versi serta bukti pelupusan. Tempoh konfigurasi retensi calon digunakan untuk senarai semakan latihan.
+- **Kewangan** perlu menerima pemisahan pemohon/penyemak/pelulus, kaedah menentukan baki layak refund dan peralihan reversal/dispute, serta spesifikasi MBSPPay sandbox.
+- **Team 2, Team 3 dan JTIK** perlu menerima reka bentuk replay sejarah panjang sebelum kontrak skema rentas provider diubah, menjalankan semakan P0 bebas pada calon dan mengesahkan pemulihan stor, kunci serta prestasi Oracle sebenar.
+
+Noto Sans CJK dan Noto Naskh Arabic mempunyai lesen SIL Open Font License. Ujian Chromium/Poppler mengekalkan 120 baris dan mengekstrak Han serta amaun, sementara mod raw Poppler mengekalkan tertib visual Jawi. Mod lalai dan layout memulihkan tertib logik selepas penanda bidirectional dibuang. Ujian ini belum meliputi salinan teks pada pembaca PDF lain. Pengujian terasing menggunakan fon sistem dan tiada fon tambahan diedarkan. [Noto CJK](https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE) · [Noto Naskh Arabic](https://github.com/google/fonts/blob/main/ofl/notonaskharabic/OFL.txt)

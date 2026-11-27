@@ -210,6 +210,34 @@ it.runIf(Boolean(kitFile))(
       const intake=await app.inject({url:root+"/completion/queue",headers:council});
       expect(intake.json().cases).toContainEqual(expect.objectContaining({id,version:0,bkt:null}));
 
+      const councilId = kit.accounts.find(({ label }) => label === "urus-setia")!.id;
+      const intakeGrant = await db.userRoleAssignment.findFirstOrThrow({
+        where: { userId: councilId, roleId: "URUS_SETIA_JK", districtId: "SPU" },
+      });
+      await db.$executeRaw`CREATE FUNCTION training_expiring_intake() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.action = 'SYNTHETIC_PORTAL_COMPLETION' AND NEW.metadata->'command'->>'action' = 'RECEIVE_BKT'
+          THEN PERFORM pg_sleep(3.5); END IF;
+          RETURN NEW;
+        END $$`;
+      try {
+        await db.$executeRaw`CREATE TRIGGER training_expiring_intake BEFORE INSERT ON audit_logs
+          FOR EACH ROW EXECUTE FUNCTION training_expiring_intake()`;
+        await db.userRoleAssignment.update({
+          where: { id: intakeGrant.id }, data: { endsAt: new Date(Date.now() + 3_000) },
+        });
+        const expired = await command(council, 0, "RECEIVE_BKT", { note: "Penerimaan tidak boleh dikomit." });
+        expect(expired.statusCode, expired.body).toBe(403);
+        expect(await db.auditLog.count({
+          where: { target: id, action: "SYNTHETIC_PORTAL_COMPLETION",
+            metadata: { path: ["command", "action"], equals: "RECEIVE_BKT" } },
+        })).toBe(0);
+      } finally {
+        await db.$executeRaw`DROP TRIGGER IF EXISTS training_expiring_intake ON audit_logs`;
+        await db.$executeRaw`DROP FUNCTION training_expiring_intake()`;
+        await db.userRoleAssignment.update({where:{id:intakeGrant.id},data:{endsAt:intakeGrant.endsAt}});
+      }
+
       expect((await command(council,0,"RECEIVE_BKT",{note:"Penerimaan BKT latihan."})).statusCode).toBe(200);
       phaseOffset++;
       expect((await command(pic, 0, "REFER")).statusCode).toBe(200);
@@ -514,9 +542,29 @@ it.runIf(Boolean(kitFile))(
           await app.inject({ url: appUrl + "/completion", headers: owner })
         ).json().closed,
       ).toBe(true);
-      await db.trainingReminderOutbox.updateMany({where:{draftId:draft,status:"PENDING"},data:{availableAt:new Date(0)}});
-      await deliverTrainingReminders(async ()=>{throw new Error("A closed case must not send.");});
-      expect(await db.trainingReminderOutbox.count({where:{draftId:draft,status:"CANCELLED"}})).toBe(7);
+      await db.trainingReminderOutbox.updateMany({where:{draftId:draft,status:"PENDING",kind:{startsWith:"TECH_"}},data:{availableAt:new Date(0)}});
+      const caseMail: string[] = [];
+      await deliverTrainingReminders(async (mail)=>{ caseMail.push(mail.subject); });
+      expect(caseMail.sort()).toEqual([
+        "Keputusan dan surat latihan tersedia",
+        "Keputusan dan surat latihan tersedia",
+        "Permohonan latihan ditutup",
+      ]);
+      const outbox = await db.trainingReminderOutbox.findMany({
+        where:{ draftId:draft, kind:{startsWith:"CASE_"} },
+        select:{ kind:true, status:true, notifiedAt:true },
+      });
+      expect(outbox.filter(({status})=>status==="SENT").map(({kind})=>kind).sort())
+        .toEqual(["CASE_CLOSED","CASE_LETTER","CASE_LETTER"]);
+      await db.trainingReminderOutbox.updateMany({
+        where:{draftId:draft,status:"PENDING",kind:{startsWith:"CASE_"}},
+        data:{availableAt:new Date(0)},
+      });
+      await deliverTrainingReminders(async ()=>{ throw Error("Reminder is stale after closure or settlement."); });
+      expect(await db.trainingReminderOutbox.count({
+        where:{draftId:draft,status:"CANCELLED",kind:{in:["CASE_FIRST_PAYMENT","CASE_SECOND_PAYMENT","CASE_SKB_EXPIRY"]}},
+      })).toBe(2);
+      expect(await db.trainingReminderOutbox.count({where:{draftId:draft,status:"CANCELLED",kind:{startsWith:"TECH_"}}})).toBe(7);
 
       const ledgerPath=completion+"/financial-ledger";
       const financial=await app.inject({url:ledgerPath,headers:ppsk});
@@ -605,12 +653,42 @@ it.runIf(Boolean(kitFile))(
       expect(await db.syntheticFinancialEntry.count({ where: { submissionId: legacyId } })).toBe(0);
       expect(await db.auditLog.count({ where: { target: legacyId } })).toBe(0);
 
+      const retentionPath = root + "/reports/archive?review=retention";
+      const oldRetention = process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+      expect((await app.inject({url:retentionPath,headers:ppsk})).statusCode).toBe(404);
+      const closure = await db.auditLog.findFirstOrThrow({
+        where:{target:id,action:"SYNTHETIC_PORTAL_COMPLETION",metadata:{path:["command","action"],equals:"CLOSE"}},
+      });
+      const archivedAt = new Date(Date.now() - 2 * 86_400_000);
+      await db.auditLog.update({where:{id:closure.id},data:{createdAt:archivedAt}});
+      process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS = "1";
+      try {
+        const candidate = await app.inject({url:retentionPath,headers:ppsk});
+        expect(candidate.statusCode,candidate.body).toBe(200);
+        expect(candidate.json()).toMatchObject({retentionDays:1,items:[{
+          id,eligibleAt:new Date(archivedAt.getTime()+86_400_000).toISOString(),
+        }]});
+        expect((await app.inject({url:retentionPath,headers:pic})).statusCode).toBe(404);
+        expect((await app.inject({url:retentionPath,headers:spt})).statusCode).toBe(404);
+        expect(await db.auditLog.count({where:{target:"SPU",action:"SYNTHETIC_RETENTION_REVIEW_ACCESSED"}})).toBe(1);
+        const held = await post(completion+"/records",ppsk,{version:0,action:"PLACE_HOLD",reason:"Semak fail untuk retensi"});
+        expect(held.statusCode,held.body).toBe(200);
+        expect((await app.inject({url:retentionPath,headers:ppsk})).json().items).toEqual([]);
+        const released = await post(completion+"/records",ppsk,{version:1,action:"RELEASE_HOLD",reason:"Selesai semakan fail"});
+        expect(released.statusCode,released.body).toBe(200);
+        expect((await app.inject({url:retentionPath,headers:ppsk})).json().items).toHaveLength(1);
+      } finally {
+        if (oldRetention === undefined) delete process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+        else process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS = oldRetention;
+        await db.auditLog.update({where:{id:closure.id},data:{createdAt:closure.createdAt}});
+      }
+
       const records=completion+"/records";
       expect((await post(records, spt, {version:0,action:"PLACE_HOLD",reason:"Semak fail latihan"})).statusCode).toBe(404);
-      const hold=await post(records,ppsk,{version:0,action:"PLACE_HOLD",reason:"Semak fail latihan"});
+      const hold=await post(records,ppsk,{version:2,action:"PLACE_HOLD",reason:"Semak fail latihan"});
       expect(hold.json()).toMatchObject({legalHold:true,disposalEnabled:false});
       expect((await post(records,ppsk,{version:0,action:"REQUEST_REOPEN",reason:"Permintaan lapuk"})).statusCode).toBe(409);
-      const reopen=await post(records,ppsk,{version:1,action:"REQUEST_REOPEN",reason:"Rujukan permohonan latihan"});
+      const reopen=await post(records,ppsk,{version:3,action:"REQUEST_REOPEN",reason:"Rujukan permohonan latihan"});
       expect(reopen.json()).toMatchObject({legalHold:true,reopenRequested:true,reopenEnabled:false});
       expect((await app.inject({url:appUrl+"/completion",headers:owner})).json().closed).toBe(true);
       const archivePath = root + "/reports/archive";

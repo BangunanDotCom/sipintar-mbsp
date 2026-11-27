@@ -1,3 +1,7 @@
+import { completionSandbox } from "./synthetic-completion-gate.js";
+import { syntheticRecordOverlay, syntheticRetentionDays, syntheticRetentionReview } from "./synthetic-record-overlay.js";
+import { stateFor } from "./synthetic-completion-journal.js";
+import { lockSyntheticReview } from "./synthetic-portal-review.js";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -169,15 +173,19 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
   });
   portal.get("/reports/archive", async (req) => {
     const officer = await syntheticReviewOfficer(req);
-    const { page } = z
+    const { page, review } = z
       .strictObject({
         page: z.coerce.number().int().min(1).max(100_000).default(1),
+        review: z.enum(["retention"]).optional(),
       })
       .parse(req.query);
-    const items = await db.$transaction(
+    const retention = completionSandbox() && officer.role === "PPSK"
+      ? syntheticRetentionDays() : null;
+    if (review && retention === null) fail(404, "Semakan retensi latihan tidak tersedia.");
+    const result = await db.$transaction(
       async (tx) => {
         await lockSyntheticOfficer(tx, officer);
-        return tx.$queryRaw<{ id: string; closedAt: Date }[]>`
+        const rows = await tx.$queryRaw<{ id: string; closedAt: Date }[]>`
         SELECT s.id, max(a."createdAt") AS "closedAt"
         FROM synthetic_submissions s
         JOIN audit_logs a ON a.target = s.id AND a.outcome = 'SUCCESS'
@@ -189,16 +197,41 @@ export async function syntheticAnalyticsRoutes(portal: FastifyInstance) {
             WHERE child."previousId" = s.id AND child."draftId" = s."draftId")
           AND ${liveAuthority}
         GROUP BY s.id
+        ${review && retention !== null ? Prisma.sql`HAVING max(a."createdAt") <=
+          CURRENT_TIMESTAMP - (${retention} * interval '1 day')` : Prisma.empty}
         ORDER BY max(a."createdAt") DESC, s.id DESC
         LIMIT 21 OFFSET ${(page - 1) * 20}
       `;
+        const items = rows.slice(0, 20);
+        const nextPage = rows.length === 21 ? page + 1 : null;
+        if (!review || retention === null) return { items, nextPage };
+
+        const candidates = [];
+        const now = new Date();
+        for (const item of items) {
+          const { snapshot } = await lockSyntheticReview(tx, item.id, officer, { forWrite: false });
+          const scopes = snapshot.units.flatMap(({ id, floorIds }) =>
+            floorIds.map((floorId) => ({ unitId: id, floorId })));
+          if (!(await stateFor(tx, item.id, scopes)).closed)
+            fail(409, "Penutupan arkib latihan tidak konsisten.");
+          const overlay = await syntheticRecordOverlay(tx, item.id);
+          const assessment = syntheticRetentionReview(item.closedAt, retention, overlay, now);
+          if (assessment.status === "REVIEW_DUE")
+            candidates.push({ ...item, eligibleAt: assessment.eligibleAt });
+        }
+        await tx.auditLog.create({ data: {
+          actorId: officer.operator.userId, activeRole: officer.role,
+          action: "SYNTHETIC_RETENTION_REVIEW_ACCESSED", target: officer.district,
+          metadata: { page, count: candidates.length, retentionDays: retention },
+        } });
+        return { items: candidates, nextPage };
       },
       { isolationLevel: "RepeatableRead" },
     );
     return {
       district: officer.district,
-      items: items.slice(0, 20),
-      nextPage: items.length === 21 ? page + 1 : null,
+      ...result,
+      ...(retention !== null && { retentionDays: retention }),
     };
   });
 }

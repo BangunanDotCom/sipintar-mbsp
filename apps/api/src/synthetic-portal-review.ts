@@ -1,3 +1,5 @@
+import { enqueueCaseReminder } from "./training-case-reminders.js";
+import { trainingRemindersEnabled } from "./training-reminders.js";
 import { configuredPrecheckProvider, precheckResult, runSyntheticPrecheck } from "./synthetic-precheck.js";
 import { floorFacilitySchema } from "../../../packages/shared/src/floor-summary.js";
 import { Prisma } from "@prisma/client";
@@ -703,6 +705,10 @@ export async function syntheticReviewRoutes(portal: FastifyInstance) {
                 : "PPSK mendaftar permohonan latihan. Semak status dalam portal.",
         },
       });
+      if (input.action === "REQUEST_CORRECTION" && trainingRemindersEnabled()) {
+        await enqueueCaseReminder(tx, id, "CASE_CORRECTION", { portalAlreadyNotified: true });
+      }
+      await lockSyntheticOfficer(tx, officer);
       return {
         status: decision.next.status,
         version: decision.next.version,

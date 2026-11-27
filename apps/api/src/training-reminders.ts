@@ -1,3 +1,4 @@
+import { caseReminderCopy, eligibleCaseRecipient } from "./training-case-reminders.js";
 import { eligibleTechnicalRecipient } from "./training-technical-reminders.js";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -175,6 +176,7 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
       const row = await tx.trainingReminderOutbox.findUniqueOrThrow({
         where: { id },
       });
+      const caseCopy = caseReminderCopy(row.kind);
       let email: string | null = null;
       if (row.kind === "DRAFT_INACTIVE") {
         const [draft] = await readEligible(
@@ -184,6 +186,8 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
           const account = await tx.user.findUnique({where:{id:row.recipientId},select:{email:true}});
           email = account?.email ?? null;
         }
+      } else if (caseCopy) {
+        email = await eligibleCaseRecipient(tx, row);
       } else {
         email = await eligibleTechnicalRecipient(tx, row);
       }
@@ -198,10 +202,10 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         });
         return null;
       }
-      const copy = reminderCopy(row.kind);
+      const copy = caseCopy ?? reminderCopy(row.kind);
       if (row.kind !== "DRAFT_INACTIVE" && !row.notifiedAt) {
         await tx.notification.create({data:{
-          userId:row.recipientId,type:"TRAINING_TECHNICAL_REMINDER",title:copy.subject,message:copy.text,
+          userId:row.recipientId,type:caseCopy ? "TRAINING_CASE_REMINDER" : "TRAINING_TECHNICAL_REMINDER",title:copy.subject,message:copy.text,
         }});
         await tx.trainingReminderOutbox.update({where:{id},data:{notifiedAt:new Date()}});
       }

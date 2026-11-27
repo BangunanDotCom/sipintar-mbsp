@@ -20,6 +20,7 @@ on:
       - 'issue-68-advanced-functional'
       - 'issue-68-core-functional-completion'
       - 'issue-68-system-consolidation'
+      - 'issue-68-remaining-functional-completion'
 
 permissions:
   contents: read

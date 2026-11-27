@@ -76,9 +76,10 @@ function ApplicationReport({ userId, role }: { userId:string; role:string }) {
 
 function ApplicationArchive({userId, role}:{userId:string;role:string}) {
   const [page,setPage] = useState(0);
-  const query = useQuery<{district:string;items:{id:string;closedAt:string}[];nextPage:number|null}>({
-    queryKey:["synthetic-archive",userId,role,page],
-    queryFn:()=>api(`/synthetic-portal/reports/archive?page=${page}`),
+  const [retention, setRetention] = useState(false);
+  const query = useQuery<{district:string;items:{id:string;closedAt:string;eligibleAt?:string}[];nextPage:number|null;retentionDays?:number}>({
+    queryKey:["synthetic-archive",userId,role,page,retention],
+    queryFn:()=>api(`/synthetic-portal/reports/archive?page=${page}${retention ? "&review=retention" : ""}`),
     enabled:page>0,
     retry:false,
   });
@@ -90,9 +91,18 @@ function ApplicationArchive({userId, role}:{userId:string;role:string}) {
       {query.isFetching && <p role="status">Memuatkan arkib…</p>}
       {query.isError && <p role="alert">{syntheticErrorMessage(query.error)}</p>}
       {query.data && <p>{query.data.district} · Halaman {page}</p>}
+      {(query.data?.retentionDays !== undefined || retention) && <label>
+        <input type="checkbox" checked={retention} onChange={(event)=>{
+          setRetention(event.currentTarget.checked);
+          setPage(1);
+        }} /> Hanya calon semakan retensi latihan
+      </label>}
+      {retention && query.data?.retentionDays && <p>Tempoh simulasi {query.data.retentionDays} hari.</p>}
       {query.data?.items.length===0 && <p>Tiada kes dalam skop halaman ini.</p>}
-      <ul>{query.data?.items.map(({id,closedAt})=>(
-        <li key={id}><code>{id}</code> · {new Date(closedAt).toLocaleString("ms-MY",{timeZone:"Asia/Kuala_Lumpur"})}</li>
+      <ul>{query.data?.items.map(({id,closedAt,eligibleAt})=>(
+        <li key={id}><code>{id}</code> · {new Date(closedAt).toLocaleString("ms-MY",{timeZone:"Asia/Kuala_Lumpur"})}
+          {eligibleAt && <> · Layak disemak {new Date(eligibleAt).toLocaleDateString("ms-MY",{timeZone:"Asia/Kuala_Lumpur"})}</>}
+        </li>
       ))}</ul>
       {query.data && <div>
         <button className="button small secondary" type="button" disabled={page<=1} onClick={()=>setPage(page-1)}>Sebelumnya</button>

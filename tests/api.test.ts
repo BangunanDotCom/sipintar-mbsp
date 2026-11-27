@@ -2792,11 +2792,19 @@ describe("Issue 31 integrated synthetic portal", () => {
       expect(
         (await request(ppsk, firstPath, "POST", correction)).statusCode,
       ).toBe(403);
-      const returned = await request(pic, firstPath, "POST", correction);
-      expect(returned.statusCode, returned.body).toBe(200);
-      expect(
-        (await request(pic, firstPath, "POST", correction)).statusCode,
-      ).toBe(409);
+      const previousReminderFlag = process.env.STAYLINK_SYNTHETIC_REMINDERS;
+      process.env.STAYLINK_SYNTHETIC_REMINDERS = "true";
+      try {
+        const returned = await request(pic, firstPath, "POST", correction);
+        expect(returned.statusCode, returned.body).toBe(200);
+        expect((await request(pic, firstPath, "POST", correction)).statusCode).toBe(409);
+        expect(await db.trainingReminderOutbox.count({
+          where:{draftId:id,kind:"CASE_CORRECTION",status:"PENDING"},
+        })).toBe(1);
+      } finally {
+        if (previousReminderFlag === undefined) delete process.env.STAYLINK_SYNTHETIC_REMINDERS;
+        else process.env.STAYLINK_SYNTHETIC_REMINDERS = previousReminderFlag;
+      }
       expect((await request(applicant, path)).json().correctionReason).toBe(
         correction.reason,
       );
@@ -2814,6 +2822,19 @@ describe("Issue 31 integrated synthetic portal", () => {
         previousId: first,
       });
       expect(next.statusCode, next.body).toBe(200);
+      process.env.STAYLINK_SYNTHETIC_REMINDERS = "true";
+      try {
+        const { deliverTrainingReminders } = await import("../apps/api/src/training-reminders");
+        const sent: string[] = [];
+        await deliverTrainingReminders(async ({subject})=>{ sent.push(subject); });
+        expect(sent).not.toContain("Pembetulan permohonan latihan diperlukan");
+        expect(await db.trainingReminderOutbox.count({
+          where:{draftId:id,kind:"CASE_CORRECTION",status:"CANCELLED"},
+        })).toBe(1);
+      } finally {
+        if (previousReminderFlag === undefined) delete process.env.STAYLINK_SYNTHETIC_REMINDERS;
+        else process.env.STAYLINK_SYNTHETIC_REMINDERS = previousReminderFlag;
+      }
       const second = next.json().id as string;
       const secondPath = `${root}/reviews/${second}`;
       const comparison = await request(pic, secondPath + "/comparison");
