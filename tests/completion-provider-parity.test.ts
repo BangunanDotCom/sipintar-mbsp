@@ -782,6 +782,114 @@ for (const { name, enabled } of variants) {
                 version: version + offset,
                 command: { action, ...other },
               });
+            if (
+              capacity === "INDIVIDUAL" &&
+              process.env.STAYLINK_COMPLETION_VERIFY_CORRECTION === "true"
+            ) {
+              async function requestCorrection(caseId: string) {
+                const response = await post(root + "/reviews/" + caseId, pic, {
+                  action: "REQUEST_CORRECTION",
+                  version: 1,
+                  reason: "Sila semak draf latihan",
+                });
+                expect(response.statusCode, response.body).toBe(200);
+              }
+              async function resubmit(previousId: string) {
+                const info = (
+                  await app.inject({ url: appUrl, headers: owner })
+                ).json();
+                const edited = await app.inject({
+                  method: "PATCH",
+                  url: "/api/application-drafts/" + draft,
+                  headers: owner,
+                  payload: {
+                    version: info.draftVersion,
+                    capacity: "INDIVIDUAL",
+                    notes: "Pembetulan sintetik " + previousId,
+                  },
+                });
+                expect(edited.statusCode, edited.body).toBe(200);
+                const updated = (
+                  await app.inject({ url: appUrl, headers: owner })
+                ).json();
+                const sent = await post(appUrl + "/submit", owner, {
+                  ...submission,
+                  version: updated.draftVersion,
+                  previousId,
+                  key: randomUUID(),
+                });
+                expect(sent.statusCode, sent.body).toBe(200);
+                return sent.json().id as string;
+              }
+              async function deliverCorrections(
+                caseId: string,
+                sent: string[],
+              ) {
+                const key = `CASE_CORRECTION:${caseId}:once`;
+                if (ownerPool)
+                  await ownerPool.transaction((c) =>
+                    c.execute(
+                      `UPDATE STL_TRAINING_REMINDER_OUTBOX
+                  SET AVAILABLE_AT=SYSTIMESTAMP-INTERVAL '3650' DAY
+                  WHERE DEDUPE_KEY=:key`,
+                      { key },
+                    ),
+                  );
+                else
+                  await db.trainingReminderOutbox.update({
+                    where: { dedupeKey: key },
+                    data: { availableAt: new Date(0) },
+                  });
+                const email =
+                  owner.cookie.slice("staylink=".length) + "@example.test";
+                const sender = async (message: {
+                  to: string;
+                  messageId: string;
+                }) => {
+                  if (message.to === email) sent.push(message.messageId);
+                };
+                if (ownerPool) {
+                  const worker = await createOraclePool(
+                    oracleConfig(
+                      parse(
+                        await readFile(process.env.ORACLE_CONSOL_WORKER_ENV!),
+                      ),
+                      "runtime",
+                    ),
+                  );
+                  try {
+                    await createOracleTrainingReminders(worker).deliver(sender);
+                  } finally {
+                    await worker.close();
+                  }
+                  const [row] = await ownerPool.use((c) =>
+                    queryRows<{ STATUS: string }>(
+                      c,
+                      "SELECT STATUS FROM STL_TRAINING_REMINDER_OUTBOX WHERE DEDUPE_KEY=:key",
+                      { key },
+                    ),
+                  );
+                  return row.STATUS;
+                }
+                await deliverTrainingReminders(sender);
+                return (
+                  await db.trainingReminderOutbox.findUniqueOrThrow({
+                    where: { dedupeKey: key },
+                  })
+                ).status;
+              }
+              const sent: string[] = [];
+              await requestCorrection(id);
+              expect(await deliverCorrections(id, sent)).toBe("SENT");
+              const corrected = await resubmit(id);
+              await requestCorrection(corrected);
+              await resubmit(corrected);
+              expect(await deliverCorrections(corrected, sent)).toBe(
+                "CANCELLED",
+              );
+              expect(sent).toHaveLength(1);
+              return;
+            }
             const precheck = await post(review + "/precheck", pic, {
               version: 1,
               mode: "AUTO",

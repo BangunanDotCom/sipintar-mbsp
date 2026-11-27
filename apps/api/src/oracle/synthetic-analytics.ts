@@ -123,6 +123,7 @@ export function createOracleSyntheticAnalytics(
               counts,
               (grouped.get(id) ?? []).map((row) => ({
                 ...row,
+                timestamp: row.timestamp ?? row.createdAt.getTime(),
                 departments: row.departments
                   ? JSON.parse(row.departments)
                   : null,

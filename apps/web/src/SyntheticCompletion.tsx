@@ -250,7 +250,7 @@ function CompletionForm({
     children?: React.ReactNode,
   ) {
     return (
-      <form className="synthetic-controls" onSubmit={submit}>
+      <form className="synthetic-controls" aria-label={label} onSubmit={submit}>
         <label>
           {label}
           <textarea

@@ -336,6 +336,7 @@ test("officers complete a registered case through the browser", async ({
           .filter({ has: page.getByText(submissionId, { exact: true }) });
   }
   async function act(page: Page, button: Locator) {
+    await expect(button).toBeEnabled();
     const result = page.waitForResponse(
       (response) =>
         response
@@ -348,13 +349,12 @@ test("officers complete a registered case through the browser", async ({
     expect(response.status(), await response.text()).toBe(200);
   }
   async function note(page: Page, card: Locator, label: string, text: string) {
-    const input = card.getByLabel(label, { exact: true });
+    const input = card.getByRole("textbox", { name: label, exact: true });
     await input.fill(text);
     await act(
       page,
       card
-        .locator("form")
-        .filter({ has: input })
+        .getByRole("form", { name: label, exact: true })
         .getByRole("button", { name: "Rekod tindakan latihan" }),
     );
   }

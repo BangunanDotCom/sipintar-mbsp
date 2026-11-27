@@ -1,4 +1,7 @@
-import type { CompletionState } from "./synthetic-completion.js";
+import {
+  completionOverdue,
+  type CompletionState,
+} from "./synthetic-completion.js";
 
 export function technicalConsolidation(state: CompletionState, now: number) {
   const { referral } = state;
@@ -21,7 +24,7 @@ export function technicalConsolidation(state: CompletionState, now: number) {
         department,
         status: current
           ? "RECEIVED"
-          : now >= referral.deadline
+          : completionOverdue(state, now, department)
             ? "OVERDUE"
             : "PENDING",
         currentVersion: current ? (latest?.version ?? null) : null,

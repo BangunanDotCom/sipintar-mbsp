@@ -177,7 +177,9 @@ export async function deliverTrainingReminders(
 ) {
   if (!trainingRemindersEnabled())
     throw Error("Gerbang peringatan latihan tertutup.");
-  const now = new Date();
+  const [{ now }] = await database.$queryRaw<
+    { now: Date }[]
+  >`SELECT clock_timestamp() AS now`;
   await database.trainingReminderOutbox.updateMany({
     where: { status: "SENDING", leaseUntil: { lte: now } },
     data: { status: "UNCERTAIN", leaseUntil: null, lastError: "LEASE_EXPIRED" },
@@ -193,14 +195,17 @@ export async function deliverTrainingReminders(
     take: 25,
   });
   for (const { id } of ready) {
-    const leaseUntil = new Date(Date.now() + 60_000);
     const row = await database.$transaction(async (tx) => {
+      const [{ claimTime }] = await tx.$queryRaw<
+        { claimTime: Date }[]
+      >`SELECT clock_timestamp() AS "claimTime"`;
+      const leaseUntil = new Date(claimTime.getTime() + 60_000);
       const claimed = await tx.trainingReminderOutbox.updateMany({
         where: {
           id,
           status: { in: ["PENDING", "FAILED"] },
           attempts: { lt: 5 },
-          availableAt: { lte: new Date() },
+          availableAt: { lte: claimTime },
         },
         data: { status: "SENDING", leaseUntil, attempts: { increment: 1 } },
       });
@@ -291,10 +296,10 @@ export async function deliverTrainingReminders(
           data: { notifiedAt: new Date() },
         });
       }
-      return { ...row, email, copy };
+      return { ...row, email, copy, leaseUntil };
     });
     if (!row) continue;
-    const claim = { id, status: "SENDING", leaseUntil };
+    const claim = { id, status: "SENDING", leaseUntil: row.leaseUntil };
     try {
       await send({
         to: row.email,

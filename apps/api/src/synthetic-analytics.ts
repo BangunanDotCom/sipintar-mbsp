@@ -11,7 +11,7 @@ import {
 } from "../../../packages/shared/src/synthetic-completion.js";
 import { Prisma } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { fail } from "./auth.js";
 import { postgresAuth, type AuthRepository } from "./auth-repository.js";
 import { db } from "./core.js";
@@ -166,30 +166,42 @@ export async function retentionPage(
   const items: ArchiveRow[] = [];
   for await (const row of rows) {
     if (row.closedAt.getTime() + days * 86_400_000 > now.getTime()) continue;
-    const submission = await tx.activeSubmission(row.id, officer);
-    if (!submission) continue;
-    await tx.requireSnapshotAuthority(submission);
-    const {
-      snapshot: { units },
-    } = await loadSyntheticReview(tx, submission);
-    const scopes = units.flatMap(({ id, floorIds }) =>
-      floorIds.map((floorId) => ({ unitId: id, floorId })),
-    );
-    if (!(await stateFor({ events }, row.id, scopes)).closed)
-      fail(409, "Penutupan arkib latihan tidak konsisten.");
-    const overlay = await syntheticRecordOverlay(tx, row.id);
-    const assessment = syntheticRetentionReview(
-      row.closedAt,
-      days,
-      overlay,
-      now,
-    );
-    if (assessment.status !== "REVIEW_DUE") continue;
-    if (offset > 0) {
-      offset--;
+    try {
+      const submission = await tx.activeSubmission(row.id, officer);
+      if (!submission) continue;
+      await tx.requireSnapshotAuthority(submission);
+      const {
+        snapshot: { units },
+      } = await loadSyntheticReview(tx, submission);
+      const scopes = units.flatMap(({ id, floorIds }) =>
+        floorIds.map((floorId) => ({ unitId: id, floorId })),
+      );
+      if (!(await stateFor({ events }, row.id, scopes)).closed)
+        fail(409, "Penutupan arkib latihan tidak konsisten.");
+      const overlay = await syntheticRecordOverlay(tx, row.id);
+      const assessment = syntheticRetentionReview(
+        row.closedAt,
+        days,
+        overlay,
+        now,
+      );
+      if (assessment.status !== "REVIEW_DUE") continue;
+      if (offset > 0) {
+        offset--;
+        continue;
+      }
+      items.push({ ...row, eligibleAt: assessment.eligibleAt });
+    } catch (error) {
+      // Invalid snapshots or control journals are excluded before paging.
+      if (
+        !(error instanceof ZodError) &&
+        (!(error instanceof Error) ||
+          !("statusCode" in error) ||
+          ![404, 409].includes(Number(error.statusCode)))
+      )
+        throw error;
       continue;
     }
-    items.push({ ...row, eligibleAt: assessment.eligibleAt });
     if (items.length === 21) break;
   }
   await tx.audit({
@@ -241,6 +253,7 @@ export async function syntheticAnalyticsRoutes(
       : await db.$transaction(
           async (tx) => {
             await lockSyntheticOfficer(tx, officer);
+            await tx.$executeRaw`SET LOCAL jit = off`;
             const counts = new Map<Counts["status"], Counts>();
             const now = Date.now();
             let cursor = "";
@@ -269,7 +282,8 @@ export async function syntheticAnalyticsRoutes(
                   CASE WHEN a.metadata->>'version' ~ '^[0-9]{1,3}$'
                     THEN (a.metadata->>'version')::int END AS version,
                   CASE WHEN a.metadata->>'timestamp' ~ '^[0-9]{1,15}$'
-                    THEN (a.metadata->>'timestamp')::double precision END AS timestamp
+                    THEN (a.metadata->>'timestamp')::double precision
+                    ELSE extract(epoch FROM a."createdAt")::double precision * 1000 END AS timestamp
                 FROM eligible LEFT JOIN audit_logs a ON a.target=eligible.id
                   AND a.outcome='SUCCESS' AND a.action LIKE 'SYNTHETIC_PORTAL_%'
                 ORDER BY eligible.id
