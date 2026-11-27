@@ -70,3 +70,7 @@ Jejak calon ini merangkumi komit fungsi `6aeef89`, ujian dan matriks `da6e285`, 
 ## Calon penyatuan berasaskan PR #77
 
 Cabang `issue-68-system-consolidation` mengekalkan sejarah PostgreSQL PR #69, #73, #75, #76 dan #77. Ia menambah dry-run padanan lejar, backfill per serahan melalui opt-in latihan dan jadual konsolidasi BKT/Kertas Pertimbangan berskop. Indeks audit baharu menyokong carian jurnal berdasarkan kes, tindakan dan hasil. [Matriks penerimaan sistem dan bukti](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)
+
+## Calon baki fungsi berasaskan PR #79
+
+Calon `issue-68-remaining-functional-completion` menambah peringatan kes pemohon dalam outbox tunggal, semakan akhir kuasa bagi tindakan semakan, bil dan Completion serta penapis retensi latihan PPSK yang mengambil kira legal hold dan permohonan buka semula. Audit P0 bebas, penerimaan integrasi rasmi dan kesetaraan Oracle masih terbuka. Complete Release dan Go Live kekal NO-GO. [Matriks dan baki fungsi](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)

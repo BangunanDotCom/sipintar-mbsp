@@ -1,3 +1,4 @@
+import { enqueueCompletionReminders } from "./training-case-reminders.js";
 import { syntheticRecordOverlay, recordAction } from "./synthetic-record-overlay.js";
 import { trainingRemindersEnabled } from "./training-reminders.js";
 import { enqueueTechnicalReminders } from "./training-technical-reminders.js";
@@ -174,7 +175,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     const record = await lockedRow(tx, id, district);
     if (record.row.actorId === officer.userId)
       fail(404, "Serahan latihan tidak ditemui.");
-    return { record, actor: { userId: officer.userId, role } };
+    return { record, operator: officer, actor: { userId: officer.userId, role } };
   }
 
   async function mutate(
@@ -235,6 +236,8 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           } as Prisma.InputJsonValue,
         },
       });
+      if (trainingRemindersEnabled())
+        await enqueueCompletionReminders(tx, id, command.action, result.state, timestamp);
     }
     return result.state;
   }
@@ -525,7 +528,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
     if (manager && manager.district !== district)
       fail(404, "Tiada pelantikan latihan dalam skop ini.");
     return db.$transaction(async (tx) => {
-      const { record, actor } = manager
+      const { record, operator, actor } = manager
         ? await (async () => {
             const { snapshot, state } = await lockSyntheticReview(
               tx,
@@ -536,6 +539,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
               fail(409, "Daftar serahan latihan dahulu.");
             return {
               record: inventory(snapshot),
+              operator: manager.operator,
               actor: { userId: manager.operator.userId, role: manager.role },
             };
           })()
@@ -593,6 +597,7 @@ function registerCompletion(api: FastifyInstance, config: Config) {
           },
         });
       }
+      await lockSyntheticPortalSession(tx, operator, actor.role, district);
       return scopedView(next, record, actor.role);
     });
   });
