@@ -70,7 +70,7 @@ Sumber. [Matriks pemilik #79](https://github.com/BangunanDotCom/sipintar-mbsp/bl
 
 ### Bukti susulan 27 November 2026 (MYT)
 
-Calon kekal `4af4851428be5265aae09bc404c38b417eac79af`. Team 3 menambah asersi sementara pada salinan suite Completion di ruang makmal. Kod aplikasi, migrasi, dan suite dalam cabang calon tidak berubah. Permintaan HTTP disuntik melalui Fastify dengan sesi fixture dan PostgreSQL 16 sebenar di loopback. Dry-run melaporkan empat slot kosong dan tidak menulis entri. Permintaan PPSK luar daerah mendapat 404.
+Calon kekal `4af4851428be5265aae09bc404c38b417eac79af`. Team 3 menambah asersi sementara pada salinan suite Completion di ruang makmal. Kod aplikasi, migrasi, dan suite dalam cabang calon tidak berubah. Permintaan HTTP disuntik melalui Fastify dengan sesi fixture dan PostgreSQL 16 sebenar di loopback. Dry-run melaporkan empat slot kosong dan tidak menulis entri. Permintaan daripada sesi PIC SPT mendapat 404.
 
 | Senario | Hasil bebas |
 |---|---|
@@ -78,7 +78,7 @@ Calon kekal `4af4851428be5265aae09bc404c38b417eac79af`. Team 3 menambah asersi s
 | Dua permintaan sah serentak selepas pulih | HTTP 200 dan 200, `added=4` dan `added=0`, 4 entri kekal, 1 audit kejayaan |
 | Rujukan lewat selepas ulasan Perancang dipulangkan | Butiran teknikal `OVERDUE`, laporan satu kes dengan `overdue=0`. Asersi merekod ketidakpadanan yang diperhatikan. Kriteria fungsi FA-03 kekal **FAIL** |
 
-Bukti bersamaan pada Oracle masih **BLOCKED** sehingga fungsi #79 dipindahkan ke calon Oracle. Semakan pekerja PostgreSQL dan pembetulan tempoh peranan P0 pada calon sama masih belum tersedia.
+Bukti bersamaan pada Oracle masih **BLOCKED** sehingga fungsi #79 dipindahkan ke calon Oracle. Profil keistimewaan PostgreSQL belum tersedia. Gerbang akhir jemputan disemak berasingan pada calon #80. [Audit calon #80](PENERIMAAN-P0-PR80.md)
 
 ## Perjalanan pengguna dan liputan bebas
 
