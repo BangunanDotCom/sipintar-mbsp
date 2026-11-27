@@ -1,3 +1,4 @@
+import { SyntheticCompletionCase } from "./SyntheticCompletion";
 import { SyntheticReviewComparison } from "./SyntheticReviewComparison";
 import { SyntheticInvoice } from "./SyntheticInvoice";
 import { useRef, useState } from "react";
@@ -743,6 +744,11 @@ function SyntheticReviewCard({
               />
             )}
           </div>
+          <SyntheticCompletionCase
+            path={`/synthetic-portal/completion/${review.id}`}
+            identity={userId}
+            role={role}
+          />
         </>
       )}
     </article>

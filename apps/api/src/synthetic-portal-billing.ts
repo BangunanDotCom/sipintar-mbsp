@@ -32,7 +32,7 @@ const callbackBody = z.strictObject({ payload: z.string().max(4096) });
 const minute = 60_000;
 
 export async function legacyFirstPayment(
-  tx: SyntheticReviewTransaction,
+  tx: Pick<SyntheticReviewTransaction, "ledgerEvents">,
   id: string,
 ) {
   const events = await tx.ledgerEvents(id, [issued, settled]);

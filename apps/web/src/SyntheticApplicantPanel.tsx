@@ -1,3 +1,4 @@
+import { SyntheticCompletionCase } from "./SyntheticCompletion";
 import { Link } from "react-router-dom";
 import { preliminarySupportingDocuments } from "../../../packages/shared/src/supporting-documents";
 import { SyntheticInvoice } from "./SyntheticInvoice";
@@ -340,7 +341,10 @@ export function SyntheticApplicantPanel({
         </p>
       )}
       {state.reviewStatus === "REGISTERED" && (
-        <SyntheticInvoice path={`${root}/billing`} identity={userId} />
+        <>
+          <SyntheticInvoice path={`${root}/billing`} identity={userId} />
+          <SyntheticCompletionCase path={`${root}/completion`} identity={userId} role="PEMOHON" />
+        </>
       )}
     </section>
   );

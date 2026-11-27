@@ -58,7 +58,13 @@ it.each([
         append,
       },
     };
-    const args = [tx, submissionId, "synthetic-case", [unitId], []] as const;
+    const args = [
+      tx,
+      submissionId,
+      "synthetic-case",
+      [unitId],
+      [] as { unitId: string; floorId: string }[],
+    ] as const;
     const dryRun = await reconcileSyntheticLedger(...args, false);
     expect(dryRun).toMatchObject({
       added: 0,

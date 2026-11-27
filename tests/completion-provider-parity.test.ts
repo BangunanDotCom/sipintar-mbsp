@@ -194,7 +194,9 @@ for (const { name, enabled } of variants) {
                     ? "pemohon"
                     : role === "PPSK"
                       ? "ppsk"
-                      : role,
+                      : role === "PIC_KAWASAN" && districtId === "SPT"
+                        ? "PIC_KAWASAN_SPT"
+                        : role,
                 email,
                 password,
                 mfaSecretBase32,
@@ -1260,7 +1262,7 @@ for (const { name, enabled } of variants) {
                   {
                     id: "single-unit",
                     submissionId: id,
-                    draftPath: `/permohonan/draf/${draft}/premis`,
+                    draftPath: `/permohonan/draf/${draft}/semakan`,
                   },
                 ],
               };

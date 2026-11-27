@@ -70,6 +70,7 @@ test("PPSK filters and downloads the district summary with MFA", async ({
       password: string;
       mfaSecretBase32: string;
     }[];
+    scenarios: { submissionId?: string }[];
   };
   const officer = kit.accounts.find(({ label }) => label === "ppsk")!;
   const login = await page.request.post("/api/auth/login", {
@@ -128,17 +129,90 @@ test("PPSK filters and downloads the district summary with MFA", async ({
   await expect(
     page.getByText("SPU · Halaman 1", { exact: true }),
   ).toBeVisible();
-  await page.getByText("Lejar kewangan latihan", { exact: true }).click();
+  const id = kit.scenarios[0]?.submissionId;
+  const card = id
+    ? page.getByRole("article", { name: "Serahan sintetik " + id })
+    : page;
+  await card.getByText("Lejar kewangan latihan", { exact: true }).click();
   await expect(page.getByText(/Peringkat 1 · Resit · 5000 sen/)).toBeVisible();
   if (process.env.STAYLINK_SYNTHETIC_RECORDS === "true") {
-    await page
+    await card
       .getByText("Daftar kawalan rekod latihan", { exact: true })
       .click();
     await expect(
       page.getByText("Rekod ditahan", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup."),
+      card.getByText("Permohonan buka semula direkodkan. Kes kekal ditutup."),
     ).toBeVisible();
   }
 });
+
+for (const assignment of [
+  "PIC_KAWASAN",
+  "PIC_KAWASAN_SPT",
+  "PERANCANG_BANDAR",
+  "KEJURUTERAAN",
+  "URUS_SETIA_JK",
+  "PEGAWAI_PENANDATANGAN",
+]) {
+  test(`training dashboard requires MFA and respects the ${assignment} assignment`, async ({
+    page,
+    baseURL,
+  }) => {
+    const kitPath = process.env.STAYLINK_COMPLETION_KIT_FILE;
+    test.skip(
+      !kitPath || process.env.STAYLINK_COMPLETION_PARITY_BROWSER !== "true",
+    );
+    const { totp } = await import("../../apps/api/src/auth");
+    const { accounts } = JSON.parse(await readFile(kitPath!, "utf8")) as {
+      accounts: {
+        label: string;
+        email: string;
+        password: string;
+        mfaSecretBase32: string;
+      }[];
+    };
+    const { email, password, mfaSecretBase32 } = accounts.find(
+      ({ label }) => label === assignment,
+    )!;
+    const login = await page.request.post("/api/auth/login", {
+      data: { email, password },
+    });
+    expect(login.status()).toBe(200);
+    const headers = {
+      Origin: new URL(baseURL!).origin,
+      "X-CSRF-Token": (await login.json()).csrf,
+    };
+    const queue = "/api/synthetic-portal/completion/queue";
+    expect((await page.request.get(queue)).status()).toBe(403);
+    expect(
+      (
+        await page.request.post("/api/auth/mfa/verify", {
+          headers,
+          data: { code: totp(mfaSecretBase32).generate() },
+        })
+      ).status(),
+    ).toBe(200);
+    const roleId =
+      assignment === "PIC_KAWASAN_SPT" ? "PIC_KAWASAN" : assignment;
+    expect(
+      (
+        await page.request.post("/api/auth/role", { headers, data: { roleId } })
+      ).status(),
+    ).toBe(200);
+    const wrongDistrict = assignment === "PIC_KAWASAN_SPT";
+    expect((await page.request.get(queue)).status()).toBe(
+      wrongDistrict ? 404 : 200,
+    );
+    await page.goto("/dashboard");
+    await expect(
+      page.getByRole("heading", { name: /^Selamat datang/ }),
+    ).toBeVisible();
+    const completion = page.getByRole("heading", {
+      name: "Tugasan keputusan latihan",
+    });
+    if (wrongDistrict) await expect(completion).toHaveCount(0);
+    else await expect(completion).toBeVisible();
+  });
+}
