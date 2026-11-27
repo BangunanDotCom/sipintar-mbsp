@@ -39,6 +39,6 @@ Semak profil tersebut dan fallback rollback bersama Team 1. Untuk Oracle, gunaka
 
 ## Keputusan makmal dan gerbang penerimaan
 
-- Oracle Free 23.26.4 menerima pemasangan baharu dan ulangan 001–005 serta naik taraf 004→005. Eksport/pemulihan logik mengembalikan 33 jadual dengan checksum sepadan. Import PostgreSQL mengembalikan 33 jadual. Checksum sandaran yang diubah ditolak. Kunci MFA sintetik asal menyahsulit faktor yang dipulihkan. Kunci berbeza ditolak.
+- Oracle Free 23.26.4 menerima pemasangan baharu dan ulangan 001–005 serta naik taraf 004→005. Eksport/pemulihan logik mengembalikan 33 jadual dengan checksum sepadan. Import PostgreSQL mengembalikan 33 jadual. Checksum sandaran yang diubah ditolak. Kunci MFA sintetik asal menyahsulit faktor yang dipulihkan. Kunci berbeza ditolak. Latihan undur makmal memulihkan titik pra-005 pada pemasangan 001–004 berasingan dan mengesahkan checksum bagi 33 jadual.
 - Bagi Oracle 19.30 SE2, JTIK masih perlu mengesahkan Inventori INDECS dan pengecualian `SYS_IL`, profil grants, prestasi dan kapasiti, scanner terurus, proksi TLS/cache/redaksi, serta pemulihan fizikal, RPO/RTO, DR dan cutover. Jalankan semua ujian dengan data sintetik dalam PDB yang diluluskan. Untuk undur 005, bina semula salinan dengan kod dan inventori 004 selepas memulihkan titik sandaran pra-naik taraf. Jangan sunting sejarah migrasi untuk menerima DDL separa. Uji titik undur dan pelan replay delta bersama JTIK sebelum cutover.
 - Audit bebas Team 3 bersama bukti JTIK diperlukan untuk P0. Complete Release dan Go Live kekal **NO-GO**.
