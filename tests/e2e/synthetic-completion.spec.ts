@@ -414,21 +414,24 @@ test("officers complete a registered case through the browser", async ({
     );
     await council.reload();
     const decisions = caseCard(council);
-    const outcomes = decisions.getByLabel("Keputusan", { exact: true });
+    const decisionButton = decisions.getByRole("button", {
+      name: "Rekod keputusan mesyuarat latihan",
+    });
+    const form = decisions.locator("form").filter({
+      has: council.getByRole("button", {
+        name: "Rekod keputusan mesyuarat latihan",
+      }),
+    });
+    const outcomes = form.getByRole("combobox");
     await expect(outcomes).toHaveCount(4);
     for (let index = 0; index < 4; index++) {
       await outcomes.nth(index).selectOption(index ? "TOLAK" : "SK");
-      await decisions
-        .getByLabel("Alasan", { exact: true })
+      await form
+        .getByRole("textbox")
         .nth(index)
         .fill("Keputusan mesyuarat sintetik.");
     }
-    await act(
-      council,
-      decisions.getByRole("button", {
-        name: "Rekod keputusan mesyuarat latihan",
-      }),
-    );
+    await act(council, decisionButton);
     const signer = await login("penandatangan");
     await act(
       signer,
