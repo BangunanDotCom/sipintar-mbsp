@@ -1,8 +1,15 @@
 import type { CompletionState } from "./synthetic-completion.js";
 
+export function overdueTechnicalDepartments(state: CompletionState, now: number) {
+  const { referral } = state;
+  if (!referral || state.closed || now < referral.deadline) return [];
+  return referral.departments.filter((department) => !referral.comments[department]);
+}
+
 export function technicalConsolidation(state: CompletionState, now: number) {
   const { referral } = state;
   if (!referral) return null;
+  const overdue = overdueTechnicalDepartments(state, now);
   return {
     deadline: referral.deadline,
     submittedPaperVersion: referral.paperSubmitted
@@ -21,7 +28,7 @@ export function technicalConsolidation(state: CompletionState, now: number) {
         department,
         status: current
           ? "RECEIVED"
-          : now >= referral.deadline
+          : overdue.includes(department)
             ? "OVERDUE"
             : "PENDING",
         currentVersion: current ? (latest?.version ?? null) : null,

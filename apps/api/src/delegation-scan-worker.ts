@@ -20,6 +20,7 @@ async function hasLiveScope(
 ) {
   const rep = await db.companyRepresentative.findFirst({
     where: { id, companyId, company: { status: "ACTIVE" } },
+    select: { status: true, authorityType: true, startsAt: true, endsAt: true },
   });
   return Boolean(
     rep && rep.authorityType === authorityType && validRepresentative(rep, now),
@@ -119,8 +120,10 @@ export async function scanDelegationDocument(
   }
 
   return db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM company_representatives WHERE id = ${representativeId} FOR SHARE`;
-    await tx.$queryRaw`SELECT id FROM companies WHERE id = ${doc.companyId} FOR SHARE`;
+    const [scope] = await tx.$queryRaw<
+      { locked: number }[]
+    >`SELECT public.staylink_lock_delegation_scan(${representativeId}, ${doc.companyId}) AS locked`;
+    if (scope?.locked !== 1) return false;
     const finished = clock();
     if (
       !(await hasLiveScope(

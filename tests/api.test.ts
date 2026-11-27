@@ -891,6 +891,30 @@ describe("P0 surat kuasa Team 3", () => {
     await expectUnclaimed(f);
   });
 
+  it("rolls back an invitation if its verdict expires after acceptance writes", async () => {
+    const f = await delegatedInvitation();
+    await db.$executeRaw`CREATE FUNCTION training_expire_invitation_fixture() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action = 'COMPANY_INVITATION_ACCEPTED' THEN PERFORM pg_sleep(2.5); END IF;
+        RETURN NEW;
+      END $$`;
+    try {
+      await db.$executeRaw`CREATE TRIGGER training_expire_invitation_fixture BEFORE INSERT ON audit_logs
+        FOR EACH ROW EXECUTE FUNCTION training_expire_invitation_fixture()`;
+      await db.delegationDocument.update({where:{id:f.id},data:{scanValidUntil:new Date(Date.now()+2000)}});
+      const denied = await accept(f.recipient, f.raw);
+      expect(denied.statusCode,denied.body).toBe(403);
+      await expectUnclaimed(f);
+      expect(await db.auditLog.count({
+        where:{actorId:f.recipient.id,action:"COMPANY_INVITATION_ACCEPTED"},
+      })).toBe(0);
+    } finally {
+      await db.$executeRaw`DROP TRIGGER IF EXISTS training_expire_invitation_fixture ON audit_logs`;
+      await db.$executeRaw`DROP FUNCTION training_expire_invitation_fixture()`;
+    }
+  });
+
   it("B-P01 accepts once with a current exact proof", async () => {
     const f = await delegatedInvitation();
     expect((await accept(f.recipient, f.raw)).statusCode).toBe(200);
@@ -3609,7 +3633,7 @@ describe("Issue 31 integrated synthetic portal", () => {
     await db.auditLog.createMany({data:[0,1].map((index)=>({
       target:rows[index].id, action:"SYNTHETIC_PORTAL_COMPLETION", activeRole:"PIC_KAWASAN",
       actorId:pic.id,createdAt:new Date("2026-07-24T00:00:00Z"),
-      metadata:{version:1,command:{action:"REFER"}},
+      metadata:{version:1,timestamp:Date.parse("2026-07-24T00:00:00Z"),command:{action:"REFER"}},
     }))});
     await db.auditLog.createMany({data:["PERANCANG_BANDAR","KEJURUTERAAN"].map((activeRole,index)=>({
       target:rows[1].id,action:"SYNTHETIC_PORTAL_COMPLETION",activeRole,

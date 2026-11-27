@@ -43,3 +43,7 @@ Kewangan perlu menerima sumber yang layak untuk rekonsiliasi, rawatan percanggah
 - **Team 2, Team 3 dan JTIK** perlu menerima reka bentuk replay sejarah panjang sebelum kontrak skema rentas provider diubah, menjalankan semakan P0 bebas pada calon dan mengesahkan pemulihan stor, kunci serta prestasi Oracle sebenar.
 
 Noto Sans CJK dan Noto Naskh Arabic mempunyai lesen SIL Open Font License. Ujian Chromium/Poppler mengekalkan 120 baris dan mengekstrak Han serta amaun, sementara mod raw Poppler mengekalkan tertib visual Jawi. Mod lalai dan layout memulihkan tertib logik selepas penanda bidirectional dibuang. Ujian ini belum meliputi salinan teks pada pembaca PDF lain. Pengujian terasing menggunakan fon sistem dan tiada fon tambahan diedarkan. [Noto CJK](https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE) · [Noto Naskh Arabic](https://github.com/google/fonts/blob/main/ofl/notonaskharabic/OFL.txt)
+
+## Gerbang selepas pembetulan P1 dan retensi
+
+Team 2 perlu menerima timestamp serta urutan versi epoch rujukan, status ulasan terakhir mengikut jabatan, dan penapisan rekod sebelum pagination dalam port Oracle. Team 3 perlu mengulang bukti SLA, pemulangan ulasan, sempadan waktu dan kuasa yang luput sebelum komit. Jadual retensi rasmi, pemasangan keistimewaan pengimbas dan stor, serta kelulusan pembayaran kekal pada pemilik keputusan masing-masing. [Matriks penerimaan](STAYLINK-SYSTEM-ACCEPTANCE-MATRIX.md)

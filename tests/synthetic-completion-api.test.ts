@@ -1,5 +1,6 @@
+import type { Prisma } from "@prisma/client";
 import { deliverTrainingReminders } from "../apps/api/src/training-reminders";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { reconcileSyntheticLedger } from "../apps/api/src/synthetic-financial-reconciliation";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -317,6 +318,46 @@ it.runIf(Boolean(kitFile))(
           })
         ).statusCode,
       ).toBe(200);
+      const reportPath = root + "/reports/applications";
+      const referral = await db.auditLog.findFirstOrThrow({
+        where:{target:id,action:"SYNTHETIC_PORTAL_COMPLETION",metadata:{path:["command","action"],equals:"REFER"}},
+      });
+      const openedAt = Date.now() - 7 * 86_400_000 - 60_000;
+      await db.auditLog.update({where:{id:referral.id},data:{
+        createdAt:new Date(openedAt),
+        metadata:{...(referral.metadata as object),timestamp:openedAt},
+      }});
+      expect((await command(pic,3,"RETURN_COMMENT",{
+        department:"PERANCANG_BANDAR",reason:"Ulasan selepas tempoh dikembalikan.",
+      })).statusCode).toBe(200);
+      phaseOffset++;
+      try {
+        const deadline = openedAt + 7 * 86_400_000;
+        for (const [timestamp, expected] of [[deadline-1,0],[deadline,1],[deadline+1,1]]) {
+          const clock = vi.spyOn(Date,"now").mockReturnValue(timestamp);
+          try {
+            const detail = await app.inject({url:completion,headers:pic});
+            expect(detail.json().consolidation.departments.filter(
+              ({status}: {status:string})=>status==="OVERDUE",
+            )).toHaveLength(expected);
+            const report = await app.inject({url:reportPath,headers:ppsk});
+            expect(report.statusCode,report.body).toBe(200);
+            expect(report.json().rows.find(({status}: {status:string})=>status==="REGISTERED").overdue).toBe(expected);
+            expect((await app.inject({url:reportPath+"?format=csv",headers:ppsk})).body)
+              .toContain(`SPU,REGISTERED,1,1,0,1,${expected},0`);
+          } finally {
+            clock.mockRestore();
+          }
+        }
+      } finally {
+        await db.auditLog.update({where:{id:referral.id},data:{
+          createdAt:referral.createdAt,metadata:referral.metadata as object,
+        }});
+      }
+      expect((await command(planning,3,"COMMENT",{
+        general:"Semakan perancang muktamad latihan",details:[],
+      })).statusCode).toBe(200);
+      phaseOffset++;
       expect(
         (
           await command(pic, 3, "SUBMIT_PAPER", {
@@ -329,9 +370,9 @@ it.runIf(Boolean(kitFile))(
         submittedPaperVersion: 4 + phaseOffset,
         departments: [
           { department: "PERANCANG_BANDAR", status: "RECEIVED",
-            current: { general: "Semakan perancang dipinda" },
-            previous: { comment: { general: "Semakan perancang latihan" } },
-            returnReason: "Ulasan latihan dipulangkan." },
+            current: { general: "Semakan perancang muktamad latihan" },
+            previous: { comment: { general: "Semakan perancang dipinda" } },
+            returnReason: "Ulasan selepas tempoh dikembalikan." },
           { department: "KEJURUTERAAN", status: "RECEIVED" },
         ],
       });
@@ -376,12 +417,14 @@ it.runIf(Boolean(kitFile))(
       expect((await command(pic,5,"SUBMIT_PAPER",{summary:"Kertas Pertimbangan dipinda"})).statusCode).toBe(200);
       const papers = (await app.inject({url:completion,headers:pic})).json();
       expect(papers.technicalHistory.filter((event:{department:string}) => event.department==="PERANCANG_BANDAR")
-        .map((event:{action:string})=>event.action)).toEqual(["SUBMITTED","RETURNED","SUBMITTED"]);
+        .map((event:{action:string})=>event.action)).toEqual(["SUBMITTED","RETURNED","SUBMITTED","RETURNED","SUBMITTED"]);
       expect(papers.papers[0].summary).toBe("Kertas Pertimbangan dipinda");
       expect(papers.returnedPapers[0]).toMatchObject({
         reason:"Pinda ringkasan latihan.",
         paper:{summary:"Kertas Pertimbangan latihan",submittedVersion:4+phaseOffset},
       });
+      const exerciseSkb = process.env.STAYLINK_SKB_MAIL_FIXTURE === "true";
+      const skbDate = new Date(Date.now() + 24 * 3_600_000).toISOString().slice(0,10);
       const outcomes = scopes.map(
         (
           { unitId, floorId }: { unitId: string; floorId: string },
@@ -389,7 +432,8 @@ it.runIf(Boolean(kitFile))(
         ) => ({
           unitId,
           floorId,
-          outcome: i ? "TANGGUH" : "SK",
+          outcome: i ? "TANGGUH" : exerciseSkb ? "SKB" : "SK",
+          ...(!i && exerciseSkb ? { conditionUntil: skbDate } : {}),
           reason: "Keputusan mesyuarat latihan",
         }),
       );
@@ -402,6 +446,45 @@ it.runIf(Boolean(kitFile))(
           .statusCode,
       ).toBe(200);
       expect((await command(signer, 7, "SIGN")).statusCode).toBe(200);
+      if (exerciseSkb) {
+        const outbox = await db.trainingReminderOutbox.findFirstOrThrow({
+          where:{draftId:draft,kind:"CASE_SKB_EXPIRY"},
+        });
+        const midnightMyt = Date.parse(skbDate+"T16:00:00.000Z");
+        expect(outbox.availableAt.getTime()).toBe(midnightMyt);
+        const { default: nodemailer } = await import("nodemailer");
+        const transport = nodemailer.createTransport({
+          host:"127.0.0.1",port:1025,secure:false,ignoreTLS:true,
+        });
+        const messageId = `<staylink-training-${outbox.id}@example.test>`;
+        const sent: string[] = [];
+        const send: Parameters<typeof deliverTrainingReminders>[0] = async (mail) => {
+          if (mail.messageId !== messageId) return;
+          await transport.sendMail({from:"STAYLink LATIHAN <noreply@example.test>",...mail});
+          sent.push(mail.messageId);
+        };
+        vi.useFakeTimers({toFake:["Date"]});
+        try {
+          vi.setSystemTime(midnightMyt-1);
+          await deliverTrainingReminders(send);
+          expect(await db.trainingReminderOutbox.findUnique({where:{id:outbox.id}}))
+            .toMatchObject({status:"PENDING",attempts:0});
+          vi.setSystemTime(midnightMyt);
+          await Promise.all([deliverTrainingReminders(send),deliverTrainingReminders(send)]);
+          vi.setSystemTime(midnightMyt+1);
+          await deliverTrainingReminders(send);
+          expect(sent).toEqual([messageId]);
+          const messages = await fetch("http://127.0.0.1:8025/api/v1/messages");
+          expect(messages.status).toBe(200);
+          expect((await messages.json() as { messages: { MessageID?:string }[] }).messages
+            .filter(({MessageID})=>MessageID?.includes(outbox.id))).toHaveLength(1);
+          expect(await db.trainingReminderOutbox.findUnique({where:{id:outbox.id}}))
+            .toMatchObject({status:"SENT",attempts:1});
+        } finally {
+          vi.useRealTimers();
+          transport.close();
+        }
+      }
       const first = await app.inject({
         url: appUrl + "/completion/letters/1",
         headers: owner,
@@ -476,7 +559,8 @@ it.runIf(Boolean(kitFile))(
       expect(
         (
           await command(council, 14, "DECIDE", {
-            decisions: [{ ...outcomes[1], outcome: "SK" }],
+            decisions: (exerciseSkb ? outcomes : [outcomes[1]])
+              .map(({unitId,floorId,reason}: {unitId:string;floorId:string;reason:string})=>({unitId,floorId,reason,outcome:"SK"})),
           })
         ).statusCode,
       ).toBe(200);
@@ -547,7 +631,7 @@ it.runIf(Boolean(kitFile))(
       await deliverTrainingReminders(async (mail)=>{ caseMail.push(mail.subject); });
       expect(caseMail.sort()).toEqual([
         "Keputusan dan surat latihan tersedia",
-        "Keputusan dan surat latihan tersedia",
+        ...(!exerciseSkb ? ["Keputusan dan surat latihan tersedia"] : []),
         "Permohonan latihan ditutup",
       ]);
       const outbox = await db.trainingReminderOutbox.findMany({
@@ -555,7 +639,7 @@ it.runIf(Boolean(kitFile))(
         select:{ kind:true, status:true, notifiedAt:true },
       });
       expect(outbox.filter(({status})=>status==="SENT").map(({kind})=>kind).sort())
-        .toEqual(["CASE_CLOSED","CASE_LETTER","CASE_LETTER"]);
+        .toEqual(["CASE_CLOSED","CASE_LETTER","CASE_LETTER",...(exerciseSkb ? ["CASE_SKB_EXPIRY"] : [])]);
       await db.trainingReminderOutbox.updateMany({
         where:{draftId:draft,status:"PENDING",kind:{startsWith:"CASE_"}},
         data:{availableAt:new Date(0)},
@@ -749,6 +833,56 @@ it.runIf(Boolean(kitFile))(
           where: { target: id, action: "SYNTHETIC_PORTAL_COMPLETION" },
         }),
       ).toBe(19+phaseOffset);
+      if (process.env.STAYLINK_RETENTION_VOLUME_FIXTURE === "true") {
+        const original = await db.syntheticSubmission.findUniqueOrThrow({where:{id}});
+        const snapshot = original.snapshot as Prisma.InputJsonObject;
+        const history = await db.auditLog.findMany({
+          where:{target:id,action:{in:["SYNTHETIC_PORTAL_COMPLETION",
+            "SYNTHETIC_PORTAL_COMPLETE","SYNTHETIC_PORTAL_REGISTERED"]}},
+          select:{action:true,actorId:true,activeRole:true,metadata:true,createdAt:true},
+        });
+        const now = Date.now();
+        const fixtures = Array.from({length:120},(_,index)=>({
+          key:randomUUID(), index, districtId:index>=100 ? "SPT" : "SPU",
+          closedAt:new Date(now - (index>=90 && index<100 ? 1 : 2*86_400_000) - index*100),
+        }));
+        await db.syntheticSubmission.createMany({data:fixtures.map(({key,index,districtId})=>({
+          ...original, id:key, key, previousId:null,draftVersion:original.draftVersion+100+index,
+          snapshot:{...snapshot,districtId},
+        }))});
+        await db.auditLog.createMany({data:fixtures.flatMap(({key,index,closedAt})=>[
+          ...history.map((event)=>({...event,target:key,
+            createdAt:(event.metadata as {command?:{action:string}})?.command?.action==="CLOSE"
+              ? closedAt : event.createdAt,
+            metadata:event.metadata===null ? undefined : event.metadata as Prisma.InputJsonValue,
+          })),
+          ...((index<25 || (index>=30 && index<45)) ? [{
+            target:key,action:"SYNTHETIC_ARCHIVE_CONTROL",
+            metadata:{version:1,action:index<25 ? "PLACE_HOLD" : "REQUEST_REOPEN",reason:"Latihan retensi pukal"},
+          }] : []),
+        ])});
+        const previousRetention = process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+        process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS="1";
+        try {
+          const expected = fixtures.filter(({index})=>(index>=25 && index<30)||(index>=45 && index<90)).map(({key})=>key);
+          const found: string[] = [];
+          let page: number | null = 1;
+          while(page!==null) {
+            expect(page).toBeLessThanOrEqual(3);
+            const response = await app.inject({url:retentionPath+"&page="+page,headers:ppsk});
+            expect(response.statusCode,response.body).toBe(200);
+            const data: {items:{id:string}[];nextPage:number|null} = response.json();
+            expect(data.items).toHaveLength(page===3 ? 10 : 20);
+            found.push(...data.items.map(({id})=>id));
+            page=data.nextPage;
+          }
+          expect(found).toEqual(expected);
+          expect(new Set(found).size).toBe(50);
+        } finally {
+          if(previousRetention===undefined) delete process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS;
+          else process.env.STAYLINK_SYNTHETIC_RETENTION_DAYS=previousRetention;
+        }
+      }
     } finally {
       await app.close();
       flags.forEach((key,index)=>{
