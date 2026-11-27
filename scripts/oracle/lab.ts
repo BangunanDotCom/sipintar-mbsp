@@ -188,12 +188,15 @@ export async function prepareOracleLab(env: NodeJS.ProcessEnv) {
             `GRANT ${privileges} ON ${table} TO ${runtime.user}`,
           );
       }
-      if (env.ORACLE_LAB_ENABLE_COMPLETION === "true")
+      if (
+        env.ORACLE_LAB_ENABLE_COMPLETION === "true" ||
+        env.ORACLE_LAB_ENABLE_SUBMISSIONS === "true"
+      )
         await connection.execute(
           `GRANT SELECT ON STL_SCHEMA_MIGRATIONS TO ${runtime.user}`,
         );
       const outboxInsert =
-        "ID, DRAFT_ID, DRAFT_VERSION, RECIPIENT_ID, SOURCE, DEDUPE_KEY, KIND, CONTEXT, AVAILABLE_AT";
+        "ID, DRAFT_ID, DRAFT_VERSION, RECIPIENT_ID, SOURCE, DEDUPE_KEY, KIND, CONTEXT, AVAILABLE_AT, NOTIFIED_AT";
       async function grantScopedInsert(
         table: string,
         columns: string,

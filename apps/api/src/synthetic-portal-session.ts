@@ -28,7 +28,9 @@ export async function lockSyntheticPortalSession(
   await tx.$queryRaw`SELECT id FROM user_role_assignments
       WHERE "userId" = ${operator.userId} AND "roleId" = ${roleId} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM sessions WHERE id = ${operator.id} FOR SHARE`;
-  const now = new Date();
+  const [{ now }] = await tx.$queryRaw<
+    { now: Date }[]
+  >`SELECT clock_timestamp() AS now`;
   const active = await tx.session.findFirst({
     where: {
       id: operator.id,

@@ -58,9 +58,12 @@ export async function postgresCompanyAuthority(
   tx: Prisma.TransactionClient,
   userId: string,
   companyId: string,
+  lock = true,
 ) {
-  await tx.$queryRaw`SELECT id FROM companies WHERE id = ${companyId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM company_representatives WHERE "userId" = ${userId} AND "companyId" = ${companyId} FOR SHARE`;
+  if (lock) {
+    await tx.$queryRaw`SELECT id FROM companies WHERE id = ${companyId} FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM company_representatives WHERE "userId" = ${userId} AND "companyId" = ${companyId} FOR SHARE`;
+  }
   const representative = await tx.companyRepresentative.findUnique({
     where: { userId_companyId: { userId, companyId } },
     include: { company: true },

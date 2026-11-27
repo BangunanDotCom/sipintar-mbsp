@@ -1,3 +1,4 @@
+import { enqueueCaseReminder } from "./training-case-reminders.js";
 import { recordSyntheticFinancialEntry } from "./synthetic-financial-journal.js";
 import { createHmac, randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
@@ -75,7 +76,7 @@ export async function firstPaymentSettled(
   return (await legacyFirstPayment(tx, id)).settlements.length === 1;
 }
 
-function invoiceView(ledger: MockLedger) {
+function invoiceView(ledger: MockLedger, now: Date) {
   const invoice = ledger.invoices[0];
   if (!invoice) return { invoice: null };
   const receipt = ledger.settlements[0];
@@ -88,7 +89,7 @@ function invoiceView(ledger: MockLedger) {
       expiresAt: invoice.expiresAt,
       status: receipt
         ? "SETTLED"
-        : Date.now() >= invoice.expiresAt
+        : now.getTime() >= invoice.expiresAt
           ? "EXPIRED"
           : "ISSUED",
       providerReference: receipt?.providerReference ?? null,
@@ -120,7 +121,7 @@ async function storeReconciliation(
     payload,
     signature,
     secret,
-    Date.now(),
+    (await tx.databaseNow()).getTime(),
   );
   if (result.status !== "REPLAY" && result.status !== "SETTLED")
     fail(409, "Padanan atau tempoh invois sintetik tidak sah.");
@@ -141,7 +142,10 @@ async function storeReconciliation(
       metadata: receipt,
     });
   }
-  return { ...invoiceView(result.ledger), result: result.status };
+  return {
+    ...invoiceView(result.ledger, await tx.databaseNow()),
+    result: result.status,
+  };
 }
 
 export async function syntheticBillingRoutes(
@@ -149,6 +153,7 @@ export async function syntheticBillingRoutes(
   options: { ttlMinutes: number; policyVersion: string },
   repository = postgresSyntheticReviewRepository,
   auth = postgresAuth,
+  remindersEnabled = false,
 ) {
   const configured = process.env.STAYLINK_SYNTHETIC_CALLBACK_KEY;
   if (!configured || !/^[a-f0-9]{64}$/.test(configured)) return;
@@ -161,7 +166,10 @@ export async function syntheticBillingRoutes(
       const row = await tx.applicantSubmission(id, userId);
       if (row) await tx.requireSnapshotAuthority(row);
       return row
-        ? invoiceView(await legacyFirstPayment(tx, row.id))
+        ? invoiceView(
+            await legacyFirstPayment(tx, row.id),
+            await tx.databaseNow(),
+          )
         : { invoice: null };
     }, true);
   });
@@ -171,7 +179,10 @@ export async function syntheticBillingRoutes(
     const { id } = params.parse(req.params);
     return repository.transaction(async (tx) => {
       await lockSyntheticReview(tx, id, officer);
-      return invoiceView(await legacyFirstPayment(tx, id));
+      return invoiceView(
+        await legacyFirstPayment(tx, id),
+        await tx.databaseNow(),
+      );
     });
   });
 
@@ -193,7 +204,7 @@ export async function syntheticBillingRoutes(
             state.caseId,
             snapshot.evidence,
           );
-        const now = Date.now();
+        const now = (await tx.databaseNow()).getTime();
         const output = issueMockInvoice(
           true,
           ledger,
@@ -225,7 +236,16 @@ export async function syntheticBillingRoutes(
             },
           });
         }
-        return { ...invoiceView(output.ledger), result: output.status };
+        if (output.status === "ISSUED" && remindersEnabled)
+          await enqueueCaseReminder(tx, id, "CASE_FIRST_PAYMENT", {
+            context: { reference: output.invoice.id },
+            availableAt: new Date(output.invoice.expiresAt),
+          });
+        await tx.lockOfficer(officer);
+        return {
+          ...invoiceView(output.ledger, await tx.databaseNow()),
+          result: output.status,
+        };
       }
       const invoice = ledger.invoices[0];
       if (!invoice) fail(409, "Jana invois sintetik dahulu.");
@@ -240,7 +260,7 @@ export async function syntheticBillingRoutes(
       const signature = createHmac("sha256", secret)
         .update(payload)
         .digest("hex");
-      return storeReconciliation(
+      const reconciled = await storeReconciliation(
         tx,
         id,
         ledger,
@@ -249,6 +269,8 @@ export async function syntheticBillingRoutes(
         secret,
         officer.operator.userId,
       );
+      await tx.lockOfficer(officer);
+      return reconciled;
     });
   });
 

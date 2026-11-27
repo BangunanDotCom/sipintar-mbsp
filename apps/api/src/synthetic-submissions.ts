@@ -542,11 +542,12 @@ export type DelegationProof = {
 export async function requireSyntheticSnapshotAuthority(
   tx: Prisma.TransactionClient,
   row: { snapshot: Prisma.JsonValue; actorId: string },
+  lock = true,
 ) {
   return assertSnapshotAuthority(
     row,
-    (userId, companyId) => companyAuthority(tx, userId, companyId),
-    (rep) => verifiedDelegation(tx, rep),
+    (userId, companyId) => companyAuthority(tx, userId, companyId, lock),
+    (rep) => verifiedDelegation(tx, rep, lock),
   );
 }
 

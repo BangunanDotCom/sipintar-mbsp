@@ -59,7 +59,7 @@ it("preserves date-only, UTC, Boolean and optional text contracts", () => {
 
 it("inventories all Prisma tables and all user-defined DDL names as STL", async () => {
   const inventories = await Promise.all(
-    ["001", "002", "003", "004", "005"].map(
+    ["001", "002", "003", "004", "005", "006", "007"].map(
       async (number) =>
         JSON.parse(
           await readFile(`database/oracle/${number}-inventory.json`, "utf8"),

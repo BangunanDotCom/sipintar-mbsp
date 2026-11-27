@@ -1,3 +1,4 @@
+import { insertOracleReminder } from "./training-reminders.js";
 import type { FinancialView } from "../synthetic-financial-journal.js";
 import { oracleDelegationEvidence } from "./delegation-evidence.js";
 import { randomUUID } from "node:crypto";
@@ -113,6 +114,18 @@ export function createOracleSyntheticReviewRepository(
       return row ? decode(row) : null;
     };
     return {
+      async databaseNow() {
+        const [row] = await queryRows<{ NOW: Date }>(
+          connection,
+          "SELECT SYSTIMESTAMP AS NOW FROM DUAL",
+          {},
+        );
+        return row.NOW;
+      },
+      async enqueueReminders(entries) {
+        for (const entry of entries)
+          await insertOracleReminder(pool, connection, entry);
+      },
       lockOfficer: (officer) =>
         lockSession(
           connection,

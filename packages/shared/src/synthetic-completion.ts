@@ -193,7 +193,7 @@ export function applyCompletion(
         departments: [...departments],
         comments: {},
         acknowledged: [],
-        deadline: now + 7 * day,
+        deadline: technicalReferralDeadline(now),
         version: state.version + 1,
         paperSubmitted: false,
       };
@@ -215,7 +215,7 @@ export function applyCompletion(
         departments: command.departments,
         comments: {},
         acknowledged: [],
-        deadline: now + 7 * day,
+        deadline: technicalReferralDeadline(now),
         version: state.version + 1,
         paperSubmitted: false,
       };
@@ -425,4 +425,36 @@ export function applyCompletion(
   }
   next.version++;
   return { state: next, changed: true };
+}
+
+export function technicalReferralDeadline(openedAt: number) {
+  return openedAt + 7 * day;
+}
+
+export function technicalSla(
+  closed: boolean,
+  deadline: number,
+  outstanding: boolean,
+  now: number,
+) {
+  return !closed && outstanding && now >= deadline;
+}
+
+export function completionOverdue(
+  { closed, referral }: CompletionState,
+  now: number,
+  department?: TechnicalDepartment,
+) {
+  return Boolean(
+    referral &&
+    technicalSla(
+      closed,
+      referral.deadline,
+      referral.departments.some(
+        (role) =>
+          (!department || department === role) && !referral.comments[role],
+      ),
+      now,
+    ),
+  );
 }

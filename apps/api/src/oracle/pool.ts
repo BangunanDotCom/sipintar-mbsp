@@ -79,6 +79,10 @@ export async function createOraclePool(config: OracleConfig) {
   return {
     owner: config.owner,
     purpose: config.purpose,
+    connections: () => ({
+      open: pool.connectionsOpen,
+      inUse: pool.connectionsInUse,
+    }),
     use: <T>(callback: (connection: Connection) => Promise<T>) =>
       withConnection(callback),
     transaction: <T>(callback: (connection: Connection) => Promise<T>) =>

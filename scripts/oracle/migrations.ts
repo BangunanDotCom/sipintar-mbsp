@@ -182,11 +182,24 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
   const delegation = await loadMigration(delegationVersion);
   const core = await loadMigration("004-core-journals");
   const caseAudit = await loadMigration("005-audit-case-lookup");
-  const migrations = [baseline, completion, delegation, core, caseAudit];
-  const inventoryThrough = (count: number) =>
-    new Set(
+  const caseReminders = await loadMigration("006-training-case-reminders");
+  const reminderWidth = await loadMigration("007-reminder-kind-width");
+  const migrations = [
+    baseline,
+    completion,
+    delegation,
+    core,
+    caseAudit,
+    caseReminders,
+    reminderWidth,
+  ];
+  const inventoryThrough = (count: number) => {
+    const expected = new Set(
       migrations.slice(0, count).flatMap(({ expected }) => [...expected]),
     );
+    if (count >= 6) expected.delete("CONSTRAINT:STL_CK_TR_KIND");
+    return expected;
+  };
   const existing = await namespace(connection);
   if (!existing.size) {
     if (!apply) return "EMPTY";
@@ -206,7 +219,7 @@ export async function migrateOracle(connection: Connection, apply: boolean) {
       CHECKSUM: string;
       STATE: string;
     }>(
-      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 6 ROWS ONLY",
+      "SELECT VERSION,CHECKSUM,STATE FROM STL_SCHEMA_MIGRATIONS ORDER BY VERSION FETCH FIRST 8 ROWS ONLY",
       {},
       { outFormat: oracledb.OUT_FORMAT_OBJECT },
     ));

@@ -1,0 +1,3 @@
+[
+  {"type":"CONSTRAINT","name":"STL_CK_TR_CASE_KIND","table":"STL_TRAINING_REMINDER_OUTBOX"}
+]

@@ -1,4 +1,3 @@
-import { insertOracleReminder } from "./training-reminders.js";
 import type { Prisma } from "@prisma/client";
 import { completionEvent } from "../../../../packages/shared/src/synthetic-completion-contract.js";
 import type { CompletionRepository } from "../completion-repository.js";
@@ -32,10 +31,6 @@ export function createOracleCompletionRuntime(
           const review = reviews.onConnection(connection, consistentRead);
           return operation({
             ...review,
-            async enqueueReminders(entries) {
-              for (const entry of entries)
-                await insertOracleReminder(pool, connection, entry);
-            },
             events: (id) => journal.events(connection, id),
             appendCompletion: (entry) => journal.appendEvent(connection, entry),
             lockActor: (operator, role, district) =>

@@ -1,3 +1,4 @@
+import { lockTrainingOutboxCase } from "./training-outbox-locks.js";
 import type { Prisma, TrainingReminderOutbox } from "@prisma/client";
 import { z } from "zod";
 import type { CompletionState } from "../../../packages/shared/src/synthetic-completion.js";
@@ -137,10 +138,7 @@ export async function eligibleTechnicalRecipient(
   }
   if (assignment !== row.recipientId) return null;
   if ((row.kind === "TECH_ESCALATE") !== (role === "PPSK")) return null;
-  await tx.$queryRaw`SELECT id FROM users WHERE id = ${row.recipientId} FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM user_role_assignments
-    WHERE "userId" = ${row.recipientId} AND "roleId" = ${role} ORDER BY id FOR SHARE`;
-  await tx.$queryRaw`SELECT id FROM synthetic_submissions WHERE id = ${submissionId} FOR SHARE`;
+  await lockTrainingOutboxCase(tx, row.recipientId, role, submissionId);
 
   const user = await tx.user.findFirst({
     where: {
@@ -177,7 +175,7 @@ export async function eligibleTechnicalRecipient(
   const inventory = technicalReminderInventory.safeParse(submission.snapshot);
   if (!inventory.success || inventory.data.districtId !== district) return null;
   try {
-    await requireSyntheticSnapshotAuthority(tx, submission);
+    await requireSyntheticSnapshotAuthority(tx, submission, false);
     const scopes = inventory.data.units.flatMap(({ id, floorIds }) =>
       floorIds.map((floorId) => ({ unitId: id, floorId })),
     );

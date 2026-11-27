@@ -1,3 +1,7 @@
+import {
+  caseReminderCopy,
+  eligibleCaseRecipient,
+} from "../training-case-reminders.js";
 import { randomUUID } from "node:crypto";
 import oracledb from "oracledb";
 import { draftInactivityDays } from "../../../../packages/shared/src/draft-inactivity.js";
@@ -43,6 +47,7 @@ export type ReminderInput = {
   kind?: string;
   context?: object;
   availableAt?: Date;
+  notifiedAt?: Date | null;
 };
 
 export function insertOracleReminder(
@@ -54,13 +59,14 @@ export function insertOracleReminder(
   return connection
     .execute(
       `INSERT INTO ${table}
-   (ID,DRAFT_ID,DRAFT_VERSION,RECIPIENT_ID,SOURCE,DEDUPE_KEY,KIND,CONTEXT,AVAILABLE_AT)
-   VALUES (:id,:draftId,:draftVersion,:recipientId,:source,:dedupeKey,:kind,:context,COALESCE(:availableAt,SYSTIMESTAMP))`,
+   (ID,DRAFT_ID,DRAFT_VERSION,RECIPIENT_ID,SOURCE,DEDUPE_KEY,KIND,CONTEXT,AVAILABLE_AT,NOTIFIED_AT)
+   VALUES (:id,:draftId,:draftVersion,:recipientId,:source,:dedupeKey,:kind,:context,COALESCE(:availableAt,SYSTIMESTAMP),:notifiedAt)`,
       {
         ...data,
         id: randomUUID(),
         kind: data.kind ?? "DRAFT_INACTIVE",
         availableAt: timestamp(data.availableAt ?? null),
+        notifiedAt: timestamp(data.notifiedAt ?? null),
         context: data.context
           ? clob(JSON.stringify(data.context))
           : { val: null, type: oracledb.CLOB },
@@ -95,7 +101,7 @@ export function createOracleTrainingReminders(pool: OraclePool) {
   const journal = createOracleCompletionRepository(pool);
   const audit = createOracleAuditRepository(pool);
   const fields = `ID AS "id",DRAFT_ID AS "draftId",DRAFT_VERSION AS "draftVersion",RECIPIENT_ID AS "recipientId",
-     KIND AS "kind",CONTEXT AS "context",ATTEMPTS AS "attempts",NOTIFIED_AT AS "notifiedAt"`;
+     KIND AS "kind",CONTEXT AS "context",AVAILABLE_AT AS "availableAt",ATTEMPTS AS "attempts",NOTIFIED_AT AS "notifiedAt"`;
   const scope = `D.STATUS='DRAFT' AND D.UPDATED_AT<=SYSTIMESTAMP-NUMTODSINTERVAL(${draftInactivityDays},'DAY')
     AND P.DISTRICT_ID IN ('SPU','SPT','SPS') AND U.KIND='APPLICANT' AND U.STATUS='ACTIVE'
     AND U.EMAIL_VERIFIED=1 AND LOWER(U.EMAIL) LIKE '%@example.test'
@@ -250,6 +256,7 @@ export function createOracleTrainingReminders(pool: OraclePool) {
     recipientId: string;
     kind: string;
     context: string | null;
+    availableAt: Date;
     attempts: number;
     notifiedAt: Date | null;
   };
@@ -418,12 +425,35 @@ export function createOracleTrainingReminders(pool: OraclePool) {
                   1,
                 )
               : [];
+          const caseCopy = caseReminderCopy(entry.kind);
           const email =
             entry.kind === "DRAFT_INACTIVE"
               ? draft?.initiatedByUserId === entry.recipientId
                 ? draft.email
                 : null
-              : await technicalRecipient(connection, entry);
+              : caseCopy
+                ? await eligibleCaseRecipient(
+                    {
+                      ...review.onConnection(connection),
+                      events: (id) => journal.events(connection, id),
+                    },
+                    { ...entry, context: JSON.parse(entry.context ?? "null") },
+                    async (id) => {
+                      await connection.execute(
+                        `SELECT ID FROM ${users} WHERE ID=:id FOR UPDATE WAIT 5`,
+                        { id },
+                      );
+                      const [user] = await queryRows<{ EMAIL: string }>(
+                        connection,
+                        `SELECT EMAIL FROM ${users} WHERE ID=:id AND KIND='APPLICANT'
+                          AND STATUS='ACTIVE' AND EMAIL_VERIFIED=1 AND IDENTIFICATION_HASH IS NOT NULL`,
+                        { id },
+                      );
+                      return user?.EMAIL ?? null;
+                    },
+                    oracleCompletionEnabled(),
+                  )
+                : await technicalRecipient(connection, entry);
           if (!email?.toLowerCase().endsWith("@example.test")) {
             await connection.execute(
               `UPDATE ${outbox} SET STATUS='CANCELLED',LEASE_UNTIL=NULL,LAST_ERROR='SCOPE_CHANGED' WHERE ID=:id`,
@@ -431,12 +461,14 @@ export function createOracleTrainingReminders(pool: OraclePool) {
             );
             return null;
           }
-          const copy = reminderCopy(entry.kind);
+          const copy = caseCopy ?? reminderCopy(entry.kind);
           if (entry.kind !== "DRAFT_INACTIVE" && !entry.notifiedAt) {
             await notify(
               connection,
               entry.recipientId,
-              "TRAINING_TECHNICAL_REMINDER",
+              caseCopy
+                ? "TRAINING_CASE_REMINDER"
+                : "TRAINING_TECHNICAL_REMINDER",
               copy,
             );
             await connection.execute(

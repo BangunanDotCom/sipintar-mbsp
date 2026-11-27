@@ -10,15 +10,19 @@ export const oracleCompletionEnabled = (env = process.env) =>
   env.STAYLINK_SYNTHETIC_COMPLETION === "true" &&
   env.STAYLINK_DEMO_HOST !== "true";
 
-export async function assertOracleCompletionMigration(pool: OraclePool) {
+export async function assertOracleCompletionMigration(
+  pool: OraclePool,
+  reminders = false,
+) {
   const history = oracleTable(pool, "STL_SCHEMA_MIGRATIONS");
+  const version = reminders ? "007-reminder-kind-width" : "004-core-journals";
   await pool.use(async (connection) => {
     const [row] = await queryRows(
       connection,
-      `SELECT VERSION FROM ${history} WHERE VERSION='004-core-journals' AND STATE='APPLIED'`,
-      {},
+      `SELECT VERSION FROM ${history} WHERE VERSION=:version AND STATE='APPLIED'`,
+      { version },
     );
-    if (!row) throw Error("Migrasi Oracle makmal 004 belum digunakan.");
+    if (!row) throw Error(`Migrasi Oracle makmal ${version} belum digunakan.`);
   });
 }
 

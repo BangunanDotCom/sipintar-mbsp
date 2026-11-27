@@ -1,3 +1,11 @@
+import { lockTrainingOutboxCase } from "./training-outbox-locks.js";
+import { requireSyntheticSnapshotAuthority } from "./synthetic-submissions.js";
+import {
+  caseReminderCopy,
+  eligibleCaseRecipient,
+} from "./training-case-reminders.js";
+import { completionSandbox } from "./synthetic-completion-gate.js";
+import { completionEvent } from "../../../packages/shared/src/synthetic-completion-contract.js";
 import { eligibleTechnicalRecipient } from "./training-technical-reminders.js";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -10,6 +18,7 @@ import { loadSyntheticOwnerPolicy } from "./synthetic-owner-policy.js";
 import { syntheticPortalDatabase } from "./synthetic-portal-gate.js";
 import {
   lockSyntheticOfficer,
+  postgresSyntheticReviewTransaction,
   syntheticReviewOfficer,
 } from "./synthetic-portal-review.js";
 import { draftInactivityDays } from "../../../packages/shared/src/draft-inactivity.js";
@@ -73,6 +82,7 @@ async function enqueue(
   });
   if (!result.count) return false;
   await tx.notification.create({
+    select: { id: true },
     data: {
       userId: draft.initiatedByUserId,
       type: "TRAINING_DRAFT_REMINDER",
@@ -100,10 +110,10 @@ export function trainingRemindersEnabled() {
   );
 }
 
-export async function scheduleTrainingReminders() {
+export async function scheduleTrainingReminders(database = db) {
   if (!trainingRemindersEnabled())
     throw Error("Gerbang peringatan latihan tertutup.");
-  return db.$transaction(async (tx) => {
+  return database.$transaction(async (tx) => {
     const candidates = await tx.$queryRaw<{ id: string }[]>`
       SELECT d.id FROM application_drafts d
       JOIN application_premises p ON p."draftId" = d.id
@@ -111,9 +121,15 @@ export async function scheduleTrainingReminders() {
       WHERE ${eligibleDraft} AND NOT EXISTS (
         SELECT 1 FROM training_reminder_outbox o WHERE o."draftId" = d.id AND o."draftVersion" = d.version AND o.kind = 'DRAFT_INACTIVE'
       )
-      ORDER BY d."updatedAt", d.id LIMIT 25 FOR UPDATE OF d SKIP LOCKED
+      ORDER BY d."updatedAt", d.id LIMIT 25
     `;
-    const ids = candidates.map(({ id }) => id);
+    if (!candidates.length) return 0;
+    const locked = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT public.staylink_lock_outbox_drafts(
+      ARRAY[${Prisma.join(candidates.map(({ id }) => id))}]::text[]
+    ) AS id`;
+    const ids = locked.map(({ id }) => id);
     if (!ids.length) return 0;
     const due = await readEligible(
       tx,
@@ -155,15 +171,18 @@ export type TrainingMailSender = (email: {
   messageId: string;
 }) => Promise<void>;
 
-export async function deliverTrainingReminders(send: TrainingMailSender) {
+export async function deliverTrainingReminders(
+  send: TrainingMailSender,
+  database = db,
+) {
   if (!trainingRemindersEnabled())
     throw Error("Gerbang peringatan latihan tertutup.");
   const now = new Date();
-  await db.trainingReminderOutbox.updateMany({
+  await database.trainingReminderOutbox.updateMany({
     where: { status: "SENDING", leaseUntil: { lte: now } },
     data: { status: "UNCERTAIN", leaseUntil: null, lastError: "LEASE_EXPIRED" },
   });
-  const ready = await db.trainingReminderOutbox.findMany({
+  const ready = await database.trainingReminderOutbox.findMany({
     where: {
       status: { in: ["PENDING", "FAILED"] },
       attempts: { lt: 5 },
@@ -175,7 +194,7 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
   });
   for (const { id } of ready) {
     const leaseUntil = new Date(Date.now() + 60_000);
-    const row = await db.$transaction(async (tx) => {
+    const row = await database.$transaction(async (tx) => {
       const claimed = await tx.trainingReminderOutbox.updateMany({
         where: {
           id,
@@ -189,6 +208,7 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
       const row = await tx.trainingReminderOutbox.findUniqueOrThrow({
         where: { id },
       });
+      const caseCopy = caseReminderCopy(row.kind);
       let email: string | null = null;
       if (row.kind === "DRAFT_INACTIVE") {
         const [draft] = await readEligible(
@@ -203,6 +223,42 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
           });
           email = account?.email ?? null;
         }
+      } else if (caseCopy) {
+        email = await eligibleCaseRecipient(
+          {
+            ...postgresSyntheticReviewTransaction(tx),
+            lockSubmission: (id) =>
+              lockTrainingOutboxCase(tx, row.recipientId, null, id),
+            requireSnapshotAuthority: (submission) =>
+              requireSyntheticSnapshotAuthority(tx, submission, false),
+            events: (id) =>
+              tx.auditLog.findMany({
+                where: {
+                  target: id,
+                  action: completionEvent,
+                  outcome: "SUCCESS",
+                },
+                select: { actorId: true, activeRole: true, metadata: true },
+                take: 501,
+              }),
+          },
+          row,
+          async (id) => {
+            await lockTrainingOutboxCase(tx, id, null, null);
+            const user = await tx.user.findFirst({
+              where: {
+                id,
+                kind: "APPLICANT",
+                status: "ACTIVE",
+                emailVerified: true,
+                identificationHash: { not: null },
+              },
+              select: { email: true },
+            });
+            return user?.email ?? null;
+          },
+          completionSandbox(),
+        );
       } else {
         email = await eligibleTechnicalRecipient(tx, row);
       }
@@ -217,12 +273,15 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         });
         return null;
       }
-      const copy = reminderCopy(row.kind);
+      const copy = caseCopy ?? reminderCopy(row.kind);
       if (row.kind !== "DRAFT_INACTIVE" && !row.notifiedAt) {
         await tx.notification.create({
+          select: { id: true },
           data: {
             userId: row.recipientId,
-            type: "TRAINING_TECHNICAL_REMINDER",
+            type: caseCopy
+              ? "TRAINING_CASE_REMINDER"
+              : "TRAINING_TECHNICAL_REMINDER",
             title: copy.subject,
             message: copy.text,
           },
@@ -242,7 +301,7 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
         ...row.copy,
         messageId: `<staylink-training-${id}@example.test>`,
       });
-      await db.trainingReminderOutbox.updateMany({
+      await database.trainingReminderOutbox.updateMany({
         where: claim,
         data: {
           status: "SENT",
@@ -265,7 +324,7 @@ export async function deliverTrainingReminders(send: TrainingMailSender) {
       const retryable =
         code === "ECONNREFUSED" ||
         (typeof response === "number" && response >= 400 && response < 500);
-      await db.trainingReminderOutbox.updateMany({
+      await database.trainingReminderOutbox.updateMany({
         where: claim,
         data: {
           status: retryable ? "FAILED" : "UNCERTAIN",
