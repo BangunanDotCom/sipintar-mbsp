@@ -43,6 +43,8 @@ export function createOracleCompanyInvitationRepository(
   const companies = oracleTable(pool, "STL_COMPANIES");
   const reps = oracleTable(pool, "STL_COMPANY_REPRESENTATIVES");
   const invites = oracleTable(pool, "STL_COMPANY_REP_INVITATIONS");
+  const documents = oracleTable(pool, "STL_DELEGATION_DOCUMENTS");
+  const sessions = oracleTable(pool, "STL_SESSIONS");
   const users = oracleTable(pool, "STL_USERS");
   const assignments = oracleTable(pool, "STL_USER_ROLE_ASSIGNMENTS");
   const permissions = oracleTable(pool, "STL_PERMISSIONS");
@@ -310,14 +312,69 @@ export function createOracleCompanyInvitationRepository(
             message: clob(acceptanceNotice.message),
           },
         );
-        const finalCheck = new Date();
+        const finalAuthority = await lockAuthority(
+          connection,
+          invitation.companyId,
+          invitation.invitedBy,
+        );
         if (
-          !invitationProofCurrent(authority.proof, finalCheck) ||
-          (authority.rep.endsAt && authority.rep.endsAt <= finalCheck) ||
-          (invitation.authorityEndsAt &&
-            invitation.authorityEndsAt <= finalCheck)
+          !finalAuthority ||
+          !matchesInvitationToken(
+            raw,
+            finalAuthority.rep,
+            userId,
+            finalAuthority.proof,
+          )
         )
           fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
+        // Last database statement before commit. Locks protect mutable rows, while
+        // the database clock independently bounds every expiring authorization.
+        const [eligible] = await queryRows(
+          connection,
+          `WITH clock AS (SELECT SYSTIMESTAMP AS INSTANT FROM DUAL)
+          SELECT 1 FROM ${invites} I
+          JOIN ${reps} R ON R.ID=:repId AND R.USER_ID=I.INVITED_BY AND R.COMPANY_ID=I.COMPANY_ID
+          JOIN ${companies} C ON C.ID=I.COMPANY_ID AND C.STATUS='ACTIVE'
+          JOIN ${users} U ON U.ID=I.INVITED_BY AND U.STATUS='ACTIVE' AND U.EMAIL_VERIFIED=1
+          JOIN ${users} V ON V.ID=I.RECIPIENT_ID AND V.KIND='APPLICANT'
+            AND V.STATUS='ACTIVE' AND V.EMAIL_VERIFIED=1 AND V.IDENTIFICATION_HASH IS NOT NULL
+          JOIN ${sessions} S ON S.ID=:sessionId AND S.USER_ID=V.ID
+            AND S.CSRF_HASH=:csrfHash AND S.ACTIVE_ROLE=:activeRole
+          CROSS JOIN clock T
+          WHERE I.ID=:id AND I.TOKEN_HASH=:tokenHash AND I.RECIPIENT_ID=:userId AND I.ACCEPTED_AT IS NOT NULL
+            AND I.EXPIRES_AT>T.INSTANT AND (I.AUTHORITY_ENDS_AT IS NULL OR I.AUTHORITY_ENDS_AT>T.INSTANT)
+            AND S.EXPIRES_AT>T.INSTANT AND R.STATUS<>'REVOKED' AND R.STARTS_AT<=T.INSTANT
+            AND (R.ENDS_AT IS NULL OR R.ENDS_AT>T.INSTANT)
+            AND EXISTS (SELECT 1 FROM ${assignments} A JOIN ${permissions} P ON P.ROLE_ID=A.ROLE_ID
+              WHERE A.USER_ID=U.ID AND P.ACTION='companies' AND A.STATUS='ACTIVE'
+                AND A.STARTS_AT<=T.INSTANT AND (A.ENDS_AT IS NULL OR A.ENDS_AT>T.INSTANT))
+            AND EXISTS (SELECT 1 FROM ${assignments} A JOIN ${permissions} P ON P.ROLE_ID=A.ROLE_ID
+              WHERE A.USER_ID=V.ID AND A.ROLE_ID=S.ACTIVE_ROLE AND P.ACTION='companies' AND A.STATUS='ACTIVE'
+                AND A.STARTS_AT<=T.INSTANT AND (A.ENDS_AT IS NULL OR A.ENDS_AT>T.INSTANT))
+            AND ((:proofId IS NULL AND R.CAN_MANAGE_REPRESENTATIVES=1) OR
+              (R.CAN_MANAGE_REPRESENTATIVES=0 AND R.STATUS='VERIFIED' AND EXISTS (
+                SELECT 1 FROM ${documents} D WHERE D.ID=:proofId AND D.ID=R.VERIFIED_DOCUMENT_ID
+                  AND D.COMPANY_ID=R.COMPANY_ID AND D.REPRESENTATIVE_ID=R.ID AND D.AUTHORITY_TYPE=R.AUTHORITY_TYPE
+                  AND D.VERSION=:proofVersion AND D.SHA256=:proofHash AND D.SCAN_SHA256=D.SHA256
+                  AND D.SCAN_STATUS='CLEAN' AND D.SCAN_VALID_UNTIL>T.INSTANT
+                  AND D.SCAN_LEASE_TOKEN IS NULL AND D.SCAN_LEASE_EXPIRES_AT IS NULL
+                  AND D.SUPERSEDED_AT IS NULL AND D.REVOKED_AT IS NULL AND D.VALID_FROM<=T.INSTANT
+                  AND (D.VALID_UNTIL IS NULL OR D.VALID_UNTIL>T.INSTANT))))`,
+          {
+            repId: finalAuthority.rep.id,
+            sessionId: principal.id,
+            csrfHash: principal.csrfHash,
+            activeRole,
+            id: invitation.id,
+            tokenHash: hash(raw),
+            userId,
+            proofId: finalAuthority.proof?.id ?? null,
+            proofVersion: finalAuthority.proof?.version ?? null,
+            proofHash: finalAuthority.proof?.sha256 ?? null,
+          },
+        );
+        if (!eligible)
+          fail(403, "Kuasa pemberi atau penerima jemputan tidak lagi aktif.");
         return { id };
       }),
   };

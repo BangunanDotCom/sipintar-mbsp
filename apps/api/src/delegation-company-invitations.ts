@@ -294,18 +294,51 @@ export async function companyInvitationRoutes(app: FastifyInstance) {
       await tx.notification.create({
         data: { userId: s.userId, ...acceptanceNotice },
       });
-      const finalCheck = new Date();
+      const finalMembership = await requireMembership(
+        tx,
+        invitation.invitedBy,
+        invitation.companyId,
+        403,
+      );
+      const finalProof = await requireManagement(tx, finalMembership);
       if (
-        !validRepresentative(membership, finalCheck) ||
-        !inviter.user.roles.some(
-          (role) =>
-            isCurrent(role, finalCheck) &&
-            role.role.permissions.some((p) => p.action === "companies"),
-        ) ||
-        !invitationProofCurrent(proof, finalCheck) ||
-        (invitation.authorityEndsAt && invitation.authorityEndsAt <= finalCheck)
+        !matchesInvitationToken(b.token, finalMembership, s.userId, finalProof)
       )
         fail(403, "Kuasa pemberi jemputan tidak lagi aktif.");
+      const [eligible] = await tx.$queryRaw<
+        { eligible: number }[]
+      >`WITH clock AS MATERIALIZED (SELECT clock_timestamp() AT TIME ZONE 'UTC' AS instant)
+        SELECT 1 AS eligible FROM company_representation_invitations i
+        JOIN company_representatives r ON r.id=${finalMembership.id} AND r."userId"=i."invitedBy" AND r."companyId"=i."companyId"
+        JOIN companies c ON c.id=i."companyId" AND c.status='ACTIVE'
+        JOIN users u ON u.id=i."invitedBy" AND u.status='ACTIVE' AND u."emailVerified"
+        JOIN users v ON v.id=i."recipientId" AND v.kind='APPLICANT' AND v.status='ACTIVE'
+          AND v."emailVerified" AND v."identificationHash" IS NOT NULL
+        JOIN sessions s ON s.id=${s.id} AND s."userId"=v.id AND s."csrfHash"=${s.csrfHash} AND s."activeRole"=${s.activeRole}
+        CROSS JOIN clock t
+        WHERE i.id=${invitation.id} AND i."tokenHash"=${hash(b.token)}
+          AND i."recipientId"=${s.userId} AND i."acceptedAt" IS NOT NULL
+          AND i."expiresAt">t.instant AND (i."authorityEndsAt" IS NULL OR i."authorityEndsAt">t.instant)
+          AND s."expiresAt">t.instant AND r.status<>'REVOKED' AND r."startsAt"<=t.instant
+          AND (r."endsAt" IS NULL OR r."endsAt">t.instant)
+          AND EXISTS (SELECT 1 FROM user_role_assignments a JOIN permissions p ON p."roleId"=a."roleId"
+            WHERE a."userId"=u.id AND p.action='companies' AND a.status='ACTIVE'
+              AND a."startsAt"<=t.instant AND (a."endsAt" IS NULL OR a."endsAt">t.instant))
+          AND EXISTS (SELECT 1 FROM user_role_assignments a JOIN permissions p ON p."roleId"=a."roleId"
+            WHERE a."userId"=v.id AND a."roleId"=s."activeRole" AND p.action='companies' AND a.status='ACTIVE'
+              AND a."startsAt"<=t.instant AND (a."endsAt" IS NULL OR a."endsAt">t.instant))
+          AND ((${finalProof?.id ?? null}::text IS NULL AND r."canManageRepresentatives") OR
+            (NOT r."canManageRepresentatives" AND r.status='VERIFIED' AND EXISTS (
+              SELECT 1 FROM delegation_documents d WHERE d.id=${finalProof?.id ?? null}
+                AND d.id=r."verifiedDocumentId" AND d."companyId"=r."companyId" AND d."representativeId"=r.id
+                AND d."authorityType"=r."authorityType"
+                AND d.version=${finalProof?.version ?? null} AND d.sha256=${finalProof?.sha256 ?? null}
+                AND d."scanSha256"=d.sha256 AND d."scanStatus"='CLEAN' AND d."scanValidUntil">t.instant
+                AND d."scanLeaseToken" IS NULL AND d."scanLeaseExpiresAt" IS NULL
+                AND d."supersededAt" IS NULL AND d."revokedAt" IS NULL AND d."validFrom"<=t.instant
+                AND (d."validUntil" IS NULL OR d."validUntil">t.instant))))`;
+      if (!eligible)
+        fail(403, "Kuasa pemberi atau penerima jemputan tidak lagi aktif.");
       return r;
     });
     return {
